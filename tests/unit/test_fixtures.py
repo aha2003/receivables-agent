@@ -241,3 +241,154 @@ def test_identifiers_follow_synthetic_patterns(load_fixture_csv: Loader) -> None
     for r in load_fixture_csv("correspondence_labeled.csv"):
         assert re.fullmatch(r"M-\d{2}", r["message_id"])
         assert r["invoice_number"] == "" or re.fullmatch(r"INV-\d{3}", r["invoice_number"])
+
+
+# --- golden results: every value equals the SPEC §6.9 text ---------------------------------
+
+
+def _results_rows() -> dict[str, str]:
+    """The §6.9 "Item | Expected" table as {item: expected text}."""
+    section = _section("### 6.9 ", "### 6.10 ")
+    rows: dict[str, str] = {}
+    for line in section.splitlines():
+        m = re.match(r"^\| ([^|]+?) \| (.+) \|$", line)
+        if m and m.group(1) not in {"Item", "---"} and not m.group(1).startswith("#"):
+            rows[m.group(1)] = m.group(2)
+    return rows
+
+
+def _aed(text: str) -> str:
+    """'40,833.3' -> '40833.3'; '15,000' -> '15000.00' (whole AED written without decimals)."""
+    plain = text.replace(",", "")
+    return plain if "." in plain else f"{plain}.00"
+
+
+def _pairs(text: str) -> dict[str, str]:
+    return dict(re.findall(r"(INV-\d{3}) `?([^;`]+?)`?(?=;|$| \(| INV-\d{3}|\.)", text))
+
+
+def test_open_invoice_values_match_spec_text(golden_results: dict[str, Any]) -> None:
+    rows = _results_rows()
+    open_amounts = _pairs(rows["Open invoices"].split(" (all AED")[0])
+    days = _pairs(rows["Days overdue"])
+    buckets = _pairs(rows["Buckets of each"])
+    open_invoices = golden_results["open_invoices"]
+    assert set(open_amounts) == set(days) == set(buckets) == set(open_invoices)
+    for inv, item in open_invoices.items():
+        assert item["open_amount"] == _aed(open_amounts[inv]), inv
+        assert item["days_overdue"] == int(days[inv]), inv
+        assert item["bucket"] == buckets[inv], inv
+    closed = re.search(r"INV-001, 002, 007 are closed", rows["Open invoices"])
+    assert closed is not None
+    assert golden_results["closed_invoices"] == ["INV-001", "INV-002", "INV-007"]
+
+
+def test_totals_and_kpis_match_spec_text(golden_results: dict[str, Any]) -> None:
+    rows = _results_rows()
+    total_open, total_overdue = (s.strip() for s in rows["Total open / overdue"].split("/"))
+    assert golden_results["total_open"] == _aed(total_open)
+    assert golden_results["total_overdue"] == _aed(total_overdue)
+    spec_buckets = dict(
+        re.findall(r"(current|1-30|31-60|61-90|90\+) ([\d,]+)", rows["Bucket totals"])
+    )
+    assert golden_results["bucket_totals"] == {k: _aed(v) for k, v in spec_buckets.items()}
+
+    dso = re.fullmatch(r"([\d.]+) \(credit sales in window ([\d,]+);.*\)", rows["Estimated DSO"])
+    assert dso is not None
+    assert golden_results["estimated_dso"] == {
+        "value": dso.group(1),
+        "credit_sales_in_window": _aed(dso.group(2)),
+    }
+
+    exposure = rows["Exposure by band"]
+    spec_exposure = dict(re.findall(r"(High|Medium|Low) ([\d,]+)", exposure))
+    assert golden_results["exposure_by_band"] == {k: _aed(v) for k, v in spec_exposure.items()}
+    assert "same under both configs" in exposure
+    assert golden_results["queue_min_history_2"]["exposure_by_band_unchanged"] is True
+
+    spec_customers = re.findall(r"(CUST-[A-C]) ([\d,]+) \(([\d.]+)%\)", rows["Overdue by customer"])
+    assert golden_results["overdue_by_customer"] == [
+        {"customer_id": c, "amount": _aed(a), "share_pct": p} for c, a, p in spec_customers
+    ]
+
+
+def test_history_matches_spec_text(golden_results: dict[str, Any]) -> None:
+    text = _results_rows()["History"]
+    a = re.search(r"CUST-A: paid (\d+), late (\d+), rate (\d+\.\d)", text)
+    c = re.search(r"CUST-C: paid (\d+), late (\d+)", text)
+    portfolio = re.search(r"Portfolio late rate (\d+)/(\d+)", text)
+    assert a and c and portfolio and "CUST-B: none" in text
+    history = golden_results["history"]
+    assert history["CUST-A"] == {"paid": int(a[1]), "late": int(a[2]), "late_rate": a[3]}
+    assert history["CUST-B"] is None
+    assert history["CUST-C"] == {"paid": int(c[1]), "late": int(c[2])}
+    assert history["portfolio_late_rate"] == {
+        "numerator": int(portfolio[1]),
+        "denominator": int(portfolio[2]),
+    }
+
+
+def test_time_travel_matches_spec_text(golden_results: dict[str, Any]) -> None:
+    rows = _results_rows()
+    key = next(k for k in rows if k.startswith("Time travel"))
+    as_of = re.search(r"as_of = (\d{4}-\d{2}-\d{2})", key)
+    text = rows[key]
+    count = re.search(r"(\d+) invoices in ledger \((INV-\d{3}) absent\)", text)
+    open_amount = re.search(r"(INV-\d{3}) open ([\d,]+) \(the (\d{4}-\d{2}-\d{2}) payment", text)
+    ignored = re.search(r"event (E-\d{3}) ignored", text)
+    active = re.search(r"(E-\d{3}) active", text)
+    assert as_of and count and open_amount and ignored and active
+    tt = golden_results["time_travel"]
+    assert tt["as_of"] == as_of[1]
+    assert tt["ledger_invoice_count"] == int(count[1])
+    assert tt["absent_invoices"] == [count[2]]
+    assert tt["open_amounts"] == {open_amount[1]: _aed(open_amount[2])}
+    assert tt["ignored_events"] == [ignored[1]]
+    assert tt["active_events"] == [active[1]]
+
+
+def test_queue_default_matches_spec_table(golden_results: dict[str, Any]) -> None:
+    section = _section("**Queue, default config**", "**Queue, `min_history_invoices = 2`**")
+    spec_rows = [
+        {
+            "rank": int(m[0]),
+            "invoice_number": m[1],
+            "risk": m[2],
+            "band": m[3],
+            "priority_value": _aed(m[4]),
+            "action": m[5],
+        }
+        for m in re.findall(
+            r"^\| (\d+) \| (INV-\d{3}) \| ([\d.]+) \| (High|Medium|Low) \| ([\d,.]+) \| (.+?) \|$",
+            section,
+            re.M,
+        )
+    ]
+    assert len(spec_rows) == 9
+    assert golden_results["queue_default"]["rows"] == spec_rows
+    assert golden_results["queue_default"]["min_history_invoices"] == int(
+        re.search(r"min_history_invoices = (\d+)", section)[1]  # pyright: ignore[reportOptionalSubscript]
+    )
+
+
+def test_queue_min_history_2_matches_spec_text(golden_results: dict[str, Any]) -> None:
+    section = _section("**Queue, `min_history_invoices = 2`**", "### 6.10 ")
+    changes = {
+        inv: {"risk": risk, "priority_value": _aed(pv)}
+        for inv, risk, pv in re.findall(
+            r"(INV-\d{3}) becomes risk (\d+\.\d), priority value ([\d,]+\.\d)", section
+        )
+    }
+    order_text = re.search(r"The order becomes: ([^.]+)\.", section)
+    assert order_text is not None
+    alt = golden_results["queue_min_history_2"]
+    assert alt["changed_rows"] == changes
+    assert alt["order"] == [s.strip() for s in order_text[1].split(",")]
+    assert alt["min_history_invoices"] == 2
+
+
+def test_bad_invoices_customer_set_matches_spec(golden_results: dict[str, Any]) -> None:
+    section = _section("**bad_invoices.csv**", "### 6.9 ")
+    ids = re.search(r"customer id set `\{([^}]+)\}`", section)
+    assert ids is not None
+    assert golden_results["bad_invoices_customer_ids"] == [s.strip() for s in ids[1].split(",")]
