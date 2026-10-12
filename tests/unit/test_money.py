@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from receivables.core.money import from_fils, to_fils
+from receivables.core.money import MAX_FILS_DIGITS, from_fils, to_fils
 
 
 class TestMoney01:
@@ -79,3 +79,38 @@ def test_accepted_values(value: int | str | Decimal, expected: int) -> None:
 @given(st.integers())
 def test_round_trip_including_negatives(n: int) -> None:
     assert to_fils(from_fils(n)) == n
+
+
+@pytest.mark.parametrize("value", ["0E-50000000", "-0.00", Decimal("-0"), "000.00"])
+def test_zero_forms(value: str | Decimal) -> None:
+    assert to_fils(value) == 0
+
+
+@pytest.mark.parametrize("value", ["1E+30000000", Decimal("1E+999999999"), "1" + "0" * 4300])
+def test_huge_amounts_rejected_quickly(value: str | Decimal) -> None:
+    with pytest.raises(ValueError, match="out of range"):
+        to_fils(value)
+
+
+def test_tiny_exponent_rejected_quickly() -> None:
+    with pytest.raises(ValueError, match="decimal places"):
+        to_fils("1E-30000000")
+
+
+def test_int_out_of_range_rejected() -> None:
+    with pytest.raises(ValueError, match="out of range"):
+        to_fils(10**MAX_FILS_DIGITS)
+
+
+def test_from_fils_out_of_range_rejected() -> None:
+    with pytest.raises(ValueError, match="out of range"):
+        from_fils(-(10**MAX_FILS_DIGITS))
+
+
+def test_largest_amount_round_trips() -> None:
+    n = 10**MAX_FILS_DIGITS - 1
+    assert to_fils(from_fils(n)) == n
+
+
+def test_trailing_zeros_beyond_two_places_accepted() -> None:
+    assert to_fils("10.5000000000000000000000000000000000") == 1050
