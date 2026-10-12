@@ -36,3 +36,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §5, §3.5 / T-DB-01
 - Deviations or decisions (link docs/DECISIONS.md): D-007 (SPEC §5 date CHECKs fixed to `IS`), D-008 (env settings only; tenant `demo`; tests/db)
 - Next step: S1.05 Golden synthetic fixtures
+
+## 2026-10-12 — [S1.05] Golden synthetic fixtures
+- PR: #70 | Branch: s1-05-golden-fixtures | Commit: see PR head
+- Tests: `uv run pytest -q` → 180 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §6.8, §6.9, §6.10 / fixture loader test (counts), spec-parity and consistency checks
+- Deviations or decisions (link docs/DECISIONS.md): D-009 (fixture formats)
+- Next step: S1.06 Ledger and aging (pure)

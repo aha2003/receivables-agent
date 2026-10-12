@@ -1,0 +1,3 @@
+event_id,invoice_number,event_type,event_date,label,promise_date
+E-001,INV-004,DISPUTE_OPENED,2026-09-10,PO_AMOUNT_MISMATCH,
+E-002,INV-008,PROMISE_TO_PAY,2026-10-05,,2026-10-20

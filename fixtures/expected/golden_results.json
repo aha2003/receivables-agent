@@ -1,0 +1,74 @@
+{
+  "source": "docs/SPEC.md §6.9 (synthetic golden results; amounts are AED decimal strings, never floats)",
+  "as_of": "2026-10-31",
+  "config": "default",
+  "open_invoices": {
+    "INV-003": {"open_amount": "15000.00", "days_overdue": 30, "bucket": "1-30"},
+    "INV-004": {"open_amount": "50000.00", "days_overdue": 122, "bucket": "90+"},
+    "INV-005": {"open_amount": "20000.00", "days_overdue": 47, "bucket": "31-60"},
+    "INV-006": {"open_amount": "40000.00", "days_overdue": -9, "bucket": "current"},
+    "INV-008": {"open_amount": "12000.00", "days_overdue": 42, "bucket": "31-60"},
+    "INV-009": {"open_amount": "5000.00", "days_overdue": 93, "bucket": "90+"},
+    "INV-010": {"open_amount": "6000.00", "days_overdue": 0, "bucket": "current"},
+    "INV-011": {"open_amount": "25000.00", "days_overdue": 62, "bucket": "61-90"},
+    "INV-012": {"open_amount": "9000.00", "days_overdue": 16, "bucket": "1-30"},
+    "INV-013": {"open_amount": "4000.00", "days_overdue": 31, "bucket": "31-60"},
+    "INV-014": {"open_amount": "7000.00", "days_overdue": 90, "bucket": "61-90"}
+  },
+  "closed_invoices": ["INV-001", "INV-002", "INV-007"],
+  "total_open": "193000.00",
+  "total_overdue": "147000.00",
+  "bucket_totals": {
+    "current": "46000.00",
+    "1-30": "24000.00",
+    "31-60": "36000.00",
+    "61-90": "32000.00",
+    "90+": "55000.00"
+  },
+  "history": {
+    "CUST-A": {"paid": 2, "late": 2, "late_rate": "1.0"},
+    "CUST-B": null,
+    "CUST-C": {"paid": 1, "late": 0},
+    "portfolio_late_rate": {"numerator": 2, "denominator": 3}
+  },
+  "estimated_dso": {"value": "149.7", "credit_sales_in_window": "116000.00"},
+  "exposure_by_band": {"High": "57000.00", "Medium": "81000.00", "Low": "9000.00"},
+  "overdue_by_customer": [
+    {"customer_id": "CUST-B", "amount": "102000.00", "share_pct": "69.39"},
+    {"customer_id": "CUST-C", "amount": "26000.00", "share_pct": "17.69"},
+    {"customer_id": "CUST-A", "amount": "19000.00", "share_pct": "12.93"}
+  ],
+  "time_travel": {
+    "as_of": "2026-09-30",
+    "ledger_invoice_count": 13,
+    "absent_invoices": ["INV-006"],
+    "open_amounts": {"INV-005": "30000.00"},
+    "ignored_payments": ["P-003"],
+    "ignored_events": ["E-002"],
+    "active_events": ["E-001"]
+  },
+  "queue_default": {
+    "min_history_invoices": 5,
+    "rows": [
+      {"rank": 1, "invoice_number": "INV-004", "risk": "81.7", "band": "High", "priority_value": "40833.3", "action": "Resolve dispute: PO_AMOUNT_MISMATCH"},
+      {"rank": 2, "invoice_number": "INV-011", "risk": "56.2", "band": "Medium", "priority_value": "14055.6", "action": "Escalate: call and send formal reminder"},
+      {"rank": 3, "invoice_number": "INV-005", "risk": "48.1", "band": "Medium", "priority_value": "9611.1", "action": "Send firm reminder"},
+      {"rank": 4, "invoice_number": "INV-008", "risk": "52.8", "band": "Medium", "priority_value": "6340.0", "action": "Follow up broken promise to pay"},
+      {"rank": 5, "invoice_number": "INV-003", "risk": "39.0", "band": "Medium", "priority_value": "5850.0", "action": "Send friendly reminder"},
+      {"rank": 6, "invoice_number": "INV-014", "risk": "61.2", "band": "High", "priority_value": "4281.7", "action": "Escalate: call and send formal reminder"},
+      {"rank": 7, "invoice_number": "INV-009", "risk": "58.2", "band": "Medium", "priority_value": "2908.3", "action": "Escalate: call and send formal reminder"},
+      {"rank": 8, "invoice_number": "INV-012", "risk": "29.8", "band": "Low", "priority_value": "2680.0", "action": "Send friendly reminder"},
+      {"rank": 9, "invoice_number": "INV-013", "risk": "30.4", "band": "Medium", "priority_value": "1217.8", "action": "Send firm reminder"}
+    ]
+  },
+  "queue_min_history_2": {
+    "min_history_invoices": 2,
+    "changed_rows": {
+      "INV-003": {"risk": "47.3", "priority_value": "7100.0"},
+      "INV-013": {"risk": "38.8", "priority_value": "1551.1"}
+    },
+    "order": ["INV-004", "INV-011", "INV-005", "INV-003", "INV-008", "INV-014", "INV-009", "INV-012", "INV-013"],
+    "exposure_by_band_unchanged": true
+  },
+  "bad_invoices_customer_ids": ["C001"]
+}

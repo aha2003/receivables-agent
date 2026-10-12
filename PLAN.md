@@ -36,7 +36,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §5, §3.5
   - Tests: T-DB-01
   - Done when: Migrations apply to a fresh file; foreign keys are on for every connection; `audit_log` UPDATE and DELETE raise; a bad date and a zero amount are rejected.
-- [ ] **S1.05** Golden synthetic fixtures
+- [x] **S1.05** Golden synthetic fixtures
   - Goal: Write the fixtures of Sections 6.8 to 6.10 (customers, invoices, payments, events, bad invoices, 15 labelled messages) and the expected results under `fixtures/`, with loader helpers.
   - Spec: §6.8 to §6.10
   - Tests: fixture loader test: 3 customers, 14 invoices, 4 payments, 2 events, 15 labelled messages

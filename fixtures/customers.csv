@@ -1,0 +1,4 @@
+customer_id,customer_name,trn,trade_license_no,payment_terms_days,contact_email
+CUST-A,Alpha Trading LLC,100000000000003,TL-A-1001,30,ap@alpha.example
+CUST-B,Beta Contracting LLC,100000000100003,TL-B-2001,30,accounts@beta.example
+CUST-C,Gamma Facilities Services LLC,100000000200003,TL-C-3001,30,finance@gamma.example
