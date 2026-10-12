@@ -4,18 +4,18 @@ Competition prototype (Dubai Chamber of Digital Economy AI Agents Championship).
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 2/64 steps (3%)** █░░░░░░░░░░░░░░░░░░░
+**Overall: 3/64 steps (5%)** █░░░░░░░░░░░░░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
-| Slice 1 — Deterministic core + first screen | 2 | 14 | ███░░░░░░░░░░░░░░░░░ 14% |
+| Slice 1 — Deterministic core + first screen | 3 | 14 | ████░░░░░░░░░░░░░░░░ 21% |
 | Slice 2 — Visible agent loop | 0 | 11 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 3 — Claude integration + human approval | 0 | 13 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Checkpoint C1 — January 2027 submission pack | 0 | 7 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** S1.03 Clock port and architecture guard
+**Next up:** S1.04 Database schema and migrations
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · log: `docs/PROGRESS_LOG.md`
