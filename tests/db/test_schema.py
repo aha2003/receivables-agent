@@ -1,14 +1,18 @@
 """T-DB-01: fresh database after migrations (SPEC §5, §3.5). Synthetic values only."""
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import Engine, exc, inspect, text
+from sqlalchemy import DefaultClause, Engine, exc, inspect, text
+from sqlalchemy.orm import Session
 
+from receivables.adapters.db import engine as engine_module
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import downgrade_to_base, upgrade_to_head
-from receivables.adapters.db.models import Base
+from receivables.adapters.db.models import Base, Invoice
 from receivables.settings import Settings
 
 TABLES = {
@@ -142,7 +146,10 @@ def test_valid_invoice_accepted(engine: Engine) -> None:
     "overrides",
     [
         {"due_date": "2026-08-31"},  # due before invoice date
-        {"invoice_date": "2026-9-1"},  # not ISO
+        {
+            "invoice_date": "2026-9-1",
+            "due_date": "2099-12-31",
+        },  # not ISO; only the date CHECK fails
         {"currency": "USD"},
         {"amount_fils": -5},
     ],
@@ -222,6 +229,70 @@ def test_models_match_migrated_schema(engine: Engine) -> None:
         }
         model_fks = {((fk.parent.name,), fk.column.table.name) for fk in table.foreign_keys}
         assert db_fks == model_fks, name
+        for col in table.columns:
+            db_type = db_cols[col.name]["type"].python_type
+            assert db_type is col.type.python_type, (name, col.name, db_type)
+            db_default = db_cols[col.name]["default"]
+            model_default = col.server_default
+            if model_default is None:
+                assert db_default is None, (name, col.name, db_default)
+            else:
+                assert isinstance(model_default, DefaultClause)
+                assert db_default == f"'{model_default.arg}'", (name, col.name, db_default)
+        db_unique = {tuple(u["column_names"]) for u in insp.get_unique_constraints(name)}
+        model_unique = {(c.name,) for c in table.columns if c.unique}
+        assert db_unique == model_unique, name
+        with engine.connect() as c:
+            ddl = c.execute(
+                text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :n"),
+                {"n": name},
+            ).scalar_one()
+        assert ("AUTOINCREMENT" in ddl) == bool(table.kwargs.get("sqlite_autoincrement")), name
+
+
+def test_orm_insert_uses_ddl_defaults(engine: Engine) -> None:
+    _seed_customer(engine)
+    with Session(engine) as session:
+        session.add(
+            Invoice(
+                invoice_number="INV-ORM1",
+                customer_id="C-TEST",
+                invoice_date="2026-09-01",
+                due_date="2026-10-01",
+                amount_fils=250000,
+            )
+        )
+        session.commit()
+        invoice = session.get(Invoice, "INV-ORM1")
+        assert invoice is not None
+        assert invoice.currency == "AED"
+
+
+def test_migration_connection_gets_pragmas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[int, str]] = []
+    original = engine_module._apply_pragmas
+
+    def recording(dbapi_connection: Any, record: Any) -> None:
+        original(dbapi_connection, record)
+        cur = dbapi_connection.cursor()
+        seen.append(
+            (
+                cur.execute("PRAGMA foreign_keys").fetchone()[0],
+                cur.execute("PRAGMA journal_mode").fetchone()[0],
+            )
+        )
+        cur.close()
+
+    monkeypatch.setattr(engine_module, "_apply_pragmas", recording)
+    upgrade_to_head(f"sqlite:///{tmp_path / 'mig.db'}")
+    assert seen
+    assert all(s == (1, "wal") for s in seen)
+
+
+def test_missing_parent_directory_is_created(tmp_path: Path) -> None:
+    db_url = f"sqlite:///{tmp_path / 'fresh' / 'clone' / 'demo.db'}"
+    upgrade_to_head(db_url)
+    assert (tmp_path / "fresh" / "clone" / "demo.db").is_file()
 
 
 def test_downgrade_then_upgrade(url: str) -> None:
@@ -280,14 +351,25 @@ def test_migration_ddl_is_verbatim_spec() -> None:
     assert expected == module.DDL
 
 
+def _date_check(column: str) -> str:
+    """The exact CHECK expression SQLite reports, so no other constraint can satisfy the test."""
+    expr = re.escape(f"date({column}) IS {column}")
+    nullable = re.escape(f"{column} IS NULL OR ")
+    return f"CHECK constraint failed: (?:{nullable})?{expr}(?:\n|$)"
+
+
 @pytest.mark.parametrize("bad", ["2026-13-01", "2026-02-30", "2026-9-1", "31/10/2026", ""])
-@pytest.mark.parametrize("column", ["invoice_date", "due_date"])
-def test_invalid_invoice_dates_rejected(engine: Engine, column: str, bad: str) -> None:
+@pytest.mark.parametrize(
+    ("column", "other"),
+    [("invoice_date", {"due_date": "2099-12-31"}), ("due_date", {"invoice_date": "2000-01-01"})],
+)
+def test_invalid_invoice_dates_rejected(
+    engine: Engine, column: str, other: dict[str, object], bad: str
+) -> None:
     """D-007: every date CHECK rejects invalid dates (NULL from date() must not pass)."""
     _seed_customer(engine)
-    overrides = {"invoice_date": "2026-01-01", "due_date": "2026-01-01", column: bad}
-    with pytest.raises(exc.IntegrityError, match="CHECK"):
-        _insert_invoice(engine, **overrides)
+    with pytest.raises(exc.IntegrityError, match=_date_check(column)):
+        _insert_invoice(engine, **other, **{column: bad})
 
 
 @pytest.mark.parametrize("bad", ["2026-13-01", "2026-02-30", "2026-9-1"])
@@ -295,15 +377,24 @@ def test_invalid_payment_and_event_dates_rejected(engine: Engine, bad: str) -> N
     _seed_customer(engine)
     _insert_invoice(engine)
     statements = [
-        "INSERT INTO payments (payment_id, invoice_number, payment_date, amount_fils) "
-        "VALUES ('P-T2', 'INV-0001', :d, 500)",
-        "INSERT INTO events (event_id, invoice_number, event_type, event_date) "
-        "VALUES ('E-T1', 'INV-0001', 'PROMISE_TO_PAY', :d)",
-        "INSERT INTO events (event_id, invoice_number, event_type, event_date, promise_date) "
-        "VALUES ('E-T2', 'INV-0001', 'PROMISE_TO_PAY', '2026-10-05', :d)",
+        (
+            "payment_date",
+            "INSERT INTO payments (payment_id, invoice_number, payment_date, amount_fils) "
+            "VALUES ('P-T2', 'INV-0001', :d, 500)",
+        ),
+        (
+            "event_date",
+            "INSERT INTO events (event_id, invoice_number, event_type, event_date) "
+            "VALUES ('E-T1', 'INV-0001', 'PROMISE_TO_PAY', :d)",
+        ),
+        (
+            "promise_date",
+            "INSERT INTO events (event_id, invoice_number, event_type, event_date, promise_date) "
+            "VALUES ('E-T2', 'INV-0001', 'PROMISE_TO_PAY', '2026-10-05', :d)",
+        ),
     ]
-    for sql in statements:
-        with pytest.raises(exc.IntegrityError, match="CHECK"), engine.begin() as c:
+    for column, sql in statements:
+        with pytest.raises(exc.IntegrityError, match=_date_check(column)), engine.begin() as c:
             c.execute(text(sql), {"d": bad})
 
 

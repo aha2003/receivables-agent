@@ -1,8 +1,9 @@
 """SQLAlchemy models mirroring the SPEC §5 schema, for query code.
 
 The Alembic migration is the source of truth for STRICT, CHECK constraints, defaults and
-triggers; tests/db/test_schema.py checks these models match the migrated columns, keys and
-nullability. Amounts are integer fils; dates and timestamps are ISO text.
+triggers; tests/db/test_schema.py checks these models match the migrated columns, types,
+keys, nullability, unique constraints and server defaults. Amounts are integer fils; dates
+and timestamps are ISO text.
 """
 
 from sqlalchemy import ForeignKey
@@ -57,7 +58,7 @@ class Invoice(Base):
     invoice_date: Mapped[str]
     due_date: Mapped[str]
     amount_fils: Mapped[int]
-    currency: Mapped[str]
+    currency: Mapped[str] = mapped_column(server_default="AED")
     po_number: Mapped[str | None]
 
 
@@ -68,7 +69,7 @@ class Payment(Base):
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customers.customer_id"))
     payment_date: Mapped[str]
     amount_fils: Mapped[int]
-    payment_type: Mapped[str]
+    payment_type: Mapped[str] = mapped_column(server_default="payment")
 
 
 class Event(Base):
@@ -79,7 +80,7 @@ class Event(Base):
     event_date: Mapped[str]
     label: Mapped[str | None]
     promise_date: Mapped[str | None]
-    source: Mapped[str]
+    source: Mapped[str] = mapped_column(server_default="import")
 
 
 class Correspondence(Base):
@@ -102,9 +103,9 @@ class Classification(Base):
     label: Mapped[str]
     confidence: Mapped[float | None]  # model confidence score, not money
     extraction_json: Mapped[str]
-    flags_json: Mapped[str]
+    flags_json: Mapped[str] = mapped_column(server_default="[]")
     needs_review: Mapped[int]
-    status: Mapped[str]
+    status: Mapped[str] = mapped_column(server_default="pending")
     model: Mapped[str | None]
     created_at: Mapped[str]
 
@@ -119,8 +120,8 @@ class Draft(Base):
     body: Mapped[str]
     facts_json: Mapped[str]
     generator: Mapped[str]
-    violations_json: Mapped[str]
-    status: Mapped[str]
+    violations_json: Mapped[str] = mapped_column(server_default="[]")
+    status: Mapped[str] = mapped_column(server_default="draft")
     created_at: Mapped[str]
     approved_by: Mapped[str | None]
     approved_at: Mapped[str | None]
@@ -138,6 +139,7 @@ class Outcome(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
+    __table_args__ = {"sqlite_autoincrement": True}  # noqa: RUF012
     audit_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     ts: Mapped[str]
     actor: Mapped[str]
