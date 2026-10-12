@@ -29,3 +29,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.5, §3.1 / T-ARCH-01, clock unit tests
 - Deviations or decisions (link docs/DECISIONS.md): D-006 (revised after spec review)
 - Next step: S1.04 Database schema and migrations
+
+## 2026-10-12 — [S1.04] Database schema and migrations
+- PR: #69 | Branch: s1-04-db-schema-migrations | Commit: see PR head
+- Tests: `uv run pytest -q` → 154 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §5, §3.5 / T-DB-01
+- Deviations or decisions (link docs/DECISIONS.md): D-007 (SPEC §5 date CHECKs fixed to `IS`), D-008 (env settings only; tenant `demo`; tests/db)
+- Next step: S1.05 Golden synthetic fixtures

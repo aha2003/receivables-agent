@@ -31,7 +31,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.5
   - Tests: T-ARCH-01
   - Done when: The guard test fails if a forbidden import or `datetime.now` is added to `core/`.
-- [ ] **S1.04** Database schema and migrations
+- [x] **S1.04** Database schema and migrations
   - Goal: pydantic-settings; SQLAlchemy models and the first Alembic migration from the Section 5 DDL; per-connection PRAGMAs; append-only audit triggers.
   - Spec: §5, §3.5
   - Tests: T-DB-01

@@ -313,8 +313,8 @@ CREATE TABLE invoices (
   invoice_number TEXT PRIMARY KEY,            -- canonical stable source invoice ID; preserve source formatting
   display_invoice_number TEXT, invoice_type TEXT,
   customer_id TEXT NOT NULL REFERENCES customers(customer_id),
-  invoice_date TEXT NOT NULL CHECK (date(invoice_date) = invoice_date),
-  due_date TEXT NOT NULL CHECK (date(due_date) = due_date),
+  invoice_date TEXT NOT NULL CHECK (date(invoice_date) IS invoice_date),
+  due_date TEXT NOT NULL CHECK (date(due_date) IS due_date),
   amount_fils INTEGER NOT NULL CHECK (amount_fils > 0),
   currency TEXT NOT NULL DEFAULT 'AED' CHECK (currency = 'AED'), po_number TEXT,
   CHECK (due_date >= invoice_date)) STRICT;
@@ -322,7 +322,7 @@ CREATE TABLE payments (
   payment_id TEXT PRIMARY KEY,
   invoice_number TEXT REFERENCES invoices(invoice_number),   -- NULL = unallocated payment
   customer_id TEXT REFERENCES customers(customer_id),        -- required when invoice_number is NULL
-  payment_date TEXT NOT NULL CHECK (date(payment_date) = payment_date),
+  payment_date TEXT NOT NULL CHECK (date(payment_date) IS payment_date),
   amount_fils INTEGER NOT NULL CHECK (amount_fils > 0),
   payment_type TEXT NOT NULL DEFAULT 'payment' CHECK (payment_type IN ('payment','credit_note','write_off')),
   CHECK (invoice_number IS NOT NULL OR customer_id IS NOT NULL),
@@ -330,8 +330,8 @@ CREATE TABLE payments (
 CREATE TABLE events (
   event_id TEXT PRIMARY KEY, invoice_number TEXT NOT NULL REFERENCES invoices(invoice_number),
   event_type TEXT NOT NULL CHECK (event_type IN ('DISPUTE_OPENED','DISPUTE_RESOLVED','PROMISE_TO_PAY')),
-  event_date TEXT NOT NULL CHECK (date(event_date) = event_date), label TEXT,
-  promise_date TEXT CHECK (promise_date IS NULL OR date(promise_date) = promise_date),
+  event_date TEXT NOT NULL CHECK (date(event_date) IS event_date), label TEXT,
+  promise_date TEXT CHECK (promise_date IS NULL OR date(promise_date) IS promise_date),
   source TEXT NOT NULL DEFAULT 'import') STRICT;
 CREATE TABLE correspondence (
   message_id TEXT PRIMARY KEY, invoice_number TEXT REFERENCES invoices(invoice_number),

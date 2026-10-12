@@ -4,9 +4,28 @@ All code in this repository is original and written for this project; no code is
 
 Every dependency is pinned in `uv.lock`. Licences below are SPDX identifiers taken from each package's distribution metadata (`License-Expression`, or the trove classifier where no expression is published) and normalised by hand. Update this file in the same PR as any dependency change.
 
-## Runtime dependencies
+## Runtime dependencies (direct)
 
-None yet. Each runtime package of SPEC §16.1 is added, with its line here, in the step that first uses it (see docs/DECISIONS.md D-001).
+Each runtime package of SPEC §16.1 is added, with its line here, in the step that first uses it (see docs/DECISIONS.md D-001).
+
+| Package | Version | Licence | Purpose | Added in |
+|---|---|---|---|---|
+| alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
+| pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
+| sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
+
+## Runtime dependencies (transitive)
+
+| Package | Version | Licence |
+|---|---|---|
+| annotated-types | 0.8.0 | MIT |
+| mako | 1.4.3 | MIT |
+| markupsafe | 3.0.4 | BSD-3-Clause |
+| pydantic | 2.14.1 | MIT |
+| pydantic-core | 2.50.1 | MIT |
+| python-dotenv | 1.2.4 | BSD-3-Clause (installed by pydantic-settings; the app reads no `.env` file) |
+| typing-extensions | 4.16.0 | PSF-2.0 |
+| typing-inspection | 0.4.4 | MIT |
 
 ## Development dependencies (direct)
 
@@ -62,7 +81,6 @@ Development packages of §16.1 not yet needed (`httpx`) are added in the step th
 | sortedcontainers | 2.4.0 | Apache-2.0 |
 | tomli | 2.5.0 | MIT |
 | tomli-w | 1.2.0 | MIT |
-| typing-extensions | 4.16.0 | PSF-2.0 |
 | urllib3 | 2.8.0 | MIT |
 | virtualenv | 21.14.7 | MIT |
 
@@ -71,7 +89,7 @@ Development packages of §16.1 not yet needed (`httpx`) are added in the step th
 | Tool | Version | Licence | Use |
 |---|---|---|---|
 | uv / uv_build | 0.12.x | MIT OR Apache-2.0 | Environment, lockfile, build backend |
-| actions/checkout | v5 | MIT | CI checkout |
+| actions/checkout | v7 | MIT | CI checkout (bumped from v5 by Dependabot #67) |
 | astral-sh/setup-uv | v7 | MIT | CI uv install |
 | gitleaks (CLI binary, sha256-pinned) | 8.30.1 | MIT | CI secret scan over the full git history |
 | Dependabot | GitHub service | n/a | Weekly update PRs for uv and GitHub Actions |

@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Receivables collections agent prototype (synthetic data only)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "alembic>=1.20.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2.1.4",
+]
 
 [dependency-groups]
 dev = [
@@ -30,6 +34,8 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+# Verbatim SPEC §5 DDL; long lines are kept so the copy stays exact.
+"src/receivables/adapters/db/migrations/versions/**" = ["E501"]
 
 [tool.pyright]
 include = ["src", "tests", "scripts"]
