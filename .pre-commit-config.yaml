@@ -1,0 +1,26 @@
+# Local hooks run the locked tool versions through uv; nothing is fetched from other repositories.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --force-exclude
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types: [python]
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: progress
+        name: progress files up to date
+        entry: python scripts/progress.py --check
+        language: system
+        files: ^(PLAN\.md|README\.md|docs/PROGRESS\.md|scripts/progress\.py)$
+        pass_filenames: false

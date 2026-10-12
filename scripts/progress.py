@@ -2,8 +2,10 @@
 """Regenerate docs/PROGRESS.md and the README progress block from PLAN.md.
 
 Usage: python scripts/progress.py [--check]
---check exits 1 if the generated files are out of date (used in CI). Output is deterministic (no timestamps).
+--check exits 1 if the generated files are out of date (used in CI).
+Output is deterministic (no timestamps).
 """
+
 import pathlib
 import re
 import sys
@@ -60,9 +62,16 @@ def main():
     readme = README.read_text(encoding="utf-8")
     if START not in readme or END not in readme:
         sys.exit("README.md is missing the PROGRESS markers")
-    new_readme = re.sub(re.escape(START) + r".*?" + re.escape(END), START + "\n" + block + "\n" + END, readme, flags=re.S)
+    new_readme = re.sub(
+        re.escape(START) + r".*?" + re.escape(END),
+        START + "\n" + block + "\n" + END,
+        readme,
+        flags=re.S,
+    )
     if "--check" in sys.argv:
-        stale = (not OUT.exists()) or OUT.read_text(encoding="utf-8") != full or new_readme != readme
+        stale = (
+            (not OUT.exists()) or OUT.read_text(encoding="utf-8") != full or new_readme != readme
+        )
         if stale:
             sys.exit("Progress files are out of date: run `python scripts/progress.py`")
         print("progress up to date")

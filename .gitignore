@@ -16,3 +16,4 @@ dist/
 build/
 junit.xml
 .DS_Store
+coverage.xml
