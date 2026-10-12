@@ -1,0 +1,5 @@
+payment_id,invoice_number,customer_id,payment_date,amount,payment_type
+P-001,INV-001,,2026-08-10,10000.00,payment
+P-002,INV-002,,2026-09-20,20000.00,payment
+P-003,INV-005,,2026-10-05,10000.00,payment
+P-004,INV-007,,2026-08-14,8000.00,payment
