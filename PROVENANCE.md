@@ -10,6 +10,8 @@ None yet. Each runtime package of SPEC §16.1 is added, with its line here, in t
 
 ## Development dependencies (direct)
 
+Development packages of §16.1 not yet needed (`httpx`) are added in the step that first uses them (D-001).
+
 | Package | Version | Licence | Purpose |
 |---|---|---|---|
 | hypothesis | 6.169.0 | MPL-2.0 | Property tests |
@@ -71,5 +73,5 @@ None yet. Each runtime package of SPEC §16.1 is added, with its line here, in t
 | uv / uv_build | 0.12.x | MIT OR Apache-2.0 | Environment, lockfile, build backend |
 | actions/checkout | v5 | MIT | CI checkout |
 | astral-sh/setup-uv | v7 | MIT | CI uv install |
-| gitleaks/gitleaks-action (runs gitleaks) | v2 | MIT (action is free for personal accounts) | CI secret scan |
+| gitleaks (CLI binary, sha256-pinned) | 8.30.1 | MIT | CI secret scan over the full git history |
 | Dependabot | GitHub service | n/a | Weekly update PRs for uv and GitHub Actions |
