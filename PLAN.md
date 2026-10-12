@@ -16,7 +16,7 @@ Total tracked steps: 64.
 
 Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, seeded demo starts, CI green, UI says synthetic.
 
-- [ ] **S1.01** Project scaffold, tooling and CI
+- [x] **S1.01** Project scaffold, tooling and CI
   - Goal: uv project (Python 3.12, src layout `receivables`), ruff, pyright, pytest with cov and hypothesis, pre-commit, PROVENANCE.md, and a GitHub Actions workflow running `uv sync --frozen`, ruff, format check, pyright, pytest and `python scripts/progress.py --check`; add gitleaks and pip-audit jobs.
   - Spec: §3.1, §3.4, §3.6, §16.1
   - Tests: T-CI-01
