@@ -26,7 +26,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.5
   - Tests: T-MONEY-01
   - Done when: All assertions pass, including the hypothesis round-trip property.
-- [ ] **S1.03** Clock port and architecture guard
+- [x] **S1.03** Clock port and architecture guard
   - Goal: `adapters/clock.py` (system, fixed and simulated clocks) and a static test that `core/` has no forbidden imports or wall-clock calls.
   - Spec: §3.5
   - Tests: T-ARCH-01

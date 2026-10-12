@@ -22,3 +22,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.5 / T-MONEY-01
 - Deviations or decisions (link docs/DECISIONS.md): D-005 (value-based decimal places; S1.09 strict-format note; 4300-digit bound)
 - Next step: S1.03 Clock port and architecture guard
+
+## 2026-10-12 — [S1.03] Clock port and architecture guard
+- PR: #68 | Branch: s1-03-clock-arch-guard | Commit: see PR head
+- Tests: `uv run pytest -q` → 115 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §3.5, §3.1 / T-ARCH-01, clock unit tests
+- Deviations or decisions (link docs/DECISIONS.md): D-006 (revised after spec review)
+- Next step: S1.04 Database schema and migrations
