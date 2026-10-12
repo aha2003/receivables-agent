@@ -21,7 +21,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.1, §3.4, §3.6, §16.1
   - Tests: T-CI-01
   - Done when: CI is green on the PR; `uv run pytest -q` passes with one smoke test; PROVENANCE.md lists every dependency with version and licence.
-- [ ] **S1.02** Money helpers
+- [x] **S1.02** Money helpers
   - Goal: `core/money.py` with `to_fils` and `from_fils`; floats rejected; more than two decimals rejected.
   - Spec: §3.5
   - Tests: T-MONEY-01
