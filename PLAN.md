@@ -61,7 +61,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §4.1 to §4.6, §5
   - Tests: T-IMP-01, T-IMP-02, T-IMP-03, T-IMP-04, T-IMP-05, T-UNA-02
   - Done when: A bad file returns 422 with line, code and field and changes nothing; a repeat upload is a duplicate.
-- [ ] **S1.10** Repository layer, audit writer and seeded reset
+- [x] **S1.10** Repository layer, audit writer and seeded reset
   - Goal: Repository functions, an audit writer using the injected clock, and CLI commands `seed` and `reset` that load the synthetic company.
   - Spec: §3.4, §5
   - Tests: T-AUD-01 (import audit rows); reset is idempotent and leaves exactly the golden data

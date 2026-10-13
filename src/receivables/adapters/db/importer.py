@@ -17,7 +17,8 @@ from sqlalchemy import Connection, Engine, Table, exc, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import Clock, utc_timestamp
-from receivables.adapters.db.models import AuditLog, Customer, Event, Import, Invoice, Payment
+from receivables.adapters.db.models import Customer, Event, Import, Invoice, Payment
+from receivables.adapters.db.repo import table_counts, write_audit
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.scoring import EventRecord
 from receivables.core.validation import (
@@ -98,6 +99,7 @@ def import_csv(
             if existing is not None:
                 return existing
             result = _validate(conn, kind, raw, clock)
+            counts_before = table_counts(conn)
             if result.errors:
                 return ImportResult(
                     status="rejected",
@@ -130,7 +132,22 @@ def import_csv(
                     created_at=now,
                 )
             )
-            _write_audit(conn, now, actor, import_id, kind, filename, sha, result.rows_total)
+            _write_audit(
+                conn,
+                clock,
+                actor=actor,
+                import_id=import_id,
+                before={"row_counts": counts_before},
+                after={
+                    "file_kind": kind,
+                    "filename": filename,
+                    "sha256": sha,
+                    "mapping_hash": MAPPING_HASH,
+                    "rows_total": result.rows_total,
+                    "status": "accepted",
+                    "row_counts": table_counts(conn),
+                },
+            )
     except exc.IntegrityError as err:
         # A concurrent upload of the same file committed first: report it as a duplicate.
         if "imports.idempotency_key" not in str(err.orig):
@@ -261,30 +278,21 @@ def _upsert(conn: Connection, kind: str, result: ValidationResult) -> None:
 
 def _write_audit(
     conn: Connection,
-    ts: str,
+    clock: Clock,
+    *,
     actor: str,
     import_id: str,
-    kind: str,
-    filename: str | None,
-    sha: str,
-    rows_total: int,
+    before: dict[str, Any],
+    after: dict[str, Any],
 ) -> None:
-    after = {
-        "file_kind": kind,
-        "filename": filename,
-        "sha256": sha,
-        "mapping_hash": MAPPING_HASH,
-        "rows_total": rows_total,
-        "status": "accepted",
-    }
-    conn.execute(
-        insert(AuditLog).values(
-            ts=ts,
-            actor=actor,
-            action="import.accepted",
-            entity_type="import",
-            entity_id=import_id,
-            before_json=None,
-            after_json=json.dumps(after, sort_keys=True),
-        )
+    """T-AUD-01: one audit row per accepted import, with row counts before and after."""
+    write_audit(
+        conn,
+        clock,
+        actor=actor,
+        action="import.accepted",
+        entity_type="import",
+        entity_id=import_id,
+        before=before,
+        after=after,
     )
