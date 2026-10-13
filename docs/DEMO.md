@@ -1,6 +1,6 @@
 # Demo script
 
-All data is the fictional company in `fixtures/` (SPEC §6.8). Never demo with real company data. Numbers below come from `fixtures/expected/golden_results.json` and are checked by `tests/test_slice1_exit.py`; the walkthrough was last run by hand on 2026-10-13.
+All data is the fictional company in `fixtures/` (SPEC §6.8). Never demo with real company data. The dashboard totals, aging, exposure and queue order in steps 2 to 4 are the golden results of `fixtures/expected/golden_results.json` and are checked automatically by `tests/test_slice1_exit.py`. The rest of the expected output was observed when the walkthrough was run by hand on 2026-10-13; re-check it before a demo.
 
 ## Slice 1: deterministic core and first screen
 

@@ -1,8 +1,8 @@
 """Slice 1 exit condition (SPEC §16) and D2 in part: the seeded demo starts and shows the
 golden numbers.
 
-Unlike T-API-01 (which loads data through the upload API) this follows the demo path in
-docs/DEMO.md: an empty database, ``receivables seed`` and ``receivables create-user`` from the
+Unlike T-API-01 (which loads data through the upload API) this follows the setup in
+docs/DEMO.md: an empty database, ``receivables reset`` and ``receivables create-user`` from the
 real CLI, then the web app on that same database with the clock on the golden date.
 """
 
@@ -27,7 +27,8 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SECRET = "test-only-session-secret-0123456789abcdef"  # synthetic, tests only
 USERNAME = "demo.user"
 PASSWORD = secrets.token_urlsafe(18)  # generated per run; never a real password
-BANNER = "SYNTHETIC DEMO DATA"
+# The visible banner element, not the <title> (which also says SYNTHETIC DEMO DATA).
+BANNER = re.compile(r'<div role="status" class="banner">SYNTHETIC DEMO DATA')
 HEURISTIC = "Heuristic score. Not a probability."
 
 
@@ -37,7 +38,7 @@ def demo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient
     assert not db.exists()
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
     monkeypatch.setenv("FIXTURES_DIR", str(FIXTURES))
-    assert main(["seed", "--as-of", "2026-10-31"]) == 0
+    assert main(["reset", "--as-of", "2026-10-31"]) == 0
     monkeypatch.setattr("sys.stdin", io.StringIO(PASSWORD + "\n"))
     assert main(["create-user", USERNAME, "--password-stdin"]) == 0
 
@@ -69,6 +70,16 @@ def test_seeded_dashboard_matches_the_golden_numbers(
     assert body["unallocated_total"] == "0.00"
     assert body["exposure_by_band"] == golden_results["exposure_by_band"]
 
+    page = demo.get("/").text
+    for section, shown in (
+        ("total-outstanding", "AED 193,000.00"),
+        ("overdue", "AED 147,000.00"),
+        ("dso", "149.7 days"),
+        ("unallocated", "AED 0.00"),
+    ):
+        match = re.search(rf'<section id="{section}">(.*?)</section>', page, re.S)
+        assert match and shown in match.group(1) and "2026-10-31" in match.group(1)
+
 
 def test_seeded_queue_matches_the_golden_order(
     demo: TestClient, golden_results: dict[str, Any]
@@ -76,6 +87,13 @@ def test_seeded_queue_matches_the_golden_order(
     body = demo.get("/api/queue").json()
     expected = [r["invoice_number"] for r in golden_results["queue_default"]["rows"]]
     assert [i["invoice_number"] for i in body["items"]] == expected
+    for item, row in zip(body["items"], golden_results["queue_default"]["rows"], strict=True):
+        assert (item["rank"], item["risk_score"], item["band"]) == (
+            row["rank"],
+            row["risk"],
+            row["band"],
+        )
+        assert (item["priority_value"], item["action"]) == (row["priority_value"], row["action"])
     assert body["note"] == HEURISTIC
 
     page = demo.get("/queue").text
@@ -87,14 +105,14 @@ def test_seeded_queue_matches_the_golden_order(
 def test_every_page_says_synthetic(demo: TestClient, path: str) -> None:
     response = demo.get(path)
     assert response.status_code == 200
-    assert BANNER in response.text
+    assert BANNER.search(response.text)
 
 
 def test_login_page_says_synthetic(demo: TestClient) -> None:
     token = demo.get("/api/me").json()["csrf_token"]
     assert demo.post("/logout", data={"csrf_token": token}).status_code == 303
     assert demo.get("/api/me").status_code == 401
-    assert BANNER in demo.get("/login").text
+    assert BANNER.search(demo.get("/login").text)
 
 
 @pytest.mark.parametrize("path", ["/", "/queue", "/invoices/INV-004"])  # INV-004 heads the queue

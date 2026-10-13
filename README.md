@@ -27,7 +27,7 @@ Slice 1 is the deterministic core and the first screen. There is **no agent and 
 - **Deterministic core** (`src/receivables/core/`, pure Python, no I/O): money in integer fils, ledger and open amounts, aging buckets, payment history, heuristic risk score, priority queue, KPIs (total open, overdue, estimated DSO on a 90-day sales proxy, unallocated cash, exposure by band). Every number matches the golden fixtures in `fixtures/expected/golden_results.json` (SPEC §6.9).
 - **Data**: SQLite schema with Alembic migrations; fixed-schema CSV import for customers, invoices, payments and events (all-or-nothing per file, duplicates detected, every import audited); seeded reset from the golden synthetic company.
 - **Web app**: session login (Argon2id, rate limited, CSRF, strict security headers); dashboard, priority queue (band and customer filters), invoice page, CSV upload page; JSON API `/api/dashboard`, `/api/queue`, `POST /api/imports/{kind}`. Every page shows the `SYNTHETIC DEMO DATA` banner, the `as_of` date of its numbers, and labels scores as heuristic.
-- **Time travel**: any page or API call accepts `?as_of=YYYY-MM-DD` and rebuilds the facts known on that date.
+- **Time travel**: the dashboard, queue and invoice pages and `/api/dashboard` and `/api/queue` accept `?as_of=YYYY-MM-DD` and rebuild the facts known on that date.
 - **Quality gates**: ruff, pyright, pytest with an 85% coverage floor on the core, pip-audit, gitleaks and a progress check in CI.
 
 **Not built yet:** the agent loop, policy engine and trace (Slice 2); Claude, drafts, inbox, approvals and the sandbox outbox (Slice 3); the simulator (Slice 4); one-command start and hardening (Slice 5).
