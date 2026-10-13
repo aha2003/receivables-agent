@@ -1,5 +1,6 @@
 """CLI commands ``seed`` and ``reset`` against a temporary database (never data/)."""
 
+import secrets
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,117 @@ def test_os_error_is_an_error_exit(
     monkeypatch.setattr(cli, "reset", boom)
     assert main(["reset"]) == 1
     assert "permission denied" in capsys.readouterr().err
+
+
+# --- create-user (SPEC §3.3: users are created with a CLI command, never through the web UI) ---
+
+SYNTHETIC_PASSWORD = secrets.token_urlsafe(18)  # generated per test run
+
+
+def _stdin(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+
+
+def _users(db: Path) -> list[tuple[str, str, str]]:
+    import sqlite3
+
+    if not db.exists():  # rejected before migrating: no database, so no users
+        return []
+    with sqlite3.connect(db) as c:
+        return list(c.execute("SELECT username, role, password_hash FROM users ORDER BY user_id"))
+
+
+def _audit(db: Path) -> list[tuple[str, str]]:
+    import sqlite3
+
+    with sqlite3.connect(db) as c:
+        return list(
+            c.execute("SELECT action, after_json FROM audit_log WHERE entity_type = 'user'")
+        )
+
+
+def test_create_user_from_stdin(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.admin", "--role", "admin", "--password-stdin"]) == 0
+    out = capsys.readouterr().out
+    assert "created user demo.admin (admin)" in out
+    users = _users(env)
+    assert [(u, r) for u, r, _ in users] == [("demo.admin", "admin")]
+    assert users[0][2].startswith("$argon2id$")
+    assert SYNTHETIC_PASSWORD not in out
+    audit = _audit(env)
+    assert [a for a, _ in audit] == ["user.created"]
+    assert "argon2" not in audit[0][1] and SYNTHETIC_PASSWORD not in audit[0][1]
+
+
+def test_create_user_interactive_prompts_twice(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    answers = iter([SYNTHETIC_PASSWORD, SYNTHETIC_PASSWORD])
+    monkeypatch.setattr("receivables.cli.getpass", lambda prompt="": next(answers))
+    assert main(["create-user", "demo.user"]) == 0
+    assert [(u, r) for u, r, _ in _users(env)] == [("demo.user", "user")]
+
+
+def test_create_user_mismatched_confirmation(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    answers = iter([SYNTHETIC_PASSWORD, SYNTHETIC_PASSWORD + "x"])
+    monkeypatch.setattr("receivables.cli.getpass", lambda prompt="": next(answers))
+    assert main(["create-user", "demo.user"]) == 1
+    assert "do not match" in capsys.readouterr().err
+    assert _users(env) == []
+
+
+def test_create_user_rejects_short_password(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stdin(monkeypatch, "short-pass\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 1
+    assert "at least 12" in capsys.readouterr().err
+    assert _users(env) == []
+
+
+def test_create_user_rejects_duplicate(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 0
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 1
+    assert "already exists" in capsys.readouterr().err
+    assert len(_users(env)) == 1
+
+
+@pytest.mark.parametrize("username", ["", "has space", "x" * 65, "semi;colon", "<script>"])
+def test_create_user_rejects_bad_usernames(
+    env: Path, monkeypatch: pytest.MonkeyPatch, username: str
+) -> None:
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", username, "--password-stdin"]) == 1
+    assert _users(env) == []
+
+
+def test_create_user_rejects_unknown_role(env: Path) -> None:
+    with pytest.raises(SystemExit) as info:
+        main(["create-user", "demo.user", "--role", "root"])
+    assert info.value.code != 0
+
+
+def test_password_is_never_an_argument() -> None:
+    with pytest.raises(SystemExit):
+        main(["create-user", "demo.user", "--password", SYNTHETIC_PASSWORD])
+
+
+def test_create_user_race_on_unique_username_is_a_clean_error(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two concurrent runs both pass the existence check; the UNIQUE constraint decides."""
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 0
+    monkeypatch.setattr("receivables.cli.get_user_by_username", lambda conn, username: None)
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 1
+    assert "already exists" in capsys.readouterr().err

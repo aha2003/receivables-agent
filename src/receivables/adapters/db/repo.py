@@ -14,13 +14,17 @@ from typing import Any
 from sqlalchemy import Connection, Engine, func, insert, select
 
 from receivables.adapters.clock import Clock, utc_timestamp
-from receivables.adapters.db.models import AuditLog, Base, Customer, Event, Invoice, Payment
+from receivables.adapters.db.models import AuditLog, Base, Customer, Event, Invoice, Payment, User
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.scoring import EventRecord
 from receivables.core.validation import CustomerRow
 
 __all__ = [
     "LedgerInputs",
+    "UserRecord",
+    "get_user",
+    "get_user_by_username",
+    "insert_user",
     "load_customers",
     "load_events",
     "load_invoices",
@@ -149,3 +153,53 @@ def write_audit(
             after_json=_json(after),
         )
     )
+
+
+@dataclass(frozen=True, slots=True)
+class UserRecord:
+    user_id: int
+    username: str
+    password_hash: str
+    role: str
+
+
+def _user(row: Any) -> UserRecord:
+    return UserRecord(
+        user_id=row.user_id, username=row.username, password_hash=row.password_hash, role=row.role
+    )
+
+
+def get_user(conn: Connection, user_id: int) -> UserRecord | None:
+    row = conn.execute(select(User).where(User.user_id == user_id)).one_or_none()
+    return None if row is None else _user(row)
+
+
+def get_user_by_username(conn: Connection, username: str) -> UserRecord | None:
+    row = conn.execute(select(User).where(User.username == username)).one_or_none()
+    return None if row is None else _user(row)
+
+
+def insert_user(
+    conn: Connection, clock: Clock, *, username: str, password_hash: str, role: str, actor: str
+) -> int:
+    """Create a user and audit it; the audit row never contains the password hash."""
+    result = conn.execute(
+        insert(User).values(
+            username=username,
+            password_hash=password_hash,
+            role=role,
+            created_at=utc_timestamp(clock),
+        )
+    )
+    user_id = int(result.inserted_primary_key[0])  # pyright: ignore[reportOptionalSubscript]
+    write_audit(
+        conn,
+        clock,
+        actor=actor,
+        action="user.created",
+        entity_type="user",
+        entity_id=str(user_id),
+        before=None,
+        after={"username": username, "role": role},
+    )
+    return user_id
