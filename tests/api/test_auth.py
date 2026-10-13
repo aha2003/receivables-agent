@@ -1,5 +1,6 @@
 """Session login and route protection (SPEC §3.3, §9): T-SEC-03, T-SEC-10."""
 
+import secrets
 from datetime import timedelta
 from typing import Any
 
@@ -195,10 +196,12 @@ def test_session_does_not_carry_the_password(client: TestClient) -> None:
 
 
 def test_passwords_are_argon2id() -> None:
-    stored = hash_password("synthetic-pass-123")
+    password = secrets.token_urlsafe(18)  # generated per test run; never a real password
+    other = secrets.token_urlsafe(18)
+    stored = hash_password(password)
     assert stored.startswith("$argon2id$")
-    assert verify_password(stored, "synthetic-pass-123")
-    assert not verify_password(stored, "synthetic-pass-124")
+    assert verify_password(stored, password)
+    assert not verify_password(stored, other)
     assert not verify_password(None, "anything")
     assert not verify_password("not-a-hash", "anything")
     assert not PasswordHasher().check_needs_rehash(stored)
