@@ -16,7 +16,15 @@ from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from receivables.core.config import EngineConfig
 from receivables.core.money import to_fils
@@ -171,7 +179,7 @@ class _App(_Strict):
 
 
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-_HHMM = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
+_HHMM = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 
 
 def _hhmm(value: str) -> time:
@@ -223,7 +231,7 @@ class _L2(_Strict):
 
     def max_total_open_fils(self) -> int:
         value = self.max_total_open_amount
-        if not re.fullmatch(r"\d+(\.\d{1,2})?", value):
+        if not re.fullmatch(r"[0-9]+(\.[0-9]{1,2})?", value):  # ASCII digits only
             raise ValueError(f"max_total_open_amount must be a plain AED amount, not {value!r}")
         fils = to_fils(value)
         if fils <= 0:
@@ -243,6 +251,14 @@ class _Agent(_Strict):
 class _Mail(_Strict):
     gateway: Literal["sandbox", "smtp"] = "sandbox"
     enabled: bool = False
+
+    @model_validator(mode="after")
+    def _no_smtp_yet(self) -> "_Mail":
+        # CLAUDE.md: L2 writes only to the sandbox outbox, no real SMTP. The optional Mailpit
+        # SMTP sandbox is S5.09, which must lift this together with a localhost-only check.
+        if self.gateway == "smtp" and self.enabled:
+            raise ValueError("SMTP sending is disabled in this prototype (sandbox outbox only)")
+        return self
 
 
 class _File(_Strict):

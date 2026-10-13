@@ -302,6 +302,14 @@ def test_check_constraints_reject(engine: Engine, table: str, column: str, value
         ("mail_outbox", "gateway"),
         ("mail_outbox", "status"),
         ("mail_outbox", "created_at"),
+        # Columns with a DDL default are still NOT NULL when NULL is written explicitly.
+        ("agent_runs", "fallback"),
+        ("agent_steps", "policy_reasons_json"),
+        ("approvals", "status"),
+        ("tasks", "status"),
+        ("customer_playbook", "promises_counted"),
+        ("customer_playbook", "replies_counted"),
+        ("customer_playbook", "followup_gap_days"),
     ],
 )
 def test_required_columns(engine: Engine, table: str, column: str) -> None:

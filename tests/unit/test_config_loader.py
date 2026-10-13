@@ -137,7 +137,7 @@ def test_agent_overrides(tmp_path: Path) -> None:
             "agent:\n  autonomy_level: 2\n  l2:\n    allowlisted_customers: [CUST-A, CUST-C]\n"
             "    max_total_open_amount: 1234.50\n    business_days: [Sun, Mon]\n"
             "    business_hours: ['08:30', '23:59']\n    timezone: UTC\n    kill_switch: true\n"
-            "mail:\n  gateway: smtp\n  enabled: true\n",
+            "mail:\n  gateway: smtp\n  enabled: false\n",
         )
     )
     assert config.agent.autonomy_level == 2
@@ -148,7 +148,7 @@ def test_agent_overrides(tmp_path: Path) -> None:
     assert l2.business_days == ("Sun", "Mon")
     assert l2.business_hours == (time(8, 30), time(23, 59))
     assert (l2.timezone, l2.kill_switch) == ("UTC", True)
-    assert (config.mail.gateway, config.mail.enabled) == ("smtp", True)
+    assert (config.mail.gateway, config.mail.enabled) == ("smtp", False)
 
 
 @pytest.mark.parametrize(
@@ -185,6 +185,9 @@ def test_agent_overrides(tmp_path: Path) -> None:
         "agent:\n  l2:\n    timezone: ../../etc/passwd\n",
         "agent:\n  l2:\n    kill_switch: maybe\n",
         "mail:\n  gateway: sendgrid\n",
+        "mail:\n  gateway: smtp\n  enabled: true\n",  # sandbox outbox only (CLAUDE.md; S5.09)
+        "agent:\n  l2:\n    max_total_open_amount: \uff12\uff15\uff10\uff10\uff10\n",
+        "agent:\n  l2:\n    business_hours: ['\uff10\uff19:00', '17:00']\n",
         "mail:\n  enabled: perhaps\n",
         "mail:\n  to: someone@example.com\n",
     ],
