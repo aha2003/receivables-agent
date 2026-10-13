@@ -92,3 +92,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.3 / T-SEC-09, T-SEC-11
 - Deviations or decisions (link docs/DECISIONS.md): D-016 (CSRF incl. /login; headers middleware + 500 handler; public /static; upstream content-type quirk)
 - Next step: S1.13 Dashboard and queue (first screen)
+
+## 2026-10-13 — [S1.13] Dashboard and queue (first screen)
+- PR: #79 | Branch: s1-13-dashboard-queue | Commit: see PR head
+- Tests: `uv run pytest -q` → 650 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §6, §9, §10, §4.6, §5 / T-API-01, T-API-02, T-API-03, T-IMP-04 and T-IMP-05 over HTTP; T-UI-02 and T-UI-05 checked manually in the browser
+- Deviations or decisions (link docs/DECISIONS.md): D-017 (config loader, JSON format, import refusals, invoice page, SVG bars, vendored htmx; DSO window spec conflict awaiting confirmation)
+- Next step: S1.14 Slice 1 close-out
