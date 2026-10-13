@@ -172,3 +172,8 @@ def test_queue_always_sorted(items: list[tuple[int, int]]) -> None:
     queue = build_queue(scored, EngineConfig())
     keys = [(-i.scored.priority_value, i.scored.invoice_number) for i in queue.items]
     assert keys == sorted(keys)
+
+
+def test_dispute_without_label() -> None:
+    """D-011(4): an active dispute with no label still takes priority."""
+    assert next_action(_scored(days=90, dispute_label="")) == "Resolve dispute"

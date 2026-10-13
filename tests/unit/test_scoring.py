@@ -249,3 +249,43 @@ def test_raw_is_within_unit_interval(amounts: list[int], days: list[int]) -> Non
     for s in score((invoices, []), [], EngineConfig()).values():
         assert 0 <= s.raw <= 1
         assert Decimal(0) <= s.risk_score <= Decimal(100)
+
+
+def test_f_size_counts_strictly_smaller_amounts_only() -> None:
+    """§6.4: equal open amounts do not count as smaller."""
+    invoices = [
+        InvoiceRecord(
+            invoice_number=f"INV-{n}",
+            customer_id="CUST-T",
+            invoice_date=date(2026, 9, 1),
+            due_date=date(2026, 10, 1),
+            amount=amount,
+        )
+        for n, amount in [(1, 5000), (2, 5000), (3, 1000)]
+    ]
+    scored = score((invoices, []), [], EngineConfig())
+    assert scored["INV-1"].f_size == Fraction(1, 2)
+    assert scored["INV-2"].f_size == Fraction(1, 2)
+    assert scored["INV-3"].f_size == 0
+
+
+def test_same_day_events_tie_broken_by_event_id() -> None:
+    same_day = date(2026, 10, 2)
+    resolved_last = [
+        _event("E-1", "DISPUTE_OPENED", same_day, "MISSING_PO"),
+        _event("E-2", "DISPUTE_RESOLVED", same_day),
+    ]
+    opened_last = [
+        _event("E-1", "DISPUTE_RESOLVED", same_day),
+        _event("E-2", "DISPUTE_OPENED", same_day, "MISSING_PO"),
+    ]
+    assert active_dispute_label(resolved_last, AS_OF) is None
+    assert active_dispute_label(opened_last, AS_OF) == "MISSING_PO"
+
+
+def test_min_history_2_changed_rows_keep_their_band(
+    golden_ledger_inputs: Inputs, golden_events: list[EventRecord]
+) -> None:
+    alt = score(golden_ledger_inputs, golden_events, MIN_HISTORY_2)
+    assert alt["INV-003"].band == "Medium"
+    assert alt["INV-013"].band == "Medium"
