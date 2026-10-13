@@ -22,7 +22,7 @@ __all__ = [
     "verify_password",
 ]
 
-SESSION_TTL = timedelta(minutes=480)  # §3.3 [A]; becomes configurable with config.yaml (S1.13)
+SESSION_TTL = timedelta(minutes=480)  # §3.3 [A] default; config.yaml app.session_ttl_minutes
 
 _HASHER = PasswordHasher()  # Argon2id with the library's recommended parameters
 # Unknown usernames are checked against this hash so they cost the same time as a wrong password.
@@ -128,8 +128,10 @@ def session_payload(user: SessionUser, clock: Clock) -> dict[str, Any]:
     }
 
 
-def session_user(session: Mapping[str, Any], clock: Clock) -> SessionUser | None:
-    """The session's user if it is well formed and younger than ``SESSION_TTL``."""
+def session_user(
+    session: Mapping[str, Any], clock: Clock, ttl: timedelta = SESSION_TTL
+) -> SessionUser | None:
+    """The session's user if it is well formed and younger than ``ttl``."""
     try:
         issued = datetime.fromisoformat(str(session["iat"]))
         user = SessionUser(int(session["uid"]), str(session["username"]), str(session["role"]))
@@ -138,6 +140,6 @@ def session_user(session: Mapping[str, Any], clock: Clock) -> SessionUser | None
     if issued.tzinfo is None:
         return None
     age = clock.now() - issued
-    if age < timedelta(0) or age > SESSION_TTL:
+    if age < timedelta(0) or age > ttl:
         return None
     return user

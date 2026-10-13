@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     database_url: str = DEFAULT_DATABASE_URL
     fixtures_dir: str = "fixtures"
+    config_path: str = "config.yaml"
     session_secret: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     anthropic_model_planner: str | None = None

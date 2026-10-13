@@ -28,7 +28,7 @@ def _wants_html(request: Request) -> bool:
 
 
 def _current_user(request: Request) -> SessionUser | None:
-    user = session_user(request.session, request.app.state.clock)
+    user = session_user(request.session, request.app.state.clock, request.app.state.session_ttl)
     if user is None:
         return None
     with request.app.state.engine.connect() as conn:

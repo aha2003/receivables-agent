@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ row.invoice_number }}{% endblock %}
+{% block content %}
+<p><a href="/queue?as_of={{ snap.as_of.isoformat() }}">Back to the queue</a></p>
+<h1>Invoice {{ row.display_invoice_number or row.invoice_number }}</h1>
+{% include "_as_of.html" %}
+<dl class="facts">
+  <dt>Customer</dt><dd>{{ snap.customer_name(row.customer_id) }}</dd>
+  <dt>Amount</dt><dd>{{ row.amount|aed }}</dd>
+  <dt>Open amount</dt><dd>{{ row.open_amount|aed }}</dd>
+  <dt>Invoice date</dt><dd>{{ row.invoice_date.isoformat() }}</dd>
+  <dt>Due date</dt><dd>{{ row.due_date.isoformat() }}</dd>
+  <dt>Days overdue</dt><dd>{% if row.days_overdue is none %}Not open{% else %}{{ row.days_overdue }} ({{ row.bucket }}){% endif %}</dd>
+  {% if row.settled_date %}<dt>Settled</dt><dd>{{ row.settled_date.isoformat() }}</dd>{% endif %}
+  <dt>PO number</dt><dd>{{ row.po_number or "None" }}</dd>
+</dl>
+{% if scored %}
+<section>
+  <h2>Priority <small class="note">{{ heuristic_note }}</small></h2>
+  <dl class="facts">
+    <dt>Risk score</dt><dd>{{ scored.risk_score }} ({{ scored.band }})</dd>
+    <dt>Priority value</dt><dd>{{ scored.priority_value }}</dd>
+    {% if item %}<dt>Next action</dt><dd>{{ item.action }}</dd>
+    {% for f in item.flags %}<dt>Flag</dt><dd class="flag">{{ f.amount|unallocated_message }}</dd>{% endfor %}{% endif %}
+  </dl>
+</section>
+{% endif %}
+<section>
+  <h2>Timeline</h2>
+  {% if payments or events %}
+  <ul class="timeline">
+    {% for p in payments %}<li>{{ p.payment_date.isoformat() }}: {{ p.payment_type|replace("_", " ") }} {{ p.amount|aed }} ({{ p.payment_id }})</li>{% endfor %}
+    {% for e in events %}<li>{{ e.event_date.isoformat() }}: {{ e.event_type|replace("_", " ")|lower }}{% if e.label %} ({{ e.label }}){% endif %}{% if e.promise_date %}, promised for {{ e.promise_date.isoformat() }}{% endif %}</li>{% endfor %}
+  </ul>
+  {% else %}<p>No payments or events as of {{ snap.as_of.isoformat() }}.</p>{% endif %}
+  <p class="note">Messages, classifications, drafts and outcomes are added to this page in later steps.</p>
+</section>
+{% endblock %}

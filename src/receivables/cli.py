@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 
 from receivables.adapters.clock import SystemClock
+from receivables.adapters.config import load_config
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
 from receivables.adapters.db.repo import (
@@ -25,7 +26,6 @@ from receivables.adapters.db.repo import (
 )
 from receivables.api.security import hash_password
 from receivables.core.aging import aging_summary
-from receivables.core.config import EngineConfig
 from receivables.core.history import customer_history
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
@@ -111,7 +111,7 @@ def _aed(fils: int) -> str:
     return f"AED {from_fils(fils):,}"
 
 
-def _summary(url: str, as_of: date) -> list[str]:
+def _summary(url: str, as_of: date, config_path: str) -> list[str]:
     engine = make_engine(url)
     try:
         with engine.connect() as conn:
@@ -119,7 +119,7 @@ def _summary(url: str, as_of: date) -> list[str]:
         inputs = load_ledger_inputs(engine)
     finally:
         engine.dispose()
-    config = EngineConfig()
+    config = load_config(Path(config_path)).engine
     rows = build_ledger(inputs.invoices, inputs.payments, as_of=as_of)
     totals = aging_summary(rows)
     history = customer_history(rows, as_of, config)
@@ -170,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except OSError as err:
         print(f"{args.command} failed: {err}", file=sys.stderr)
         return 1
-    for line in _summary(url, as_of):
+    for line in _summary(url, as_of, settings.config_path):
         print(line)
     return 0
 

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Receivables dashboard</h1>
+{% include "_as_of.html" %}
+
+<section class="headline">
+  <div><h2>Total outstanding</h2><p class="big">{{ kpis.total_open|aed }}</p><p class="as-of-note">as of {{ snap.as_of.isoformat() }}</p></div>
+  <div><h2>Overdue</h2><p class="big">{{ kpis.overdue_total|aed }}</p>
+    <p>{% if kpis.overdue_pct is none %}N/A{% else %}{{ kpis.overdue_pct }}% of open{% endif %}</p></div>
+  <div><h2><abbr title="{{ dso_formula }}">Estimated DSO (90-day sales proxy)</abbr></h2>
+    <p class="big">{% if kpis.dso.value is none %}N/A{% else %}{{ kpis.dso.value }} days{% endif %}</p>
+    <p class="note">{{ dso_formula }}</p></div>
+  <div><h2>Unallocated cash</h2><p class="big">{{ kpis.unallocated.total|aed }}</p></div>
+</section>
+
+<section>
+  <h2>Aging (open invoices, as of {{ snap.as_of.isoformat() }})</h2>
+  <table>
+    <thead><tr><th>Bucket</th><th>Amount</th><th>Share of largest</th></tr></thead>
+    <tbody>
+    {% for bar in bars %}
+      <tr><td>{{ bar.name }}</td><td class="num">{{ bar.amount|aed }}</td>
+        <td><svg class="bar" viewBox="0 0 100 10" width="200" height="14" role="img" aria-label="{{ bar.percent }} percent of the largest bucket"><rect x="0" y="0" height="10" width="{{ bar.percent }}"></rect></svg></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Exposure by band <small class="note">{{ heuristic_note }}</small></h2>
+  <table>
+    <thead><tr><th>Band</th><th>Overdue open amount</th></tr></thead>
+    <tbody>{% for band in bands %}<tr><td>{{ band }}</td><td class="num">{{ kpis.exposure_by_band[band]|aed }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Top overdue customers</h2>
+  {% if top %}
+  <table>
+    <thead><tr><th>Customer</th><th>Overdue</th><th>Share of overdue</th><th>Unallocated cash</th></tr></thead>
+    <tbody>
+    {% for c in top %}
+      <tr><td>{{ snap.customer_name(c.customer_id) }}</td><td class="num">{{ c.amount|aed }}</td><td class="num">{{ c.share_pct }}%</td>
+        <td class="num">{{ kpis.unallocated.by_customer.get(c.customer_id, 0)|aed }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>No overdue invoices as of {{ snap.as_of.isoformat() }}.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Data quality</h2>
+  <ul>
+    <li>{{ quality.invoices }} invoices and {{ quality.payments }} payments dated on or before {{ snap.as_of.isoformat() }}.</li>
+    {% for w in quality.warnings %}
+      {% if w.code == "W_NO_PAYMENTS" %}<li class="warn">No payments yet: payment history falls back to the portfolio rate.</li>
+      {% elif w.code == "W_UNALLOCATED" %}<li class="warn">Unallocated payments on account ({{ w.detail }}). Check them before chasing.</li>
+      {% else %}<li class="warn">{{ w.code }}</li>{% endif %}
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}
