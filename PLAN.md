@@ -66,7 +66,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.4, §5
   - Tests: T-AUD-01 (import audit rows); reset is idempotent and leaves exactly the golden data
   - Done when: `uv run receivables reset` reproduces the golden numbers with no manual database edits.
-- [ ] **S1.11** App shell and session login
+- [x] **S1.11** App shell and session login
   - Goal: FastAPI app factory, `/healthz`, Argon2id login and logout, signed session cookie, `create-user` CLI, login rate limit.
   - Spec: §3.3, §9
   - Tests: T-SEC-03, T-SEC-10
