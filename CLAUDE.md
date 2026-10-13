@@ -1,6 +1,6 @@
 # Receivables Collections Agent
 
-Behaviour and acceptance tests: `docs/SPEC.md` (source of truth). Progress: `PLAN.md`. Read only the spec sections a step lists. If code, prompts or tests conflict with the spec, stop and log it in `docs/DECISIONS.md`; do not silently choose.
+Behaviour and acceptance tests: `docs/SPEC.md` (source of truth). Progress: `PLAN.md`. Read only the spec sections a step lists, plus the §2 definitions of the terms they use. If code, prompts or tests conflict with the spec, stop and log it in `docs/DECISIONS.md`; do not silently choose.
 
 Goal: a Dubai Chamber AI Agents Championship prototype. A working multi-step business agent on **synthetic data only**.
 
