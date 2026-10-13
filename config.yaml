@@ -1,0 +1,35 @@
+# Non-secret settings (SPEC §5). Secrets and model ids come from the environment, never here.
+# Values marked [A] in the spec are assumptions. Read by receivables.adapters.config.
+engine:
+  min_history_invoices: 5
+  history_window_days: 365
+  grace_days: 0
+  weights: {overdue: 0.40, history: 0.25, size: 0.15, dispute: 0.10, promise: 0.10}
+  overdue_cap_days: 90
+  band_high: 60.0
+  band_medium: 30.0
+  queue_size: 20
+  dso_window_days: 90
+  no_history_fallback_rate: 0.5
+llm:
+  provider: anthropic
+  api_key_env: ANTHROPIC_API_KEY
+  model_envs: {planner: ANTHROPIC_MODEL_PLANNER, classifier: ANTHROPIC_MODEL_CLASSIFIER, drafter: ANTHROPIC_MODEL_DRAFTER}
+  max_retries: 1
+  timeout_seconds: 30
+  redact_before_send: true
+  pseudonymize_customer_names: true
+  review_confidence_threshold: 0.6
+  replay: false                  # true = ReplayClient with recorded responses (disclosed backup for demos)
+  cassette_dir: tests/cassettes
+drafts:
+  max_regenerations: 2
+  max_words: 140
+  invoice_number_regex: '\b[A-Z]{2,6}-\d{2,}\b'   # override per customer if their invoice numbers differ
+app:
+  data_dir: data
+  base_currency: AED
+  require_https: true            # reject non-HTTPS requests unless host is localhost or 127.0.0.1
+  session_ttl_minutes: 480       # [A]
+  login_rate_limit_per_minute: 5 # [A]
+  retention_days_after_pilot: 30 # [A]
