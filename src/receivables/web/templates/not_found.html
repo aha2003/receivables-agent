@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+{% block content %}
+<h1>Not found</h1>
+<p>No such {{ what }} in the ledger as of {{ snap.as_of.isoformat() }}.</p>
+<p><a href="/queue?as_of={{ snap.as_of.isoformat() }}">Back to the queue</a></p>
+{% endblock %}

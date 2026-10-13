@@ -1,0 +1,242 @@
+"""``config.yaml`` loader (SPEC §5; docs/DECISIONS.md D-011, D-014, D-017).
+
+The file is parsed with PyYAML's ``BaseLoader``: every scalar stays a string and no tags are
+honoured, so neither floats nor arbitrary objects can appear. Pydantic validates the strings
+strictly (unknown keys are errors) and engine weights and rates become exact ``Fraction``s.
+A missing file means the §5 defaults.
+"""
+
+import re
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from fractions import Fraction
+from pathlib import Path
+from typing import Annotated, Any, Literal
+
+import yaml
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator
+
+from receivables.core.config import EngineConfig
+
+__all__ = ["AppSection", "Config", "ConfigError", "DraftsSection", "LlmSection", "load_config"]
+
+
+class ConfigError(ValueError):
+    """config.yaml is malformed or violates the §5 schema."""
+
+
+def _fraction(value: str) -> Fraction:
+    try:
+        number = Decimal(value)
+    except InvalidOperation:
+        raise ValueError(f"not a decimal number: {value!r}") from None
+    if not number.is_finite() or "e" in value.lower():
+        raise ValueError(f"write a plain decimal number, not {value!r}")
+    return Fraction(number)
+
+
+def _plain_integer(value: Any) -> Any:
+    if isinstance(value, str) and not value.strip().isdigit():
+        raise ValueError(f"write a whole number, not {value!r}")
+    return value
+
+
+PlainInt = Annotated[int, BeforeValidator(_plain_integer)]
+
+
+class _UniqueKeyLoader(yaml.BaseLoader):
+    """BaseLoader (strings only, no tags) that refuses duplicate keys (no silent last-wins)."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        seen: set[Any] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)  # pyright: ignore[reportArgumentType]
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate key {key!r}", key_node.start_mark
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class _Weights(_Strict):
+    overdue: str = "0.40"
+    history: str = "0.25"
+    size: str = "0.15"
+    dispute: str = "0.10"
+    promise: str = "0.10"
+
+
+class _Engine(_Strict):
+    min_history_invoices: PlainInt = Field(default=5, ge=1)
+    history_window_days: PlainInt = Field(default=365, ge=1)
+    grace_days: PlainInt = Field(default=0, ge=0)
+    weights: _Weights = _Weights()
+    overdue_cap_days: PlainInt = Field(default=90, ge=1)
+    band_high: str = "60.0"
+    band_medium: str = "30.0"
+    queue_size: PlainInt = Field(default=20, ge=1)
+    # §2/§6.6 define the KPI as the *90-day* sales proxy; §5 makes the key configurable.
+    # Only 90 is accepted so the label stays true (docs/DECISIONS.md D-017).
+    dso_window_days: PlainInt = Field(default=90, ge=90, le=90)
+    no_history_fallback_rate: str = "0.5"
+
+    def to_engine_config(self) -> EngineConfig:
+        w = self.weights
+        weights = [_fraction(x) for x in (w.overdue, w.history, w.size, w.dispute, w.promise)]
+        if any(not 0 <= x <= 1 for x in weights) or sum(weights) != 1:
+            raise ValueError("weights must each be in [0, 1] and sum to exactly 1")
+        band_high, band_medium = _fraction(self.band_high), _fraction(self.band_medium)
+        if not 0 < band_medium < band_high <= 100:
+            raise ValueError("bands need 0 < band_medium < band_high <= 100")
+        fallback = _fraction(self.no_history_fallback_rate)
+        if not 0 <= fallback <= 1:
+            raise ValueError("no_history_fallback_rate must be in [0, 1]")
+        return EngineConfig(
+            min_history_invoices=self.min_history_invoices,
+            history_window_days=self.history_window_days,
+            grace_days=self.grace_days,
+            weight_overdue=weights[0],
+            weight_history=weights[1],
+            weight_size=weights[2],
+            weight_dispute=weights[3],
+            weight_promise=weights[4],
+            overdue_cap_days=self.overdue_cap_days,
+            band_high=band_high,
+            band_medium=band_medium,
+            queue_size=self.queue_size,
+            dso_window_days=self.dso_window_days,
+            no_history_fallback_rate=fallback,
+        )
+
+
+class _ModelEnvs(_Strict):
+    planner: str = "ANTHROPIC_MODEL_PLANNER"
+    classifier: str = "ANTHROPIC_MODEL_CLASSIFIER"
+    drafter: str = "ANTHROPIC_MODEL_DRAFTER"
+
+
+class _Llm(_Strict):
+    provider: Literal["anthropic"] = "anthropic"
+    api_key_env: str = "ANTHROPIC_API_KEY"
+    model_envs: _ModelEnvs = _ModelEnvs()
+    max_retries: PlainInt = Field(default=1, ge=0, le=5)
+    timeout_seconds: PlainInt = Field(default=30, ge=1, le=300)
+    redact_before_send: bool = True
+    pseudonymize_customer_names: bool = True
+    review_confidence_threshold: str = "0.6"
+    replay: bool = False
+    cassette_dir: str = "tests/cassettes"
+
+
+class _Drafts(_Strict):
+    max_regenerations: PlainInt = Field(default=2, ge=0, le=10)
+    max_words: PlainInt = Field(default=140, ge=1)
+    invoice_number_regex: str = r"\b[A-Z]{2,6}-\d{2,}\b"
+
+    @field_validator("invoice_number_regex")
+    @classmethod
+    def _compiles(cls, value: str) -> str:
+        try:
+            re.compile(value)
+        except re.error as err:
+            raise ValueError(f"invoice_number_regex does not compile: {err}") from None
+        return value
+
+
+class _App(_Strict):
+    data_dir: str = "data"
+    base_currency: Literal["AED"] = "AED"
+    require_https: bool = True
+    session_ttl_minutes: PlainInt = Field(default=480, ge=1, le=24 * 60)
+    login_rate_limit_per_minute: PlainInt = Field(default=5, ge=1, le=100)
+    retention_days_after_pilot: PlainInt = Field(default=30, ge=0)
+
+
+class _File(_Strict):
+    engine: _Engine = _Engine()
+    llm: _Llm = _Llm()
+    drafts: _Drafts = _Drafts()
+    app: _App = _App()
+
+
+@dataclass(frozen=True, slots=True)
+class LlmSection:
+    provider: str
+    api_key_env: str
+    model_envs: dict[str, str]
+    max_retries: int
+    timeout_seconds: int
+    redact_before_send: bool
+    pseudonymize_customer_names: bool
+    review_confidence_threshold: Fraction
+    replay: bool
+    cassette_dir: str
+
+
+@dataclass(frozen=True, slots=True)
+class DraftsSection:
+    max_regenerations: int
+    max_words: int
+    invoice_number_regex: str
+
+
+@dataclass(frozen=True, slots=True)
+class AppSection:
+    data_dir: str
+    base_currency: str
+    require_https: bool
+    session_ttl_minutes: int
+    login_rate_limit_per_minute: int
+    retention_days_after_pilot: int
+
+
+@dataclass(frozen=True, slots=True)
+class Config:
+    engine: EngineConfig
+    llm: LlmSection
+    drafts: DraftsSection
+    app: AppSection
+
+
+def load_config(path: Path) -> Config:
+    """Read and validate ``path``; the §5 defaults when the file does not exist."""
+    raw: Any = {}
+    if path.exists():
+        try:
+            text = path.read_text(encoding="utf-8")
+            raw = yaml.load(text, Loader=_UniqueKeyLoader) or {}  # noqa: S506 - strings only, no tags
+        except yaml.YAMLError as err:
+            raise ConfigError(f"{path} is not valid YAML: {err}") from None
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path} must be a mapping of sections")
+    try:
+        parsed = _File.model_validate(raw)
+        engine = parsed.engine.to_engine_config()
+        threshold = _fraction(parsed.llm.review_confidence_threshold)
+        if not 0 <= threshold <= 1:
+            raise ValueError("review_confidence_threshold must be in [0, 1]")
+    except (ValidationError, ValueError) as err:
+        raise ConfigError(f"{path}: {err}") from None
+    llm = parsed.llm
+    return Config(
+        engine=engine,
+        llm=LlmSection(
+            provider=llm.provider,
+            api_key_env=llm.api_key_env,
+            model_envs=llm.model_envs.model_dump(),
+            max_retries=llm.max_retries,
+            timeout_seconds=llm.timeout_seconds,
+            redact_before_send=llm.redact_before_send,
+            pseudonymize_customer_names=llm.pseudonymize_customer_names,
+            review_confidence_threshold=threshold,
+            replay=llm.replay,
+            cassette_dir=llm.cassette_dir,
+        ),
+        drafts=DraftsSection(**parsed.drafts.model_dump()),
+        app=AppSection(**parsed.app.model_dump()),
+    )

@@ -66,11 +66,16 @@ class KpiSummary:
     unallocated: UnallocatedCash
 
 
-def estimated_dso(rows: Iterable[LedgerRow], total_open: int, as_of: date) -> DsoResult:
-    """``total_open / credit_sales_in_window * 90`` over invoices dated ``as_of - 89 .. as_of``."""
-    start = as_of - timedelta(days=DSO_WINDOW_DAYS - 1)
+def estimated_dso(
+    rows: Iterable[LedgerRow], total_open: int, as_of: date, window_days: int = DSO_WINDOW_DAYS
+) -> DsoResult:
+    """``total_open / credit_sales_in_window * window`` over invoices dated in the window.
+
+    The window is the ``window_days`` ending on ``as_of`` inclusive (§6.6: 90 days).
+    """
+    start = as_of - timedelta(days=window_days - 1)
     sales = sum(r.amount for r in rows if start <= r.invoice_date <= as_of)
-    value = round_half_up(Fraction(total_open, sales) * DSO_WINDOW_DAYS, 1) if sales > 0 else None
+    value = round_half_up(Fraction(total_open, sales) * window_days, 1) if sales > 0 else None
     return DsoResult(
         value=value, credit_sales_in_window=sales, window_start=start, window_end=as_of
     )
@@ -129,13 +134,14 @@ def compute_kpis(
     scored: Iterable[ScoredInvoice],
     payments: Iterable[PaymentRecord],
     as_of: date,
+    window_days: int = DSO_WINDOW_DAYS,
 ) -> KpiSummary:
     summary = aging_summary(rows)
     return KpiSummary(
         total_open=summary.total_open,
         overdue_total=summary.overdue_total,
         overdue_pct=overdue_pct(summary.overdue_total, summary.total_open),
-        dso=estimated_dso(rows, summary.total_open, as_of),
+        dso=estimated_dso(rows, summary.total_open, as_of, window_days),
         overdue_by_customer=overdue_by_customer(rows),
         exposure_by_band=exposure_by_band(scored),
         unallocated=unallocated_cash(payments, as_of),

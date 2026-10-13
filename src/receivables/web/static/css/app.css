@@ -4,3 +4,19 @@ body { font-family: system-ui, sans-serif; margin: 0; color: #1b1b1b; background
 main { max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
 form label { display: block; margin: 0.5rem 0; }
 [role="alert"] { color: #8a1c1c; font-weight: 600; }
+.nav { display: flex; gap: 1rem; align-items: center; padding: 0.5rem 1rem; background: #eee; }
+.nav .who { margin-left: auto; }
+form.inline { display: inline; }
+.headline { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
+.big { font-size: 1.6rem; font-weight: 600; margin: 0.25rem 0; }
+.note, .as-of-note { color: #555; font-size: 0.9rem; }
+table { border-collapse: collapse; margin: 0.5rem 0 1.5rem; }
+th, td { border-bottom: 1px solid #ddd; padding: 0.35rem 0.6rem; text-align: left; vertical-align: top; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+svg.bar rect { fill: #2f5d8a; }
+.flag { color: #7a4a00; margin: 0; }
+.warn { color: #7a4a00; }
+.filters label, .as-of label { display: inline-block; margin-right: 1rem; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+dl.facts dt { font-weight: 600; }
+form.upload { margin: 0.75rem 0; }

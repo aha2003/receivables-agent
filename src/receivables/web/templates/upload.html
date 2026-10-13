@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Upload{% endblock %}
+{% block content %}
+<h1>Upload synthetic CSV files</h1>
+<p class="note">Fixed canonical format (SPEC §4). Upload in order: customers, invoices, then payments and events. Synthetic data only.</p>
+{% if refusal %}<p role="alert">{{ refusal.detail }}</p>{% endif %}
+{% if result %}
+<section class="report">
+  <h2>{{ kind }}: {{ result.status }}</h2>
+  <p>{{ result.rows_total }} rows{% if result.status != "rejected" %}, {{ result.rows_ok }} imported{% endif %}.
+  {% if result.status == "rejected" %} Nothing was written.{% endif %}
+  {% if result.status == "duplicate" %} This exact file was already imported; nothing changed.{% endif %}</p>
+  {% if result.errors %}
+  <table>
+    <thead><tr><th>Line</th><th>Code</th><th>Field</th></tr></thead>
+    <tbody>{% for e in result.errors %}<tr><td>{{ e.line }}</td><td>{{ e.code }}</td><td>{{ e.field }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if result.warnings %}
+  <h3>Warnings</h3>
+  <ul>{% for w in result.warnings %}<li>{{ w.code }}{% if w.field %} ({{ w.field }}){% endif %}{% if w.detail %}: {{ w.detail }}{% endif %}{% if w.line %}, line {{ w.line }}{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+{% endif %}
+{% for k in kinds %}
+<form method="post" action="/upload/{{ k }}" enctype="multipart/form-data" class="upload">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>{{ k }}.csv <input type="file" name="file" accept=".csv,text/csv" required></label>
+  <button type="submit">Upload {{ k }}</button>
+</form>
+{% endfor %}
+<p class="note">Correspondence import arrives in a later step.</p>
+{% endblock %}

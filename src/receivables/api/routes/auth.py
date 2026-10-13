@@ -122,13 +122,6 @@ def logout(request: Request) -> Response:
     return RedirectResponse("/login", status_code=303)
 
 
-@router.get("/", response_class=HTMLResponse)
-def home(request: Request) -> Response:
-    templates = request.app.state.templates
-    context = {"user": request.state.user, "csrf_token": ensure_token(request.session)}
-    return templates.TemplateResponse(request, "home.html", context)
-
-
 @router.get("/api/me")
 def me(request: Request) -> dict[str, Any]:
     user: SessionUser = request.state.user

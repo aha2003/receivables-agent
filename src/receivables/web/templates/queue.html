@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Queue{% endblock %}
+{% block content %}
+<h1>Collections queue</h1>
+<p class="note">{{ heuristic_note }} Ordered by priority value: larger, riskier, older invoices first.</p>
+<form method="get" class="filters" hx-get="/queue" hx-target="#queue-table" hx-select="#queue-table" hx-swap="outerHTML" hx-push-url="true" hx-trigger="change">
+  <label>As of <input type="date" name="as_of" value="{{ snap.as_of.isoformat() }}" required></label>
+  <label>Band
+    <select name="band"><option value="">All</option>{% for b in bands %}<option value="{{ b }}"{% if b == band %} selected{% endif %}>{{ b }}</option>{% endfor %}</select>
+  </label>
+  <label>Customer
+    <select name="customer"><option value="">All</option>{% for cid, c in snap.customers|dictsort %}<option value="{{ cid }}"{% if cid == customer %} selected{% endif %}>{{ c.customer_name }}</option>{% endfor %}</select>
+  </label>
+  <button type="submit">Filter</button>
+</form>
+<div id="queue-table">
+  <p class="as-of-note">Figures as of {{ snap.as_of.isoformat() }}{% if band or customer %} (filtered){% endif %}.</p>
+  {% if items %}
+  <table class="queue">
+    <thead><tr>
+      <th>#</th><th>Invoice</th><th>Customer</th><th>Open</th><th>Days overdue</th>
+      <th>Risk score <small class="note">{{ heuristic_note }}</small></th><th>Band</th>
+      <th>Priority value <small class="note">{{ heuristic_note }}</small></th><th>Next action</th><th>Flags</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td>{{ item.rank }}</td>
+        <td><a href="/invoices/{{ item.scored.invoice_number|urlencode }}?as_of={{ snap.as_of.isoformat() }}">{{ item.scored.invoice_number }}</a></td>
+        <td>{{ snap.customer_name(item.scored.customer_id) }}</td>
+        <td class="num">{{ item.scored.open_amount|aed }}</td>
+        <td class="num">{{ item.scored.days_overdue }}</td>
+        <td class="num">{{ item.scored.risk_score }}</td>
+        <td>{{ item.scored.band }}</td>
+        <td class="num">{{ item.scored.priority_value }}</td>
+        <td>{{ item.action }}</td>
+        <td>{% for f in item.flags %}<p class="flag">{{ f.amount|unallocated_message }}</p>{% endfor %}</td>
+        <td><button type="button" disabled title="Drafting arrives with the draft generator (S2.05, S3.07).">Draft</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>No overdue invoices match as of {{ snap.as_of.isoformat() }}.</p>{% endif %}
+</div>
+{% endblock %}

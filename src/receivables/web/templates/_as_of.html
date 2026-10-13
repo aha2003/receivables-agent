@@ -1,0 +1,5 @@
+<form method="get" class="as-of">
+  <label>Figures as of <input type="date" name="as_of" value="{{ snap.as_of.isoformat() }}" required></label>
+  {% for name, value in extra_params|default({})|dictsort %}{% if value %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+  <button type="submit">Update</button>
+</form>

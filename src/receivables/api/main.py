@@ -1,10 +1,12 @@
-"""FastAPI application factory (SPEC §3.3, §9).
+"""FastAPI application factory (SPEC §3.3, §9, §10).
 
-``create_app`` wires settings, the injected clock, the database engine, the signed session
-cookie and the authentication gate. ``app`` is created only when a server asks for it
+``create_app`` wires settings, ``config.yaml``, the injected clock, the database engine, the
+signed session cookie, CSRF, security headers, the body size limit and the authentication
+gate. ``app`` is created only when a server asks for it
 (``uv run uvicorn receivables.api.main:app``), so importing this module needs no secret.
 """
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +19,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from receivables.adapters.clock import Clock, SystemClock
+from receivables.adapters.config import load_config
 from receivables.adapters.db.engine import make_engine
 from receivables.api.auth import auth_gate, error_response
 from receivables.api.csrf import CsrfError, csrf_protect
 from receivables.api.headers import SECURITY_HEADERS, SecurityHeadersMiddleware
+from receivables.api.limits import BodySizeLimitMiddleware
 from receivables.api.routes import auth as auth_routes
-from receivables.api.security import SESSION_TTL, LoginRateLimiter
+from receivables.api.routes import data as data_routes
+from receivables.api.routes import pages as page_routes
+from receivables.api.security import LoginRateLimiter
+from receivables.core.money import from_fils
+from receivables.core.queue import unallocated_cash_message
 from receivables.settings import Settings
 
 __all__ = ["MIN_SECRET_LENGTH", "create_app"]
@@ -37,9 +45,16 @@ _ERROR_CODES = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    413: "payload_too_large",
     422: "invalid_request",
     429: "rate_limited",
+    501: "not_implemented",
 }
+
+
+def aed(fils: int) -> str:
+    """Display format of §10: ``AED 1,234.50``."""
+    return f"AED {from_fils(fils):,}"
 
 
 def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None) -> FastAPI:
@@ -54,20 +69,29 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
         openapi_url=None,
         dependencies=[Depends(csrf_protect)],
     )
+    config = load_config(Path(settings.config_path))  # ConfigError stops the app on bad config
+    app.state.config = config
     app.state.clock = clock
     app.state.engine = engine if engine is not None else make_engine(settings.database_url)
-    app.state.login_limiter = LoginRateLimiter(clock)
-    app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    app.state.session_ttl = timedelta(minutes=config.app.session_ttl_minutes)
+    app.state.login_limiter = LoginRateLimiter(clock, limit=config.app.login_rate_limit_per_minute)
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["aed"] = aed
+    templates.env.filters["unallocated_message"] = unallocated_cash_message
+    app.state.templates = templates
 
     app.include_router(auth_routes.router)
+    app.include_router(data_routes.router)
+    app.include_router(page_routes.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.
+    app.add_middleware(BodySizeLimitMiddleware)  # inside the gate: anonymous requests get 401 first
     app.middleware("http")(auth_gate)
     app.add_middleware(
         SessionMiddleware,
         secret_key=secret,
         session_cookie="session",
-        max_age=int(SESSION_TTL.total_seconds()),
+        max_age=int(app.state.session_ttl.total_seconds()),
         same_site="lax",
         https_only=True,
     )

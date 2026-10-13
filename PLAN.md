@@ -76,7 +76,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.3
   - Tests: T-SEC-09, T-SEC-11
   - Done when: POST without a valid token returns 403; headers present on pages and API.
-- [ ] **S1.13** Dashboard and queue (first screen)
+- [x] **S1.13** Dashboard and queue (first screen)
   - Goal: `/api/dashboard`, `/api/queue`, `POST /api/imports/{kind}` (wraps the S1.09 importer; D-013), HTMX pages, a persistent `SYNTHETIC DEMO DATA` banner, heuristic labels and the DSO tooltip.
   - Spec: §6, §9, §10, §4.6
   - Tests: T-API-01, T-API-02, T-API-03, T-UI-02, T-UI-05; T-IMP-04 and T-IMP-05 over HTTP
