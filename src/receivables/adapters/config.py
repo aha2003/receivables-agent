@@ -1,24 +1,37 @@
-"""``config.yaml`` loader (SPEC §5; docs/DECISIONS.md D-011, D-014, D-017).
+"""``config.yaml`` loader (SPEC §5, §18.10; docs/DECISIONS.md D-011, D-014, D-017, D-018).
 
 The file is parsed with PyYAML's ``BaseLoader``: every scalar stays a string and no tags are
 honoured, so neither floats nor arbitrary objects can appear. Pydantic validates the strings
 strictly (unknown keys are errors) and engine weights and rates become exact ``Fraction``s.
-A missing file means the §5 defaults.
+A missing file means the §5 and §18.10 defaults.
 """
 
 import re
 from dataclasses import dataclass
+from datetime import time
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator
 
 from receivables.core.config import EngineConfig
+from receivables.core.money import to_fils
 
-__all__ = ["AppSection", "Config", "ConfigError", "DraftsSection", "LlmSection", "load_config"]
+__all__ = [
+    "AgentSection",
+    "AppSection",
+    "Config",
+    "ConfigError",
+    "DraftsSection",
+    "L2Section",
+    "LlmSection",
+    "MailSection",
+    "load_config",
+]
 
 
 class ConfigError(ValueError):
@@ -157,11 +170,88 @@ class _App(_Strict):
     retention_days_after_pilot: PlainInt = Field(default=30, ge=0)
 
 
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_HHMM = re.compile(r"([01]\d|2[0-3]):([0-5]\d)")
+
+
+def _hhmm(value: str) -> time:
+    match = _HHMM.fullmatch(value)
+    if match is None:
+        raise ValueError(f"write a 24-hour time as HH:MM, not {value!r}")
+    return time(int(match.group(1)), int(match.group(2)))
+
+
+class _L2(_Strict):
+    allowlisted_customers: list[str] = Field(default_factory=list)
+    max_total_open_amount: str = "25000"  # AED; becomes fils
+    min_days_between_contacts: PlainInt = Field(default=7, ge=0)
+    daily_send_cap: PlainInt = Field(default=20, ge=0)
+    business_days: list[str] = Field(default_factory=lambda: ["Mon", "Tue", "Wed", "Thu", "Fri"])
+    business_hours: list[str] = Field(default_factory=lambda: ["09:00", "17:00"])
+    timezone: str = "Asia/Dubai"
+    kill_switch: bool = False
+
+    @field_validator("allowlisted_customers")
+    @classmethod
+    def _customer_ids(cls, value: list[str]) -> list[str]:
+        if any(not x.strip() or x != x.strip() for x in value) or len(set(value)) != len(value):
+            raise ValueError("allowlisted_customers must be distinct, non-empty customer ids")
+        return value
+
+    @field_validator("business_days")
+    @classmethod
+    def _weekdays(cls, value: list[str]) -> list[str]:
+        if not value or any(d not in WEEKDAYS for d in value) or len(set(value)) != len(value):
+            raise ValueError(f"business_days must be distinct names from {', '.join(WEEKDAYS)}")
+        return value
+
+    @field_validator("business_hours")
+    @classmethod
+    def _hours(cls, value: list[str]) -> list[str]:
+        if len(value) != 2 or _hhmm(value[0]) >= _hhmm(value[1]):
+            raise ValueError("business_hours must be [start, end] with start before end")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(f"unknown timezone {value!r}") from None
+        return value
+
+    def max_total_open_fils(self) -> int:
+        value = self.max_total_open_amount
+        if not re.fullmatch(r"\d+(\.\d{1,2})?", value):
+            raise ValueError(f"max_total_open_amount must be a plain AED amount, not {value!r}")
+        fils = to_fils(value)
+        if fils <= 0:
+            raise ValueError("max_total_open_amount must be above zero")
+        return fils
+
+
+class _Agent(_Strict):
+    autonomy_level: PlainInt = Field(default=1, ge=0, le=2)  # 0 shadow, 1 assist, 2 policy-gated
+    max_cases_per_tick: PlainInt = Field(default=20, ge=1)
+    max_steps_per_case: PlainInt = Field(default=5, ge=1)
+    llm_timeout_seconds: PlainInt = Field(default=30, ge=1, le=300)
+    promise_grace_days: PlainInt = Field(default=2, ge=0)
+    l2: _L2 = _L2()
+
+
+class _Mail(_Strict):
+    gateway: Literal["sandbox", "smtp"] = "sandbox"
+    enabled: bool = False
+
+
 class _File(_Strict):
     engine: _Engine = _Engine()
     llm: _Llm = _Llm()
     drafts: _Drafts = _Drafts()
     app: _App = _App()
+    agent: _Agent = _Agent()
+    mail: _Mail = _Mail()
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,11 +286,43 @@ class AppSection:
 
 
 @dataclass(frozen=True, slots=True)
+class L2Section:
+    """The L2 send policy limits of §18.4 (read by the policy engine)."""
+
+    allowlisted_customers: tuple[str, ...]
+    max_total_open_fils: int
+    min_days_between_contacts: int
+    daily_send_cap: int
+    business_days: tuple[str, ...]
+    business_hours: tuple[time, time]
+    timezone: str
+    kill_switch: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AgentSection:
+    autonomy_level: int
+    max_cases_per_tick: int
+    max_steps_per_case: int
+    llm_timeout_seconds: int
+    promise_grace_days: int
+    l2: L2Section
+
+
+@dataclass(frozen=True, slots=True)
+class MailSection:
+    gateway: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     engine: EngineConfig
     llm: LlmSection
     drafts: DraftsSection
     app: AppSection
+    agent: AgentSection
+    mail: MailSection
 
 
 def load_config(path: Path) -> Config:
@@ -220,6 +342,8 @@ def load_config(path: Path) -> Config:
         threshold = _fraction(parsed.llm.review_confidence_threshold)
         if not 0 <= threshold <= 1:
             raise ValueError("review_confidence_threshold must be in [0, 1]")
+        l2 = parsed.agent.l2
+        max_total_open_fils = l2.max_total_open_fils()
     except (ValidationError, ValueError) as err:
         raise ConfigError(f"{path}: {err}") from None
     llm = parsed.llm
@@ -239,4 +363,22 @@ def load_config(path: Path) -> Config:
         ),
         drafts=DraftsSection(**parsed.drafts.model_dump()),
         app=AppSection(**parsed.app.model_dump()),
+        agent=AgentSection(
+            autonomy_level=parsed.agent.autonomy_level,
+            max_cases_per_tick=parsed.agent.max_cases_per_tick,
+            max_steps_per_case=parsed.agent.max_steps_per_case,
+            llm_timeout_seconds=parsed.agent.llm_timeout_seconds,
+            promise_grace_days=parsed.agent.promise_grace_days,
+            l2=L2Section(
+                allowlisted_customers=tuple(l2.allowlisted_customers),
+                max_total_open_fils=max_total_open_fils,
+                min_days_between_contacts=l2.min_days_between_contacts,
+                daily_send_cap=l2.daily_send_cap,
+                business_days=tuple(l2.business_days),
+                business_hours=(_hhmm(l2.business_hours[0]), _hhmm(l2.business_hours[1])),
+                timezone=l2.timezone,
+                kill_switch=l2.kill_switch,
+            ),
+        ),
+        mail=MailSection(gateway=parsed.mail.gateway, enabled=parsed.mail.enabled),
     )
