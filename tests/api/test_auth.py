@@ -22,7 +22,11 @@ PUBLIC = {"/healthz", "/login"}
 
 
 def _all_routes(routes: list[Any], prefix: str = "") -> list[tuple[str, str]]:
-    """Every (method, path), walking FastAPI's included routers with their prefixes."""
+    """Every (method, path), walking FastAPI's included routers with their prefixes.
+
+    Fails on any route type it does not understand, so a new kind of route (a static mount,
+    a plain Starlette route, a websocket) cannot silently escape T-SEC-03.
+    """
     out: list[tuple[str, str]] = []
     for route in routes:
         if isinstance(route, APIRoute):
@@ -30,6 +34,8 @@ def _all_routes(routes: list[Any], prefix: str = "") -> list[tuple[str, str]]:
         elif hasattr(route, "original_router"):
             include_prefix = getattr(getattr(route, "include_context", None), "prefix", "")
             out.extend(_all_routes(route.original_router.routes, prefix + include_prefix))
+        else:
+            raise AssertionError(f"T-SEC-03 route walker does not understand {route!r}")
     return out
 
 
@@ -230,3 +236,145 @@ def test_malformed_sessions_are_rejected(session: dict[str, Any], clock: Simulat
     from receivables.api.security import session_user
 
     assert session_user(session, clock) is None
+
+
+# --- spec review regressions ---------------------------------------------------------------
+
+
+def test_route_walker_fails_on_unknown_route_types() -> None:
+    from starlette.routing import Mount, Route
+
+    with pytest.raises(AssertionError, match="does not understand"):
+        _all_routes([Mount("/static", routes=[])])
+    with pytest.raises(AssertionError, match="does not understand"):
+        _all_routes([Route("/plain", endpoint=lambda request: None)])
+
+
+def test_concurrent_failed_logins_cannot_exceed_the_limit(client: TestClient) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        codes = list(pool.map(lambda _: login(client, password="wrong-password"), range(20)))
+    assert codes.count(401) == 5
+    assert codes.count(429) == 15
+
+
+def test_limiter_forgets_expired_keys(clock: SimulatedClock) -> None:
+    from receivables.api.security import LoginRateLimiter
+
+    limiter = LoginRateLimiter(clock)
+    for n in range(50):
+        assert limiter.acquire(("host", f"user{n}"))
+    assert limiter.key_count() == 50
+    clock.advance(timedelta(minutes=2))
+    assert limiter.acquire(("host", "fresh"))
+    assert limiter.key_count() == 1
+
+
+def test_limiter_fails_closed_when_full(clock: SimulatedClock) -> None:
+    from receivables.api.security import LoginRateLimiter
+
+    limiter = LoginRateLimiter(clock, max_keys=3)
+    assert all(limiter.acquire(("host", f"u{n}")) for n in range(3))
+    assert not limiter.acquire(("host", "one-too-many"))
+
+
+def test_success_releases_the_reservation(clock: SimulatedClock) -> None:
+    from receivables.api.security import LoginRateLimiter
+
+    limiter = LoginRateLimiter(clock, limit=1)
+    assert limiter.acquire(("h", "u"))
+    limiter.clear(("h", "u"))
+    assert limiter.acquire(("h", "u"))
+
+
+def test_overlong_username_is_a_cheap_failure(client: TestClient) -> None:
+    response = client.post(
+        "/login", data={"username": "u" * 10_000, "password": "whatever-password"}
+    )
+    assert response.status_code == 401
+
+
+def test_limit_is_per_client(app: FastAPI) -> None:
+    with (
+        TestClient(
+            app, base_url="https://testserver", follow_redirects=False, client=("10.0.0.1", 1)
+        ) as a,
+        TestClient(
+            app, base_url="https://testserver", follow_redirects=False, client=("10.0.0.2", 1)
+        ) as b,
+    ):
+        assert [login(a, password="wrong-password") for _ in range(6)][-1] == 429
+        assert login(b, password="wrong-password") == 401
+        assert login(b) == 303
+
+
+def test_role_change_ends_the_session(client: TestClient, engine: Engine) -> None:
+    assert login(client) == 303
+    with engine.begin() as c:
+        c.execute(text("UPDATE users SET role = 'admin' WHERE username = :u"), {"u": USERNAME})
+    assert client.get("/api/me").status_code == 401
+
+
+@pytest.mark.parametrize("method", ["HEAD", "OPTIONS"])
+def test_head_and_options_are_gated(client: TestClient, method: str) -> None:
+    assert client.request(method, "/api/me").status_code == 401
+    assert client.request(method, "/").status_code == 401
+
+
+def test_login_errors_are_json_for_api_clients(client: TestClient) -> None:
+    json_headers = {"accept": "application/json"}
+    bad = client.post(
+        "/login", data={"username": USERNAME, "password": "wrong-password"}, headers=json_headers
+    )
+    assert bad.status_code == 401
+    assert bad.json() == {"error": "invalid_credentials", "detail": "Invalid username or password."}
+    for _ in range(5):
+        client.post(
+            "/login",
+            data={"username": USERNAME, "password": "wrong-password"},
+            headers=json_headers,
+        )
+    limited = client.post(
+        "/login", data={"username": USERNAME, "password": "wrong-password"}, headers=json_headers
+    )
+    assert limited.status_code == 429
+    assert limited.json()["error"] == "rate_limited"
+
+
+def test_unexpected_errors_are_json(app: FastAPI) -> None:
+    @app.get("/api/test-only-boom")
+    def boom() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise RuntimeError("simulated failure with a secret-looking value sk-test-123")
+
+    with TestClient(
+        app, base_url="https://testserver", follow_redirects=False, raise_server_exceptions=False
+    ) as c:
+        assert login(c) == 303
+        response = c.get("/api/test-only-boom")
+    assert response.status_code == 500
+    assert response.json() == {"error": "internal_error", "detail": "Unexpected server error."}
+
+
+def _audit_actions(engine: Engine) -> list[tuple[str, str, str]]:
+    with engine.connect() as c:
+        return [
+            tuple(r)
+            for r in c.execute(
+                text("SELECT action, actor, entity_id FROM audit_log ORDER BY audit_id")
+            )
+        ]
+
+
+def test_login_logout_and_lockout_are_audited(client: TestClient, engine: Engine) -> None:
+    assert login(client) == 303
+    client.post("/logout")
+    for _ in range(7):
+        login(client, password="wrong-password")
+    actions = [a for a, _, _ in _audit_actions(engine) if a != "user.created"]
+    assert actions == ["login.succeeded", "logout", "login.locked"]  # one lockout row per window
+    rows = {a: (actor, entity) for a, actor, entity in _audit_actions(engine)}
+    assert rows["login.succeeded"][0] == USERNAME
+    with engine.connect() as c:
+        dumped = " ".join(str(v) for r in c.execute(text("SELECT * FROM audit_log")) for v in r)
+    assert PASSWORD not in dumped and "wrong-password" not in dumped

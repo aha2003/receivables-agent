@@ -41,33 +41,74 @@ def verify_password(stored_hash: str | None, password: str) -> bool:
 
 
 class LoginRateLimiter:
-    """At most ``limit`` failed logins per ``window`` per (client, username); clock-driven."""
+    """At most ``limit`` login attempts that end in failure per ``window`` per (client, username).
 
-    def __init__(self, clock: Clock, limit: int = 5, window: timedelta = timedelta(minutes=1)):
+    ``acquire`` reserves an attempt atomically before the (slow) password check, so concurrent
+    requests cannot all pass the check; a successful login calls ``clear``. Expired keys are
+    purged on every call and the number of keys is capped (fail closed), so memory stays
+    bounded. Time comes from the injected clock.
+    """
+
+    def __init__(
+        self,
+        clock: Clock,
+        limit: int = 5,
+        window: timedelta = timedelta(minutes=1),
+        max_keys: int = 10_000,
+    ) -> None:
         self._clock = clock
         self._limit = limit
         self._window = window
-        self._failures: dict[tuple[str, str], deque[datetime]] = {}
+        self._max_keys = max_keys
+        self._attempts: dict[tuple[str, str], deque[datetime]] = {}
+        self._lockouts: dict[tuple[str, str], datetime] = {}
         self._lock = threading.Lock()
 
-    def _recent(self, key: tuple[str, str]) -> deque[datetime]:
-        cutoff = self._clock.now() - self._window
-        failures = self._failures.setdefault(key, deque())
-        while failures and failures[0] <= cutoff:
-            failures.popleft()
-        return failures
+    def _purge(self, now: datetime) -> None:
+        cutoff = now - self._window
+        for key in list(self._attempts):
+            attempts = self._attempts[key]
+            while attempts and attempts[0] <= cutoff:
+                attempts.popleft()
+            if not attempts:
+                del self._attempts[key]
+        for key, started in list(self._lockouts.items()):
+            if started <= cutoff:
+                del self._lockouts[key]
 
-    def blocked(self, key: tuple[str, str]) -> bool:
+    def acquire(self, key: tuple[str, str]) -> bool:
+        """Reserve one attempt; False if the key is limited or the table is full."""
         with self._lock:
-            return len(self._recent(key)) >= self._limit
+            now = self._clock.now()
+            self._purge(now)
+            attempts = self._attempts.get(key)
+            if attempts is None:
+                if len(self._attempts) >= self._max_keys:
+                    return False
+                attempts = self._attempts[key] = deque()
+            if len(attempts) >= self._limit:
+                return False
+            attempts.append(now)
+            return True
 
-    def record_failure(self, key: tuple[str, str]) -> None:
+    def lockout_started(self, key: tuple[str, str]) -> bool:
+        """True once per window for a limited key (so a lockout is audited once, not per try)."""
         with self._lock:
-            self._recent(key).append(self._clock.now())
+            now = self._clock.now()
+            self._purge(now)
+            if key in self._lockouts:
+                return False
+            self._lockouts[key] = now
+            return True
 
     def clear(self, key: tuple[str, str]) -> None:
         with self._lock:
-            self._failures.pop(key, None)
+            self._attempts.pop(key, None)
+            self._lockouts.pop(key, None)
+
+    def key_count(self) -> int:
+        with self._lock:
+            return len(self._attempts)
 
 
 @dataclass(frozen=True, slots=True)

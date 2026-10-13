@@ -208,3 +208,15 @@ def test_create_user_rejects_unknown_role(env: Path) -> None:
 def test_password_is_never_an_argument() -> None:
     with pytest.raises(SystemExit):
         main(["create-user", "demo.user", "--password", SYNTHETIC_PASSWORD])
+
+
+def test_create_user_race_on_unique_username_is_a_clean_error(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two concurrent runs both pass the existence check; the UNIQUE constraint decides."""
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 0
+    monkeypatch.setattr("receivables.cli.get_user_by_username", lambda conn, username: None)
+    _stdin(monkeypatch, SYNTHETIC_PASSWORD + "\n")
+    assert main(["create-user", "demo.user", "--password-stdin"]) == 1
+    assert "already exists" in capsys.readouterr().err

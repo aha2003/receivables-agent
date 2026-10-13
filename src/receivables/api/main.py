@@ -72,6 +72,11 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
             exc.status_code, _ERROR_CODES.get(exc.status_code, "error"), str(exc.detail)
         )
 
+    @app.exception_handler(Exception)
+    async def unexpected_error(_: Request, exc: Exception) -> Any:
+        # Never echo exception text: it may contain data. Details belong in server logs.
+        return error_response(500, "internal_error", "Unexpected server error.")
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> Any:
         return error_response(422, "invalid_request", "Request validation failed.")

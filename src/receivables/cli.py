@@ -12,6 +12,8 @@ from datetime import date
 from getpass import getpass
 from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
+
 from receivables.adapters.clock import SystemClock
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
@@ -98,6 +100,8 @@ def _create_user(url: str, args: argparse.Namespace, clock: SystemClock) -> None
                 role=args.role,
                 actor="cli",
             )
+    except IntegrityError:  # a concurrent run created the same username first
+        raise _UserError(f"user {args.username!r} already exists") from None
     finally:
         engine.dispose()
     print(f"created user {args.username} ({args.role})")
