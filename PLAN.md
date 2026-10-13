@@ -51,7 +51,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §6.3 to §6.5
   - Tests: T-HIS-01, T-RSK-01, T-RSK-02, T-QUE-01, T-ACT-01
   - Done when: Default-config and `min_history_invoices = 2` queue tables match exactly; outputs are labelled heuristic.
-- [ ] **S1.08** KPIs and unallocated cash (pure)
+- [x] **S1.08** KPIs and unallocated cash (pure)
   - Goal: Estimated DSO (90-day sales proxy), overdue by customer, exposure by band, unallocated cash and its queue flag.
   - Spec: §6.6, §6.7
   - Tests: T-KPI-01, T-UNA-01

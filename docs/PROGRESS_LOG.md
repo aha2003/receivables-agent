@@ -57,3 +57,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §6.3, §6.4, §6.5 (with §2, §5 engine defaults) / T-HIS-01, T-RSK-01, T-RSK-02, T-QUE-01, T-ACT-01
 - Deviations or decisions (link docs/DECISIONS.md): D-011 (band on rounded score; EngineConfig; config.yaml loader moved; promise/dispute edge cases); D-008 updated
 - Next step: S1.08 KPIs and unallocated cash (pure)
+
+## 2026-10-13 — [S1.08] KPIs and unallocated cash (pure)
+- PR: #74 | Branch: s1-08-kpis-unallocated | Commit: see PR head
+- Tests: `uv run pytest -q` → 308 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §6.6, §6.7 (with §2) / T-KPI-01, T-UNA-01
+- Deviations or decisions (link docs/DECISIONS.md): D-012 (half-up rounding; share precision; unallocated cash composition; queue flags)
+- Next step: S1.09 Validation and strict fixed-schema CSV import
