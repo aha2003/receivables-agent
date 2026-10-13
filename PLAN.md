@@ -56,7 +56,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §6.6, §6.7
   - Tests: T-KPI-01, T-UNA-01
   - Done when: DSO 149.7; customer shares match; unallocated cash never changes open amounts.
-- [ ] **S1.09** Validation and strict fixed-schema CSV import
+- [x] **S1.09** Validation and strict fixed-schema CSV import
   - Goal: Validation of the fixed canonical CSV schema with the error codes of Section 4; atomic, idempotent import (mapping hash `fixed-schema-v1`). The mapping layer and T-IMP-06 are deferred.
   - Spec: §4.1 to §4.6, §5
   - Tests: T-IMP-01, T-IMP-02, T-IMP-03, T-IMP-04, T-IMP-05, T-UNA-02
