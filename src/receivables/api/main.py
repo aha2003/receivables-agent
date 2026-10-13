@@ -85,6 +85,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.include_router(page_routes.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.
+    app.add_middleware(BodySizeLimitMiddleware)  # inside the gate: anonymous requests get 401 first
     app.middleware("http")(auth_gate)
     app.add_middleware(
         SessionMiddleware,
@@ -94,7 +95,6 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
         same_site="lax",
         https_only=True,
     )
-    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)  # outermost: every response gets the headers
 
     @app.exception_handler(StarletteHTTPException)

@@ -75,6 +75,13 @@ def test_override_changes_the_engine(tmp_path: Path) -> None:
         "engine:\n  no_history_fallback_rate: 1.5\n",
         "llm:\n  review_confidence_threshold: 1.5\n",
         "engine: {unclosed\n",
+        "engine:\n  queue_size: 5\n  queue_size: 50\n",
+        "engine:\n  queue_size: 5\nengine:\n  grace_days: 1\n",
+        "llm:\n  max_retries: '1.0'\n",
+        "app:\n  session_ttl_minutes: 480.5\n",
+        "drafts:\n  max_words: 1e2\n",
+        "drafts:\n  invoice_number_regex: '[unclosed'\n",
+        "engine:\n  dso_window_days: 30\n",
     ],
 )
 def test_invalid_config_is_rejected(tmp_path: Path, text: str) -> None:

@@ -4,6 +4,7 @@
 <p><a href="/queue?as_of={{ snap.as_of.isoformat() }}">Back to the queue</a></p>
 <h1>Invoice {{ row.display_invoice_number or row.invoice_number }}</h1>
 {% include "_as_of.html" %}
+<p class="as-of-note">Facts as of {{ snap.as_of.isoformat() }}.</p>
 <dl class="facts">
   <dt>Customer</dt><dd>{{ snap.customer_name(row.customer_id) }}</dd>
   <dt>Amount</dt><dd>{{ row.amount|aed }}</dd>

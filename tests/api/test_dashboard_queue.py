@@ -314,3 +314,96 @@ def test_import_needs_csrf(client: TestClient) -> None:
         files={"file": ("c.csv", (FIXTURES / "customers.csv").read_bytes(), "text/csv")},
     )
     assert response.status_code == 403
+
+
+# --- spec review regressions ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("field", [{"dry_run": "true"}, {"mode": "replace"}])
+def test_import_options_sent_as_form_fields_are_honoured(
+    client: TestClient, engine: Engine, field: dict[str, str]
+) -> None:
+    assert login(client) == 303
+    before = _counts(engine)
+    response = client.post(
+        "/api/imports/customers",
+        files={"file": ("customers.csv", (FIXTURES / "customers.csv").read_bytes(), "text/csv")},
+        data=field,
+        headers={"x-csrf-token": csrf(client)},
+    )
+    assert response.status_code in {400, 422}
+    assert _counts(engine) == before
+
+
+def test_upload_page_honours_dry_run_form_field(client: TestClient, engine: Engine) -> None:
+    assert login(client) == 303
+    before = _counts(engine)
+    response = client.post(
+        "/upload/customers",
+        files={"file": ("customers.csv", (FIXTURES / "customers.csv").read_bytes(), "text/csv")},
+        data={"csrf_token": csrf(client), "dry_run": "true"},
+    )
+    assert response.status_code == 400
+    assert _counts(engine) == before
+
+
+@pytest.mark.parametrize(
+    ("sent", "stored"),
+    [
+        ("../../etc/passwd", "passwd"),
+        ("C:\\Users\\someone\\customers.csv", "customers.csv"),
+        ("reports/2026/customers.csv", "customers.csv"),
+    ],
+)
+def test_upload_filename_is_reduced_to_a_safe_base_name(
+    client: TestClient, engine: Engine, sent: str, stored: str
+) -> None:
+    assert login(client) == 303
+    response = client.post(
+        "/api/imports/customers",
+        files={"file": (sent, (FIXTURES / "customers.csv").read_bytes(), "text/csv")},
+        headers={"x-csrf-token": csrf(client)},
+    )
+    assert response.status_code == 200
+    with engine.connect() as c:
+        name = c.execute(text("SELECT filename FROM imports")).scalar_one()
+        audit = c.execute(
+            text("SELECT after_json FROM audit_log WHERE action = 'import.accepted'")
+        ).scalar_one()
+    assert name == stored
+    assert "../" not in audit and "\\\\" not in audit
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("../../etc/passwd\r\nX: y", "passwdX: y"),
+        ("\x00\x1b[31mreport.csv\x7f", "[31mreport.csv"),
+        ("", "customers.csv"),
+        (None, "customers.csv"),
+        ("\r\n\t", "customers.csv"),
+        ("a" * 500, "a" * 200),
+    ],
+)
+def test_safe_filename_strips_paths_and_control_characters(raw: str | None, expected: str) -> None:
+    """Unit check: the HTTP client percent-encodes control characters, so test them directly."""
+    from receivables.api.imports import safe_filename
+
+    assert safe_filename(raw, "customers") == expected
+
+
+def test_upload_with_empty_filename_is_not_treated_as_a_file(client: TestClient) -> None:
+    assert login(client) == 303
+    response = client.post(
+        "/api/imports/customers",
+        files={"file": ("", (FIXTURES / "customers.csv").read_bytes(), "text/csv")},
+        headers={"x-csrf-token": csrf(client)},
+    )
+    assert response.status_code == 422
+
+
+def test_oversized_anonymous_request_is_401_not_413(client: TestClient) -> None:
+    response = client.post(
+        "/api/imports/customers", content=b"x", headers={"content-length": "100000000"}
+    )
+    assert response.status_code == 401

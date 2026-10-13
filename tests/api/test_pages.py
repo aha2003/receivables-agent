@@ -200,8 +200,37 @@ def test_every_page_has_banner_nav_and_as_of(seeded: TestClient) -> None:
         page = seeded.get(path).text
         assert "SYNTHETIC DEMO DATA" in page, path
         assert 'href="/queue"' in page and 'action="/logout"' in page, path
-    for path in ("/", "/queue", "/invoices/INV-004"):
-        assert "2026-10-31" in seeded.get(path).text, path
+    for path in ("/queue", "/invoices/INV-004"):
+        page = seeded.get(path).text
+        assert "as of 2026-10-31" in page.replace("Figures as of", "figures as of").lower(), path
+
+
+def _section(page: str, section_id: str) -> str:
+    match = re.search(rf'<(section|div) id="{section_id}"[^>]*>(.*?)</\1>', page, re.S)
+    assert match, section_id
+    return match.group(2)
+
+
+@pytest.mark.parametrize(
+    ("section_id", "figure"),
+    [
+        ("total-outstanding", "AED 193,000.00"),
+        ("overdue", "AED 147,000.00"),
+        ("dso", "149.7 days"),
+        ("unallocated", "AED 0.00"),
+        ("aging", "AED 46,000.00"),
+        ("exposure", "AED 57,000.00"),
+        ("top-customers", "69.39%"),
+        ("data-quality", "14 invoices and 4 payments"),
+    ],
+)
+def test_every_dashboard_number_shows_its_as_of(
+    seeded: TestClient, section_id: str, figure: str
+) -> None:
+    """§10: every number shows its as_of (checked per section, not just somewhere on the page)."""
+    block = _section(seeded.get("/", params={"as_of": "2026-10-31"}).text, section_id)
+    assert figure in block, section_id
+    assert "2026-10-31" in block, section_id
 
 
 def test_pages_are_unreachable_without_a_session(client: TestClient) -> None:
