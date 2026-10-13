@@ -7,16 +7,18 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import Engine, text
+from starlette.routing import Mount
 
 from receivables.adapters.clock import SimulatedClock
 from receivables.api.main import create_app
 from receivables.api.security import hash_password, verify_password
 from receivables.settings import Settings
 
-from .conftest import PASSWORD, SECRET, USERNAME, login
+from .conftest import PASSWORD, SECRET, USERNAME, csrf, login
 
 PUBLIC = {"/healthz", "/login"}
 
@@ -34,6 +36,12 @@ def _all_routes(routes: list[Any], prefix: str = "") -> list[tuple[str, str]]:
         elif hasattr(route, "original_router"):
             include_prefix = getattr(getattr(route, "include_context", None), "prefix", "")
             out.extend(_all_routes(route.original_router.routes, prefix + include_prefix))
+        elif (
+            isinstance(route, Mount)
+            and prefix + route.path == "/static"
+            and isinstance(route.app, StaticFiles)
+        ):
+            continue  # public self-hosted assets; tested in test_web_security.py
         else:
             raise AssertionError(f"T-SEC-03 route walker does not understand {route!r}")
     return out
@@ -110,7 +118,9 @@ class TestSec10:
 
 
 def test_login_sets_a_hardened_session_cookie(client: TestClient) -> None:
-    response = client.post("/login", data={"username": USERNAME, "password": PASSWORD})
+    response = client.post(
+        "/login", data={"csrf_token": csrf(client), "username": USERNAME, "password": PASSWORD}
+    )
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     cookie = response.headers["set-cookie"].lower()
@@ -122,8 +132,10 @@ def test_logged_in_access_and_logout(client: TestClient) -> None:
     assert login(client) == 303
     home = client.get("/")
     assert home.status_code == 200 and "SYNTHETIC DEMO DATA" in home.text and USERNAME in home.text
-    assert client.get("/api/me").json() == {"username": USERNAME, "role": "user"}
-    out = client.post("/logout")
+    me = client.get("/api/me").json()
+    assert {k: me[k] for k in ("username", "role")} == {"username": USERNAME, "role": "user"}
+    assert set(me) == {"username", "role", "csrf_token"} and len(me["csrf_token"]) >= 40
+    out = client.post("/logout", data={"csrf_token": csrf(client)})
     assert out.status_code == 303 and out.headers["location"] == "/login"
     assert client.get("/api/me").status_code == 401
 
@@ -154,9 +166,17 @@ def test_deleted_user_loses_access(client: TestClient, engine: Engine) -> None:
 
 
 def test_wrong_password_and_unknown_user_look_identical(client: TestClient) -> None:
-    wrong = client.post("/login", data={"username": USERNAME, "password": "not-the-password"})
+    wrong = client.post(
+        "/login",
+        data={"csrf_token": csrf(client), "username": USERNAME, "password": "not-the-password"},
+    )
     unknown = client.post(
-        "/login", data={"username": "nobody.here", "password": "not-the-password"}
+        "/login",
+        data={
+            "csrf_token": csrf(client),
+            "username": "nobody.here",
+            "password": "not-the-password",
+        },
     )
     assert wrong.status_code == unknown.status_code == 401
     assert wrong.text == unknown.text
@@ -164,11 +184,13 @@ def test_wrong_password_and_unknown_user_look_identical(client: TestClient) -> N
 
 
 def test_missing_form_fields_are_401_not_500(client: TestClient) -> None:
-    assert client.post("/login", data={}).status_code == 401
+    assert client.post("/login", data={"csrf_token": csrf(client)}).status_code == 401
 
 
 def test_session_does_not_carry_the_password(client: TestClient) -> None:
-    response = client.post("/login", data={"username": USERNAME, "password": PASSWORD})
+    response = client.post(
+        "/login", data={"csrf_token": csrf(client), "username": USERNAME, "password": PASSWORD}
+    )
     assert PASSWORD not in response.headers["set-cookie"]
 
 
@@ -242,10 +264,12 @@ def test_malformed_sessions_are_rejected(session: dict[str, Any], clock: Simulat
 
 
 def test_route_walker_fails_on_unknown_route_types() -> None:
-    from starlette.routing import Mount, Route
+    from starlette.routing import Route
 
     with pytest.raises(AssertionError, match="does not understand"):
-        _all_routes([Mount("/static", routes=[])])
+        _all_routes([Mount("/static", routes=[])])  # a /static mount that is not StaticFiles
+    with pytest.raises(AssertionError, match="does not understand"):
+        _all_routes([Mount("/uploads", app=StaticFiles(directory="."))])
     with pytest.raises(AssertionError, match="does not understand"):
         _all_routes([Route("/plain", endpoint=lambda request: None)])
 
@@ -253,8 +277,11 @@ def test_route_walker_fails_on_unknown_route_types() -> None:
 def test_concurrent_failed_logins_cannot_exceed_the_limit(client: TestClient) -> None:
     from concurrent.futures import ThreadPoolExecutor
 
+    token = csrf(client)  # one anonymous session, shared by all threads
     with ThreadPoolExecutor(max_workers=20) as pool:
-        codes = list(pool.map(lambda _: login(client, password="wrong-password"), range(20)))
+        codes = list(
+            pool.map(lambda _: login(client, password="wrong-password", token=token), range(20))
+        )
     assert codes.count(401) == 5
     assert codes.count(429) == 15
 
@@ -290,7 +317,12 @@ def test_success_releases_the_reservation(clock: SimulatedClock) -> None:
 
 def test_overlong_username_is_a_cheap_failure(client: TestClient) -> None:
     response = client.post(
-        "/login", data={"username": "u" * 10_000, "password": "whatever-password"}
+        "/login",
+        data={
+            "csrf_token": csrf(client),
+            "username": "u" * 10_000,
+            "password": "whatever-password",
+        },
     )
     assert response.status_code == 401
 
@@ -325,18 +357,22 @@ def test_head_and_options_are_gated(client: TestClient, method: str) -> None:
 def test_login_errors_are_json_for_api_clients(client: TestClient) -> None:
     json_headers = {"accept": "application/json"}
     bad = client.post(
-        "/login", data={"username": USERNAME, "password": "wrong-password"}, headers=json_headers
+        "/login",
+        data={"csrf_token": csrf(client), "username": USERNAME, "password": "wrong-password"},
+        headers=json_headers,
     )
     assert bad.status_code == 401
     assert bad.json() == {"error": "invalid_credentials", "detail": "Invalid username or password."}
     for _ in range(5):
         client.post(
             "/login",
-            data={"username": USERNAME, "password": "wrong-password"},
+            data={"csrf_token": csrf(client), "username": USERNAME, "password": "wrong-password"},
             headers=json_headers,
         )
     limited = client.post(
-        "/login", data={"username": USERNAME, "password": "wrong-password"}, headers=json_headers
+        "/login",
+        data={"csrf_token": csrf(client), "username": USERNAME, "password": "wrong-password"},
+        headers=json_headers,
     )
     assert limited.status_code == 429
     assert limited.json()["error"] == "rate_limited"
@@ -368,7 +404,7 @@ def _audit_actions(engine: Engine) -> list[tuple[str, str, str]]:
 
 def test_login_logout_and_lockout_are_audited(client: TestClient, engine: Engine) -> None:
     assert login(client) == 303
-    client.post("/logout")
+    client.post("/logout", data={"csrf_token": csrf(client)})
     for _ in range(7):
         login(client, password="wrong-password")
     actions = [a for a, _, _ in _audit_actions(engine) if a != "user.created"]
