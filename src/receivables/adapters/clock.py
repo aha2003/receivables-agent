@@ -5,11 +5,11 @@ Business code never reads the wall clock; it receives a ``Clock`` (or explicit `
 timezone-aware datetimes in Asia/Dubai.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
-__all__ = ["DUBAI", "Clock", "FixedClock", "SimulatedClock", "SystemClock"]
+__all__ = ["DUBAI", "Clock", "FixedClock", "SimulatedClock", "SystemClock", "utc_timestamp"]
 
 DUBAI = ZoneInfo("Asia/Dubai")
 
@@ -76,3 +76,8 @@ class SimulatedClock:
         if target < self._at:
             raise ValueError("simulated clock cannot move backwards")
         self._at = target
+
+
+def utc_timestamp(clock: Clock) -> str:
+    """ISO-8601 UTC timestamp (seconds, ``Z`` suffix) for database rows (SPEC §5)."""
+    return clock.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
