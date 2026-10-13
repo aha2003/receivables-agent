@@ -71,3 +71,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §4.1–§4.6, §5, §9 (shape) / T-IMP-01, T-IMP-02, T-IMP-03, T-UNA-02; T-IMP-04, T-IMP-05 at service level (HTTP in S1.13)
 - Deviations or decisions (link docs/DECISIONS.md): D-013 (route to S1.13; scope; write semantics; codes; review-driven rules)
 - Next step: S1.10 Repository layer, audit writer and seeded reset
+
+## 2026-10-13 — [S1.10] Repository layer, audit writer and seeded reset
+- PR: #76 | Branch: s1-10-repo-audit-reset | Commit: see PR head
+- Tests: `uv run pytest -q` → 449 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%; seed, cli, repo, importer 100%
+- Spec / test IDs covered: §3.4, §5 / T-AUD-01 (imports), reset idempotent with exactly the golden data; `uv run receivables reset` reproduces the golden numbers
+- Deviations or decisions (link docs/DECISIONS.md): D-014 (no prompt; check-first stage-then-swap reset; audit row shape); D-008 and D-011 updated (config.yaml loader in S1.13)
+- Next step: S1.11 App shell and session login
