@@ -1,5 +1,6 @@
 """App fixtures: a migrated temp database, one synthetic user and a controllable clock."""
 
+import secrets
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +21,7 @@ from receivables.settings import Settings
 
 SECRET = "test-only-session-secret-0123456789abcdef"  # synthetic, tests only
 USERNAME = "demo.user"
-PASSWORD = "synthetic-pass-123"  # synthetic test credential, never a real password
+PASSWORD = secrets.token_urlsafe(18)  # generated per test run; never a real password
 
 
 @pytest.fixture

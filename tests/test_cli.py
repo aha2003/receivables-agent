@@ -1,5 +1,6 @@
 """CLI commands ``seed`` and ``reset`` against a temporary database (never data/)."""
 
+import secrets
 from pathlib import Path
 
 import pytest
@@ -110,7 +111,7 @@ def test_os_error_is_an_error_exit(
 
 # --- create-user (SPEC §3.3: users are created with a CLI command, never through the web UI) ---
 
-SYNTHETIC_PASSWORD = "synthetic-pass-456"
+SYNTHETIC_PASSWORD = secrets.token_urlsafe(18)  # generated per test run
 
 
 def _stdin(monkeypatch: pytest.MonkeyPatch, text: str) -> None:

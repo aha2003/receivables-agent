@@ -1,0 +1,5 @@
+# Reviewed false positives only. Each entry is one finding fingerprint (commit:file:rule:line).
+# 04c825c (S1.11) committed synthetic test passwords as string literals; they were never real
+# credentials and the tests now generate them at runtime. History cannot be rewritten (no force-push).
+04c825c992bda455bf54623dfd542ae1e9478205:tests/api/conftest.py:generic-api-key:23
+04c825c992bda455bf54623dfd542ae1e9478205:tests/test_cli.py:generic-api-key:113
