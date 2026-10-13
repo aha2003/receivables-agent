@@ -99,3 +99,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §6, §9, §10, §4.6, §5 / T-API-01, T-API-02, T-API-03, T-IMP-04 and T-IMP-05 over HTTP; T-UI-02 and T-UI-05 checked manually in the browser
 - Deviations or decisions (link docs/DECISIONS.md): D-017 (config loader, JSON format, import refusals, invoice page, SVG bars, vendored htmx; DSO window spec conflict awaiting confirmation)
 - Next step: S1.14 Slice 1 close-out
+
+## 2026-10-13 — [S1.14] Slice 1 close-out
+- PR: see branch | Branch: s1-14-slice-1-closeout | Commit: see PR head
+- Tests: `uv run pytest -q` → 660 passed; ruff check and format clean; pyright 0 errors
+- Spec / test IDs covered: §16 Slice 1 exit condition (golden numbers match, seeded demo starts via CLI reset + create-user, UI says synthetic; CI green on main) / full suite; D2 partially (financial totals, aging and priority match the golden fixtures; draft facts and LLM immutability wait for Slice 3); docs/DEMO.md walkthrough run by hand
+- Deviations or decisions (link docs/DECISIONS.md): none; D-017 DSO window conflict still awaiting confirmation
+- Next step: S2.01 Agent tables migration (tag `slice-1-complete` on the merge commit after merge)
