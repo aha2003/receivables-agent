@@ -163,3 +163,12 @@ def test_compute_kpis_golden(
     }
     assert kpis.unallocated.total == 0
     assert kpis.unallocated.by_customer == {}
+
+
+def test_dso_window_includes_invoices_dated_on_as_of() -> None:
+    """§6.6: the window ends on ``as_of`` inclusive."""
+    rows = build_ledger(
+        [_invoice(1, AS_OF), _invoice(2, AS_OF - timedelta(days=90))], [], as_of=AS_OF
+    )
+    dso = estimated_dso(rows, aging_summary(rows).total_open, AS_OF)
+    assert dso.credit_sales_in_window == to_fils("1000.00")
