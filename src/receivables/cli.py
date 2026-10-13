@@ -1,19 +1,27 @@
-"""Command line: ``receivables seed`` and ``receivables reset`` (SYNTHETIC DEMO DATA only).
+"""Command line: ``seed``, ``reset`` and ``create-user`` (SYNTHETIC DEMO DATA only).
 
 The database URL and fixtures directory come from settings (environment), never from a
 request. The system clock is used only here, at the application edge.
 """
 
 import argparse
+import re
 import sys
 from collections.abc import Sequence
 from datetime import date
+from getpass import getpass
 from pathlib import Path
 
 from receivables.adapters.clock import SystemClock
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
-from receivables.adapters.db.repo import load_ledger_inputs, table_counts
+from receivables.adapters.db.repo import (
+    get_user_by_username,
+    insert_user,
+    load_ledger_inputs,
+    table_counts,
+)
+from receivables.api.security import hash_password
 from receivables.core.aging import aging_summary
 from receivables.core.config import EngineConfig
 from receivables.core.history import customer_history
@@ -27,6 +35,12 @@ from receivables.settings import Settings
 __all__ = ["main"]
 
 BANNER = "SYNTHETIC DEMO DATA"
+MIN_PASSWORD_LENGTH = 12
+_USERNAME = re.compile(r"[A-Za-z0-9._@-]{1,64}")
+
+
+class _UserError(Exception):
+    pass
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -43,7 +57,50 @@ def _parser() -> argparse.ArgumentParser:
             default=None,
             help="date for the printed summary (YYYY-MM-DD; default today)",
         )
+    user = commands.add_parser("create-user", help="create a login (never via the web UI, §3.3)")
+    user.add_argument("username")
+    user.add_argument("--role", choices=("user", "admin"), default="user")
+    user.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read the password from standard input instead of prompting",
+    )
     return parser
+
+
+def _read_password(from_stdin: bool) -> str:
+    if from_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = getpass("Password: ")
+        if getpass("Repeat password: ") != password:
+            raise _UserError("passwords do not match")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise _UserError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
+    return password
+
+
+def _create_user(url: str, args: argparse.Namespace, clock: SystemClock) -> None:
+    if not _USERNAME.fullmatch(args.username):
+        raise _UserError("username must be 1-64 characters of letters, digits and . _ @ -")
+    password = _read_password(args.password_stdin)
+    upgrade_to_head(url)
+    engine = make_engine(url)
+    try:
+        with engine.begin() as conn:
+            if get_user_by_username(conn, args.username) is not None:
+                raise _UserError(f"user {args.username!r} already exists")
+            insert_user(
+                conn,
+                clock,
+                username=args.username,
+                password_hash=hash_password(password),
+                role=args.role,
+                actor="cli",
+            )
+    finally:
+        engine.dispose()
+    print(f"created user {args.username} ({args.role})")
 
 
 def _aed(fils: int) -> str:
@@ -76,8 +133,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     clock = SystemClock()
     fixtures = Path(settings.fixtures_dir)
     url = settings.database_url
-    as_of: date = args.as_of or clock.today()
     print(BANNER)
+    if args.command == "create-user":
+        try:
+            _create_user(url, args, clock)
+        except _UserError as err:
+            print(f"create-user failed: {err}", file=sys.stderr)
+            return 1
+        return 0
+    as_of: date = args.as_of or clock.today()
     try:
         if args.command == "reset":
             result = reset(url, fixtures, clock, actor="cli")

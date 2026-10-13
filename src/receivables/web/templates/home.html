@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<h1>Receivables collections agent</h1>
+<p>Signed in as {{ user.username }} ({{ user.role }}).</p>
+<form method="post" action="/logout"><button type="submit">Sign out</button></form>
+{% endblock %}

@@ -6,8 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.0",
+    "argon2-cffi>=25.1.0",
+    "fastapi>=0.143.0",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
     "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
     "sqlalchemy>=2.1.4",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -15,6 +21,7 @@ receivables = "receivables.cli:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "hypothesis>=6.169.0",
     "pip-audit>=2.10.1",
     "pre-commit>=4.6.2",
@@ -36,7 +43,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S105", "S106"]  # asserts; synthetic test credentials
 # Verbatim SPEC §5 DDL; long lines are kept so the copy stays exact.
 "src/receivables/adapters/db/migrations/versions/**" = ["E501"]
 
