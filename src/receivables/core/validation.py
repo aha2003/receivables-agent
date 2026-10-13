@@ -3,9 +3,10 @@
 ``validate_csv`` turns CSV text into typed records plus errors and warnings. Each data row
 reports at most one error: the first failing check in the §4.6 order (required, duplicate key,
 date, due before issue, amount, currency, foreign key), followed by the checks §4.6 does not
-order (enum, TRN, customer mismatch). Formats are strict ASCII (docs/DECISIONS.md D-005,
-D-013). Line numbers are 1-based physical lines including the header; file-level summary
-warnings use line 0.
+order (enum, TRN, customer mismatch, label). Formats are strict ASCII with at most two written
+decimals (docs/DECISIONS.md D-005, D-013). Rows split on line feeds only; malformed CSV is
+reported as ``E_BAD_NUMBER_FORMAT`` on field ``csv``. Line numbers are 1-based physical lines
+including the header; file-level summary warnings use line 0.
 """
 
 import csv
@@ -19,6 +20,7 @@ from receivables.core.money import from_fils, to_fils
 from receivables.core.scoring import EventRecord
 
 __all__ = [
+    "DISPUTE_EVENT_LABELS",
     "DISPUTE_LABELS",
     "FILE_KINDS",
     "CustomerRow",
@@ -49,12 +51,23 @@ DISPUTE_LABELS = frozenset(
         "UNCLEAR",
     }
 )
+# The §7.1 labels whose "Creates on accept" is DISPUTE_OPENED: the "dispute label" of §4.4.
+DISPUTE_EVENT_LABELS = frozenset(
+    {
+        "PO_AMOUNT_MISMATCH",
+        "MISSING_PO",
+        "MISSING_DELIVERY_NOTE",
+        "GOODS_OR_SERVICE_ISSUE",
+        "PRICE_OR_RATE_DISPUTE",
+        "WRONG_ENTITY_OR_DETAILS",
+    }
+)
 PAYMENT_TYPES = frozenset({"payment", "credit_note", "write_off"})
 EVENT_TYPES = frozenset({"DISPUTE_OPENED", "DISPUTE_RESOLVED", "PROMISE_TO_PAY"})
 
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_AMOUNT = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
-_INTEGER = re.compile(r"[0-9]+")
+_AMOUNT = re.compile(r"-?[0-9]+(?:\.[0-9]{1,2})?")  # at most 2 written decimals (§4)
+_INTEGER = re.compile(r"[0-9]{1,3}")
 _TRN = re.compile(r"[0-9]{15}")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -120,6 +133,12 @@ class ValidationResult:
     warnings: tuple[Issue, ...]
 
 
+class _MalformedCsv(Exception):
+    def __init__(self, line: int) -> None:
+        super().__init__(line)
+        self.line = line
+
+
 class _RowError(Exception):
     def __init__(self, code: str, field: str) -> None:
         super().__init__(code)
@@ -134,12 +153,27 @@ def derive_tin(trn: str | None) -> str | None:
     return trn[:10]
 
 
+def _lines(text: str) -> list[str]:
+    """Split on line feeds only; ``str.splitlines`` would also break on U+2028, U+0085 etc."""
+    parts = text.split("\n")
+    lines = [part + "\n" for part in parts[:-1]]
+    if parts[-1]:
+        lines.append(parts[-1])
+    return lines
+
+
 def _rows(text: str) -> Iterable[tuple[int, list[str]]]:
     """(starting physical line, cells) for every non-empty CSV record."""
-    reader = csv.reader(text.splitlines(keepends=True))
+    reader = csv.reader(_lines(text))
     previous_end = 0
-    for cells in reader:
+    while True:
         start = previous_end + 1
+        try:
+            cells = next(reader)
+        except StopIteration:
+            return
+        except csv.Error:
+            raise _MalformedCsv(start) from None
         previous_end = reader.line_num
         if cells and any(c.strip() for c in cells):
             yield start, [c.strip() for c in cells]
@@ -182,6 +216,14 @@ class _Context:
         self.allocations: list[tuple[int, str, str, int]] = []
         self.unallocated_count = 0
         self.unallocated_total = 0
+
+    def existing_applied(self) -> dict[str, int]:
+        """Applied amounts per invoice from payments already in the database."""
+        applied: dict[str, int] = {}
+        for invoice_number, amount in self.refs.existing_payments.values():
+            if invoice_number is not None:
+                applied[invoice_number] = applied.get(invoice_number, 0) + amount
+        return applied
 
     def unique(self, key: str, name: str) -> None:
         if key in self.seen:
@@ -235,6 +277,14 @@ def _invoice(line: int, row: Mapping[str, str], ctx: _Context) -> InvoiceRecord:
         raise _RowError("E_CURRENCY", "currency")
     if row["customer_id"] not in ctx.refs.customer_ids:
         raise _RowError("E_FK_MISSING", "customer_id")
+    number = row["invoice_number"]
+    paid = ctx.existing_applied().get(number)
+    if paid is not None:
+        if ctx.refs.invoice_customers.get(number) != row["customer_id"]:
+            # Re-import would detach existing payments from their customer (§4.3, D-013).
+            raise _RowError("E_CUSTOMER_MISMATCH", "customer_id")
+        if paid > amount:
+            ctx.warnings.append(Issue(line, "W_OVERPAID", "amount", number))
     ctx.future(line, "invoice_date", invoice_date)
     return InvoiceRecord(
         invoice_number=row["invoice_number"],
@@ -257,12 +307,12 @@ def _payment(line: int, row: Mapping[str, str], ctx: _Context) -> PaymentRecord:
     ctx.unique(row["payment_id"], "payment_id")
     payment_date = _parse_date(row["payment_date"], "payment_date")
     amount = _parse_amount(row["amount"])
-    if payment_type not in PAYMENT_TYPES:
-        raise _RowError("E_BAD_ENUM", "payment_type")
     if invoice_number is not None and invoice_number not in ctx.refs.invoice_customers:
         raise _RowError("E_FK_MISSING", "invoice_number")
     if customer_id is not None and customer_id not in ctx.refs.customer_ids:
         raise _RowError("E_FK_MISSING", "customer_id")
+    if payment_type not in PAYMENT_TYPES:
+        raise _RowError("E_BAD_ENUM", "payment_type")
     if (
         invoice_number is not None
         and customer_id is not None
@@ -299,13 +349,13 @@ def _event(line: int, row: Mapping[str, str], ctx: _Context) -> EventRecord:
     promise_date = _parse_date(promise_raw, "promise_date") if promise_raw else None
     if promise_date is not None and promise_date < event_date:
         raise _RowError("E_BAD_DATE", "promise_date")
+    if row["invoice_number"] not in ctx.refs.invoice_customers:
+        raise _RowError("E_FK_MISSING", "invoice_number")
     if event_type not in EVENT_TYPES:
         raise _RowError("E_BAD_ENUM", "event_type")
     label = row.get("label") or None
-    if label is not None and event_type != "PROMISE_TO_PAY" and label not in DISPUTE_LABELS:
+    if label is not None and event_type != "PROMISE_TO_PAY" and label not in DISPUTE_EVENT_LABELS:
         raise _RowError("E_BAD_ENUM", "label")
-    if row["invoice_number"] not in ctx.refs.invoice_customers:
-        raise _RowError("E_FK_MISSING", "invoice_number")
     ctx.future(line, "event_date", event_date)
     return EventRecord(
         event_id=row["event_id"],
@@ -350,6 +400,14 @@ def validate_csv(kind: str, text: str, refs: References, today: date) -> Validat
     """Validate one fixed-schema CSV file; ``today`` drives ``W_FUTURE_DATE`` only."""
     if kind not in _PARSERS:
         raise ValueError(f"unsupported file kind {kind!r}")
+    try:
+        return _validate(kind, text, refs, today)
+    except _MalformedCsv as err:
+        issue = Issue(err.line, "E_BAD_NUMBER_FORMAT", "csv")
+        return ValidationResult(kind, max(err.line - 1, 0), (), (issue,), ())
+
+
+def _validate(kind: str, text: str, refs: References, today: date) -> ValidationResult:
     required, optional = _COLUMNS[kind]
     rows = iter(_rows(text))
     header_line, header = next(rows, (1, []))

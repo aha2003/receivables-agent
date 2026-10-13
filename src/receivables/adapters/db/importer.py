@@ -88,7 +88,12 @@ def import_csv(
     sha = hashlib.sha256(raw).hexdigest()
     key = f"{kind}:{sha}:{MAPPING_HASH}"
     try:
-        with engine.begin() as conn:
+        # BEGIN IMMEDIATE: the duplicate check, reference reads and writes share one write
+        # transaction, so a concurrent import cannot change the references in between.
+        with (
+            engine.connect().execution_options(sqlite_begin="IMMEDIATE") as conn,
+            conn.begin(),
+        ):
             existing = _existing_import(conn, key)
             if existing is not None:
                 return existing

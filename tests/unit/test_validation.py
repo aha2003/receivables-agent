@@ -462,3 +462,146 @@ def test_blank_and_empty_rows_are_skipped() -> None:
     result = validate_csv("invoices", text, CUST_REFS, TODAY)
     assert result.errors == ()
     assert result.rows_total == 1
+
+
+# --- spec review regressions ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("amount", ["500.100", "10.000", "1.0000"])
+def test_more_than_two_written_decimals_rejected(amount: str) -> None:
+    """§4: at most 2 decimal places in the file, even when the value fits in fils (D-005)."""
+    result = validate_csv("invoices", INV_HEADER + _invoice_line(amount=amount), CUST_REFS, TODAY)
+    assert [(e.code, e.field) for e in result.errors] == [("E_BAD_AMOUNT", "amount")]
+
+
+def test_huge_payment_terms_is_a_row_error_not_a_crash() -> None:
+    result = validate_csv(
+        "customers", CUST_HEADER + f"C-1,X,,,{'9' * 5000},\n", References(), TODAY
+    )
+    assert [(e.code, e.field) for e in result.errors] == [
+        ("E_BAD_NUMBER_FORMAT", "payment_terms_days")
+    ]
+
+
+def test_foreign_key_check_precedes_enum_checks() -> None:
+    """D-013: checks §4.6 does not order run after its list, i.e. after the foreign key."""
+    pay = validate_csv(
+        "payments", PAY_HEADER + "P-1,INV-404,,2026-10-01,10.00,refund\n", PAY_REFS, TODAY
+    )
+    assert [(e.code, e.field) for e in pay.errors] == [("E_FK_MISSING", "invoice_number")]
+    ev = validate_csv("events", EV_HEADER + "E-1,INV-404,PAID,2026-10-01,,\n", EV_REFS, TODAY)
+    assert [(e.code, e.field) for e in ev.errors] == [("E_FK_MISSING", "invoice_number")]
+
+
+@pytest.mark.parametrize("separator", [chr(0x2028), chr(0x2029), "\x85", "\x0b", "\x0c", "\x1c"])
+def test_unicode_line_separators_do_not_split_rows(separator: str) -> None:
+    text = CUST_HEADER + f"C-1,Name{separator}Two,,,,\n" + "C-2,Y,12345,,,\n"
+    result = validate_csv("customers", text, References(), TODAY)
+    assert result.rows_total == 2
+    assert [(e.line, e.code) for e in result.errors] == [(3, "E_BAD_TRN")]
+
+
+def test_malformed_csv_is_a_rejection_not_a_crash() -> None:
+    result = validate_csv("customers", CUST_HEADER + "C-1,a\rb,,,,\n", References(), TODAY)
+    assert [(e.line, e.code, e.field) for e in result.errors] == [(2, "E_BAD_NUMBER_FORMAT", "csv")]
+    assert result.records == ()
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "ALREADY_PAID",
+        "PAYMENT_PROMISED",
+        "AWAITING_INTERNAL_APPROVAL",
+        "CASHFLOW_DELAY",
+        "REQUEST_STATEMENT_OR_COPY",
+        "NO_ACTION_NEEDED",
+        "UNCLEAR",
+    ],
+)
+def test_dispute_events_need_a_dispute_creating_label(label: str) -> None:
+    result = validate_csv(
+        "events", EV_HEADER + f"E-1,INV-1,DISPUTE_OPENED,2026-10-01,{label},\n", EV_REFS, TODAY
+    )
+    assert [(e.code, e.field) for e in result.errors] == [("E_BAD_ENUM", "label")]
+
+
+def test_dispute_label_set_is_the_six_dispute_creating_labels() -> None:
+    from receivables.core.validation import DISPUTE_EVENT_LABELS
+
+    assert {
+        "PO_AMOUNT_MISMATCH",
+        "MISSING_PO",
+        "MISSING_DELIVERY_NOTE",
+        "GOODS_OR_SERVICE_ISSUE",
+        "PRICE_OR_RATE_DISPUTE",
+        "WRONG_ENTITY_OR_DETAILS",
+    } == DISPUTE_EVENT_LABELS
+
+
+def _paid_invoice_refs() -> References:
+    return References(
+        customer_ids=frozenset({"C001", "C002"}),
+        invoice_customers={"INV-1": "C001"},
+        invoice_amounts={"INV-1": to_fils("100.00")},
+        existing_payments={"P-1": ("INV-1", to_fils("80.00"))},
+    )
+
+
+def test_reimport_cannot_move_a_paid_invoice_to_another_customer() -> None:
+    result = validate_csv(
+        "invoices", INV_HEADER + _invoice_line(customer_id="C002"), _paid_invoice_refs(), TODAY
+    )
+    assert [(e.code, e.field) for e in result.errors] == [("E_CUSTOMER_MISMATCH", "customer_id")]
+
+
+def test_reimport_below_applied_amount_warns_overpaid() -> None:
+    result = validate_csv(
+        "invoices", INV_HEADER + _invoice_line(amount="50.00"), _paid_invoice_refs(), TODAY
+    )
+    assert result.errors == ()
+    assert [(w.code, w.field, w.detail) for w in result.warnings] == [
+        ("W_OVERPAID", "amount", "INV-1")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "text", "refs", "field"),
+    [
+        (
+            "invoices",
+            INV_HEADER + _invoice_line(invoice_date="2026-11-01", due_date="2026-12-01"),
+            CUST_REFS,
+            "invoice_date",
+        ),
+        ("events", EV_HEADER + "E-1,INV-1,DISPUTE_RESOLVED,2026-11-02,,\n", EV_REFS, "event_date"),
+    ],
+)
+def test_future_date_warning(kind: str, text: str, refs: References, field: str) -> None:
+    result = validate_csv(kind, text, refs, TODAY)
+    assert result.errors == ()
+    assert [(w.code, w.field) for w in result.warnings] == [("W_FUTURE_DATE", field)]
+
+
+def test_file_without_trailing_newline() -> None:
+    result = validate_csv("invoices", INV_HEADER + _invoice_line().rstrip("\n"), CUST_REFS, TODAY)
+    assert result.errors == ()
+    assert result.rows_total == 1
+
+
+def test_amount_too_large_for_fils_is_bad_amount() -> None:
+    result = validate_csv(
+        "invoices", INV_HEADER + _invoice_line(amount="9" * 5000), CUST_REFS, TODAY
+    )
+    assert [(e.code, e.field) for e in result.errors] == [("E_BAD_AMOUNT", "amount")]
+
+
+def test_reimport_same_customer_within_amount_is_clean() -> None:
+    refs = References(
+        customer_ids=frozenset({"C001"}),
+        invoice_customers={"INV-1": "C001"},
+        invoice_amounts={"INV-1": to_fils("100.00")},
+        existing_payments={"P-1": ("INV-1", to_fils("80.00")), "P-U": (None, to_fils("5.00"))},
+    )
+    result = validate_csv("invoices", INV_HEADER + _invoice_line(amount="100.00"), refs, TODAY)
+    assert result.errors == () and result.warnings == ()

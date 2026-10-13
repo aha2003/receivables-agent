@@ -342,3 +342,47 @@ def test_database_check_is_a_backstop_when_validation_misses(
             db, "customers", b"customer_id,customer_name\nC-1,X\n", filename="c.csv", clock=CLOCK
         )
     assert _counts(db) == before
+
+
+def test_reads_happen_inside_the_write_transaction(
+    db: Engine, fixture_text: Callable[[str], str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The duplicate check and reference reads run under BEGIN IMMEDIATE, not autocommit."""
+    real_refs = importer._references
+    seen: list[bool] = []
+
+    def checking_refs(conn: Any) -> Any:
+        seen.append(bool(conn.connection.dbapi_connection.in_transaction))
+        return real_refs(conn)
+
+    monkeypatch.setattr(importer, "_references", checking_refs)
+    _load(db, fixture_text, "customers")
+    assert seen == [True]
+
+
+def test_import_holds_the_write_lock_while_validating(
+    db: Engine, fixture_text: Callable[[str], str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BEGIN IMMEDIATE: another writer cannot start until the import finishes."""
+    import sqlite3
+
+    real_refs = importer._references
+    blocked: list[bool] = []
+
+    def other_writer_attempt(conn: Any) -> Any:
+        path = db.url.database
+        assert path is not None
+        other = sqlite3.connect(path, timeout=0.05, isolation_level=None)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+            blocked.append(False)
+        except sqlite3.OperationalError as err:
+            blocked.append("locked" in str(err))
+        finally:
+            other.close()
+        return real_refs(conn)
+
+    monkeypatch.setattr(importer, "_references", other_writer_attempt)
+    _load(db, fixture_text, "customers")
+    assert blocked == [True]
