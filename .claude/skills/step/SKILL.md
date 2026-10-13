@@ -6,6 +6,7 @@ disable-model-invocation: true
 Target: $ARGUMENTS (if empty, the first unchecked step in PLAN.md, in order).
 
 1. Read CLAUDE.md, the step in PLAN.md and only the spec sections it lists. If the previous step is not ticked, stop and say so.
+   Also read the SPEC §2 (Definitions) entries for every defined term those sections use; §2 is binding and can settle what a listed section leaves open.
 2. `git switch main && git pull`; create branch `<step-id-lowercase>-<slug>`.
 3. Write a short plan (files, tests, commands, risks) and WAIT for my approval.
 4. Implement in small commits prefixed with the step id. Write the tests named for the step first or alongside them. Never weaken tests or fixtures.
