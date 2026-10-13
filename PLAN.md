@@ -71,7 +71,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §3.3, §9
   - Tests: T-SEC-03, T-SEC-10
   - Done when: Unauthenticated requests are rejected; the sixth failed login in a minute returns 429.
-- [ ] **S1.12** Web security baseline
+- [x] **S1.12** Web security baseline
   - Goal: CSRF token on every state-changing request, security headers with a strict CSP, vendored static assets (no CDN).
   - Spec: §3.3
   - Tests: T-SEC-09, T-SEC-11
