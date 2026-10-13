@@ -11,7 +11,6 @@ from hypothesis import strategies as st
 from receivables.core.ledger import (
     InvoiceRecord,
     LedgerRow,
-    OverpaymentError,
     PaymentRecord,
     build_ledger,
 )
@@ -137,9 +136,63 @@ def test_partial_payment_keeps_days_and_bucket() -> None:
     assert row.settled_date is None
 
 
-def test_overpayment_raises() -> None:
-    with pytest.raises(OverpaymentError, match="INV-T1"):
-        build_ledger([_invoice()], [_payment("P-1", "1000.01", date(2026, 9, 5))], as_of=AS_OF)
+def test_overpayment_clamps_open_amount_to_zero() -> None:
+    """§2: open amount = max(0, invoice amount - applied amount) (D-010)."""
+    row = build_ledger([_invoice()], [_payment("P-1", "1000.01", date(2026, 9, 5))], as_of=AS_OF)[0]
+    assert row.open_amount == 0
+    assert row.settled_date == date(2026, 9, 5)
+    assert row.days_overdue is None
+    assert row.bucket is None
+
+
+def test_write_off_completing_invoice_gives_no_settled_date() -> None:
+    """§2: write-offs reduce the open amount but never create a settled date."""
+    payments = [
+        _payment("P-1", "600.00", date(2026, 9, 10)),
+        _payment("W-1", "400.00", date(2026, 10, 5), kind="write_off"),
+    ]
+    row = build_ledger([_invoice()], payments, as_of=AS_OF)[0]
+    assert row.open_amount == 0
+    assert row.settled_date is None
+    assert row.days_overdue is None
+
+
+def test_write_off_before_payment_still_no_settled_date() -> None:
+    payments = [
+        _payment("W-1", "100.00", date(2026, 9, 10), kind="write_off"),
+        _payment("P-1", "900.00", date(2026, 10, 5)),
+    ]
+    row = build_ledger([_invoice()], payments, as_of=AS_OF)[0]
+    assert row.open_amount == 0
+    assert row.settled_date is None
+
+
+def test_full_write_off_closes_without_settled_date() -> None:
+    row = build_ledger(
+        [_invoice()], [_payment("W-1", "1000.00", date(2026, 9, 10), kind="write_off")], as_of=AS_OF
+    )[0]
+    assert row.open_amount == 0
+    assert row.settled_date is None
+
+
+def test_credit_note_counts_towards_settled_date() -> None:
+    payments = [
+        _payment("P-1", "700.00", date(2026, 9, 10)),
+        _payment("C-1", "300.00", date(2026, 10, 3), kind="credit_note"),
+    ]
+    row = build_ledger([_invoice()], payments, as_of=AS_OF)[0]
+    assert row.open_amount == 0
+    assert row.settled_date == date(2026, 10, 3)
+
+
+def test_settled_date_is_first_date_reaching_amount() -> None:
+    payments = [
+        _payment("P-1", "1000.00", date(2026, 9, 10)),
+        _payment("P-2", "50.00", date(2026, 9, 20)),
+    ]
+    row = build_ledger([_invoice()], payments, as_of=AS_OF)[0]
+    assert row.open_amount == 0
+    assert row.settled_date == date(2026, 9, 10)
 
 
 def test_invoice_on_as_of_included_and_after_excluded() -> None:
@@ -182,19 +235,26 @@ def test_deterministic_regardless_of_input_order(golden_ledger_inputs: Inputs) -
 
 @given(
     amount=st.integers(min_value=1, max_value=10**12),
-    parts=st.lists(st.integers(min_value=1, max_value=10**12), max_size=6),
-    days=st.integers(min_value=-400, max_value=400),
+    parts=st.lists(
+        st.tuples(
+            st.integers(min_value=1, max_value=10**12),
+            st.sampled_from(["payment", "credit_note", "write_off"]),
+            st.integers(min_value=0, max_value=60),
+        ),
+        max_size=6,
+    ),
+    days=st.integers(min_value=0, max_value=400),
 )
-def test_open_amount_bounded(amount: int, parts: list[int], days: int) -> None:
-    applied: list[int] = []
-    for p in parts:
-        if sum(applied) + p <= amount:
-            applied.append(p)
+def test_ledger_follows_section_2_definitions(
+    amount: int, parts: list[tuple[int, str, int]], days: int
+) -> None:
+    start = date(2026, 1, 1)
+    as_of = start + timedelta(days=days)
     inv = InvoiceRecord(
         invoice_number="INV-H",
         customer_id="CUST-H",
-        invoice_date=date(2026, 1, 1),
-        due_date=date(2026, 1, 1),
+        invoice_date=start,
+        due_date=start,
         amount=amount,
     )
     pays = [
@@ -202,14 +262,24 @@ def test_open_amount_bounded(amount: int, parts: list[int], days: int) -> None:
             payment_id=f"P-{i}",
             invoice_number="INV-H",
             customer_id=None,
-            payment_date=date(2026, 1, 2),
+            payment_date=start + timedelta(days=offset),
             amount=a,
-            payment_type="payment",
+            payment_type=kind,
         )
-        for i, a in enumerate(applied)
+        for i, (a, kind, offset) in enumerate(parts)
     ]
-    as_of = date(2026, 1, 2) + timedelta(days=max(days, 0))
     row = build_ledger([inv], pays, as_of=as_of)[0]
-    assert 0 <= row.open_amount <= amount
-    assert row.open_amount == amount - sum(applied)
-    assert (row.settled_date is None) == (row.open_amount > 0)
+    counted = sorted(
+        (p for p in pays if p.payment_date <= as_of), key=lambda p: (p.payment_date, p.payment_id)
+    )
+    assert row.open_amount == max(0, amount - sum(p.amount for p in counted))
+    running = 0
+    expected_settled = None
+    for p in counted:
+        if p.payment_type != "write_off":
+            running += p.amount
+            if running >= amount:
+                expected_settled = p.payment_date
+                break
+    assert row.settled_date == expected_settled
+    assert (row.days_overdue is None) == (row.open_amount == 0)

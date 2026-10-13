@@ -1,8 +1,9 @@
-"""Ledger with as-of time travel (SPEC §6.1). Pure: amounts are integer fils.
+"""Ledger with as-of time travel (SPEC §6.1, definitions in §2). Pure: amounts are integer fils.
 
-Payments, credit notes and write-offs all reduce an invoice's open amount. Payments dated
-after ``as_of`` and unallocated payments are ignored. Applied amounts above the invoice amount
-raise ``OverpaymentError`` (docs/DECISIONS.md D-010).
+Applied amount: payments of any type (``payment``, ``credit_note``, ``write_off``) dated on or
+before ``as_of``. Open amount: ``max(0, invoice amount - applied amount)``. Settled date: the
+date cumulative ``payment`` plus ``credit_note`` amounts first reach the invoice amount;
+write-offs never create one. Unallocated payments are never applied (docs/DECISIONS.md D-010).
 """
 
 from collections.abc import Iterable
@@ -11,11 +12,11 @@ from datetime import date
 
 from receivables.core.aging import bucket_for
 
-__all__ = ["InvoiceRecord", "LedgerRow", "OverpaymentError", "PaymentRecord", "build_ledger"]
+__all__ = ["SETTLING_TYPES", "InvoiceRecord", "LedgerRow", "PaymentRecord", "build_ledger"]
 
 
-class OverpaymentError(ValueError):
-    """Allocated payments exceed the invoice amount; upstream validation should prevent it."""
+# Payment types that count towards the settled date (§2); write-offs do not.
+SETTLING_TYPES = frozenset({"payment", "credit_note"})
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -78,14 +79,16 @@ def build_ledger(
     rows: list[LedgerRow] = []
     for number in sorted(in_ledger):
         inv = in_ledger[number]
-        open_amount = inv.amount
+        applied_amount = 0
+        settling_amount = 0
         settled: date | None = None
         for pay in sorted(applied[number], key=lambda p: (p.payment_date, p.payment_id)):
-            open_amount -= pay.amount
-            if open_amount < 0:
-                raise OverpaymentError(f"payments exceed invoice {number!r}")
-            if open_amount == 0 and settled is None:
-                settled = pay.payment_date
+            applied_amount += pay.amount
+            if pay.payment_type in SETTLING_TYPES:
+                settling_amount += pay.amount
+                if settled is None and settling_amount >= inv.amount:
+                    settled = pay.payment_date
+        open_amount = max(0, inv.amount - applied_amount)
         is_open = open_amount > 0
         days = (as_of - inv.due_date).days if is_open else None
         rows.append(
