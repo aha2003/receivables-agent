@@ -78,3 +78,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.4, §5 / T-AUD-01 (imports), reset idempotent with exactly the golden data; `uv run receivables reset` reproduces the golden numbers
 - Deviations or decisions (link docs/DECISIONS.md): D-014 (no prompt; check-first stage-then-swap reset; audit row shape); D-008 and D-011 updated (config.yaml loader in S1.13)
 - Next step: S1.11 App shell and session login
+
+## 2026-10-13 — [S1.11] App shell and session login
+- PR: #77 | Branch: s1-11-app-shell-login | Commit: see PR head
+- Tests: `uv run pytest -q` → 504 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%; api/ and cli 100%
+- Spec / test IDs covered: §3.3, §9 / T-SEC-03, T-SEC-10
+- Deviations or decisions (link docs/DECISIONS.md): D-015 (stateless cookie, client-side logout until S5.04; atomic bounded limiter; audited login/logout/lockout; X-Forwarded-For gap for S5.03)
+- Next step: S1.12 Web security baseline
