@@ -11,28 +11,43 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | Package | Version | Licence | Purpose | Added in |
 |---|---|---|---|---|
 | alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
+| argon2-cffi | 25.1.0 | MIT | Argon2id password hashing | S1.11 |
+| fastapi | 0.143.0 | MIT | HTTP API and pages | S1.11 |
+| itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
+| jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
 | pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
+| python-multipart | 0.0.32 | Apache-2.0 | Login form parsing | S1.11 |
 | sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
+| uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | S1.11 |
 
 ## Runtime dependencies (transitive)
 
 | Package | Version | Licence |
 |---|---|---|
+| annotated-doc | 0.0.5 | MIT |
 | annotated-types | 0.8.0 | MIT |
+| anyio | 4.15.1 | MIT |
+| argon2-cffi-bindings | 26.1.0 | MIT |
+| cffi | 2.1.1 | MIT-0 |
+| click | 8.5.0 | BSD-3-Clause |
+| h11 | 0.16.0 | MIT |
+| idna | 3.20 | BSD-3-Clause |
 | mako | 1.4.3 | MIT |
 | markupsafe | 3.0.4 | BSD-3-Clause |
+| opentelemetry-api | 1.45.1 | Apache-2.0 (installed by FastAPI; no telemetry is configured or exported) |
+| pycparser | 3.11 | BSD-3-Clause |
 | pydantic | 2.14.1 | MIT |
 | pydantic-core | 2.50.1 | MIT |
 | python-dotenv | 1.2.4 | BSD-3-Clause (installed by pydantic-settings; the app reads no `.env` file) |
+| starlette | 1.8.0 | BSD-3-Clause |
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | typing-inspection | 0.4.4 | MIT |
 
 ## Development dependencies (direct)
 
-Development packages of §16.1 not yet needed (`httpx`) are added in the step that first uses them (D-001).
-
 | Package | Version | Licence | Purpose |
 |---|---|---|---|
+| httpx | 0.28.1 | BSD-3-Clause | FastAPI test client (added in S1.11) |
 | hypothesis | 6.169.0 | MPL-2.0 | Property tests |
 | pip-audit | 2.10.1 | Apache-2.0 | Dependency vulnerability scan |
 | pre-commit | 4.6.2 | MIT | Local git hooks |
@@ -56,8 +71,8 @@ Development packages of §16.1 not yet needed (`httpx`) are added in the step th
 | defusedxml | 0.7.1 | PSF-2.0 |
 | distlib | 0.4.3 | PSF-2.0 |
 | filelock | 4.1.1 | MIT |
+| httpcore | 1.0.9 | BSD-3-Clause |
 | identify | 2.6.20 | MIT |
-| idna | 3.20 | BSD-3-Clause |
 | iniconfig | 2.3.1 | MIT |
 | license-expression | 30.4.4 | Apache-2.0 |
 | markdown-it-py | 4.2.0 | MIT |
