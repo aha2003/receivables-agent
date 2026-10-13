@@ -106,3 +106,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §16 Slice 1 exit condition (golden numbers match, seeded demo starts via CLI reset + create-user, UI says synthetic; CI green on main) / full suite; D2 partially (financial totals, aging and priority match the golden fixtures; draft facts and LLM immutability wait for Slice 3); docs/DEMO.md walkthrough run by hand
 - Deviations or decisions (link docs/DECISIONS.md): none; D-017 DSO window conflict still awaiting confirmation
 - Next step: S2.01 Agent tables migration (tag `slice-1-complete` on the merge commit after merge)
+
+## 2026-10-13 — [S2.01] Agent tables migration
+- PR: see branch | Branch: s2-01-agent-tables-migration | Commit: see PR head
+- Tests: `uv run pytest -q` → 810 passed; ruff check and format clean; pyright 0 errors; coverage core 100%; adapters/config.py and db/models.py 100%
+- Spec / test IDs covered: §18.10 (DDL and config keys), §18.8 (sandbox-only gateway setting) / T-DB-01 extended (seven agent tables STRICT; every CHECK, NOT NULL and foreign key; defaults; 0001↔0002 round-trip with rows present)
+- Deviations or decisions (link docs/DECISIONS.md): D-018 (date CHECKs added to §18.10 DDL; agent/mail config keys with strict loader; enabled SMTP refused until S5.09)
+- Next step: S2.02 Case state machine

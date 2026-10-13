@@ -91,7 +91,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
 
 Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the queue, plans, calls tools, is denied by policy and shows a complete trace, with no LLM required.
 
-- [ ] **S2.01** Agent tables migration
+- [x] **S2.01** Agent tables migration
   - Goal: Second Alembic migration with the agent tables of Section 18.10.
   - Spec: §18.10
   - Tests: T-DB-01 extended
