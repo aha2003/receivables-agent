@@ -8,6 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from receivables.adapters.db.repo import get_user_by_username, write_audit
 from receivables.api.auth import error_response
+from receivables.api.csrf import ensure_token, new_token
 from receivables.api.security import SessionUser, session_payload, verify_password
 
 router = APIRouter()
@@ -35,9 +36,8 @@ def _login_error(request: Request, status: int, error: str, message: str) -> Res
 
 def _login_page(request: Request, status: int = 200, message: str | None = None) -> Response:
     templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request, "login.html", {"message": message}, status_code=status
-    )
+    context = {"message": message, "csrf_token": ensure_token(request.session)}
+    return templates.TemplateResponse(request, "login.html", context, status_code=status)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -96,6 +96,7 @@ async def login(
     limiter.clear(key)
     request.session.clear()  # no session fixation: start a fresh session on login
     request.session.update(session_payload(user, request.app.state.clock))
+    new_token(request.session)  # a fresh CSRF token for the signed-in session
     await run_in_threadpool(
         _audit,
         request,
@@ -124,10 +125,15 @@ def logout(request: Request) -> Response:
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request) -> Response:
     templates = request.app.state.templates
-    return templates.TemplateResponse(request, "home.html", {"user": request.state.user})
+    context = {"user": request.state.user, "csrf_token": ensure_token(request.session)}
+    return templates.TemplateResponse(request, "home.html", context)
 
 
 @router.get("/api/me")
 def me(request: Request) -> dict[str, Any]:
     user: SessionUser = request.state.user
-    return {"username": user.username, "role": user.role}
+    return {
+        "username": user.username,
+        "role": user.role,
+        "csrf_token": ensure_token(request.session),
+    }

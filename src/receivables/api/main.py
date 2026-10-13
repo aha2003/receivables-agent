@@ -8,8 +8,9 @@ cookie and the authentication gate. ``app`` is created only when a server asks f
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -18,6 +19,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from receivables.adapters.clock import Clock, SystemClock
 from receivables.adapters.db.engine import make_engine
 from receivables.api.auth import auth_gate, error_response
+from receivables.api.csrf import CsrfError, csrf_protect
+from receivables.api.headers import SECURITY_HEADERS, SecurityHeadersMiddleware
 from receivables.api.routes import auth as auth_routes
 from receivables.api.security import SESSION_TTL, LoginRateLimiter
 from receivables.settings import Settings
@@ -26,6 +29,7 @@ __all__ = ["MIN_SECRET_LENGTH", "create_app"]
 
 MIN_SECRET_LENGTH = 32
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "web" / "templates"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 _ERROR_CODES = {
     400: "bad_request",
     401: "unauthenticated",
@@ -48,6 +52,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        dependencies=[Depends(csrf_protect)],
     )
     app.state.clock = clock
     app.state.engine = engine if engine is not None else make_engine(settings.database_url)
@@ -55,6 +60,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.state.templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     app.include_router(auth_routes.router)
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.
     app.middleware("http")(auth_gate)
     app.add_middleware(
@@ -65,6 +71,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
         same_site="lax",
         https_only=True,
     )
+    app.add_middleware(SecurityHeadersMiddleware)  # outermost: every response gets the headers
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> Any:
@@ -75,7 +82,14 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     @app.exception_handler(Exception)
     async def unexpected_error(_: Request, exc: Exception) -> Any:
         # Never echo exception text: it may contain data. Details belong in server logs.
-        return error_response(500, "internal_error", "Unexpected server error.")
+        # Starlette sends 500s outside all middleware, so set the security headers here too.
+        response = error_response(500, "internal_error", "Unexpected server error.")
+        response.headers.update(SECURITY_HEADERS)
+        return response
+
+    @app.exception_handler(CsrfError)
+    async def csrf_error(_: Request, exc: CsrfError) -> Any:
+        return error_response(403, "csrf_failed", "Missing or invalid CSRF token.")
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> Any:
