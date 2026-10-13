@@ -241,9 +241,15 @@ _FORBIDDEN = [
 ]
 
 
+VENDOR = WEB / "static" / "vendor"
+
+
 def _web_files() -> list[Path]:
+    """Our own templates and assets; vendored third-party files are pinned by hash instead."""
     files = sorted(
-        p for p in WEB.rglob("*") if p.is_file() and p.suffix in {".html", ".css", ".js"}
+        p
+        for p in WEB.rglob("*")
+        if p.is_file() and p.suffix in {".html", ".css", ".js"} and VENDOR not in p.parents
     )
     assert files, "no templates or static files found"
     return files
@@ -308,3 +314,34 @@ def test_unusual_methods_are_checked_too(app: FastAPI, client: TestClient) -> No
         "PROPFIND", "/api/test-only-propfind", headers={"x-csrf-token": csrf(client)}
     )
     assert ok.status_code == 200
+
+
+# --- vendored third-party assets: pinned by hash, recorded in PROVENANCE.md --------------------
+
+
+def test_vendored_files_match_provenance() -> None:
+    import hashlib
+
+    provenance = (Path(__file__).resolve().parents[2] / "PROVENANCE.md").read_text(encoding="utf-8")
+    vendored = sorted(p for p in VENDOR.rglob("*") if p.is_file())
+    assert vendored, "expected vendored assets"
+    for path in vendored:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert digest in provenance, (path, digest)
+
+
+def test_htmx_is_locked_down_by_config(client: TestClient) -> None:
+    import json
+
+    page = client.get("/login").text
+    assert '<script src="/static/vendor/htmx-2.0.10/htmx.min.js" defer></script>' in page
+    match = re.search(r"<meta name=\"htmx-config\" content='([^']+)'>", page)
+    assert match
+    config = json.loads(match.group(1))
+    assert config["allowEval"] is False
+    assert config["allowScriptTags"] is False
+    assert config["selfRequestsOnly"] is True
+    assert config["includeIndicatorStyles"] is False
+    assert config["historyCacheSize"] == 0
+    js = client.get("/static/vendor/htmx-2.0.10/htmx.min.js")
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]

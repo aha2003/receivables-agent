@@ -69,6 +69,12 @@ def test_override_changes_the_engine(tmp_path: Path) -> None:
         "- just\n- a list\n",
         "engine: [1, 2]\n",
         "engine:\n  grace_days: 1e3\n",
+        "engine:\n  band_high: abc\n",
+        "engine:\n  band_high: 6e1\n",
+        "engine:\n  band_high: .inf\n",
+        "engine:\n  no_history_fallback_rate: 1.5\n",
+        "llm:\n  review_confidence_threshold: 1.5\n",
+        "engine: {unclosed\n",
     ],
 )
 def test_invalid_config_is_rejected(tmp_path: Path, text: str) -> None:
