@@ -408,3 +408,27 @@ def test_null_promise_date_allowed(engine: Engine) -> None:
                 "VALUES ('E-T3', 'INV-0001', 'DISPUTE_OPENED', '2026-10-05')"
             )
         )
+
+
+def test_engine_rejects_non_sqlite_and_unknown_begin_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="only SQLite"):
+        make_engine("postgresql://user@localhost/db")
+    eng = make_engine(f"sqlite:///{tmp_path / 'm.db'}")
+    try:
+        with (
+            pytest.raises(ValueError, match="invalid sqlite_begin"),
+            eng.connect().execution_options(sqlite_begin="SOMETIMES") as conn,
+            conn.begin(),
+        ):
+            pass
+    finally:
+        eng.dispose()
+
+
+def test_in_memory_engine_needs_no_directory() -> None:
+    eng = make_engine("sqlite:///:memory:")
+    try:
+        with eng.connect() as c:
+            assert c.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
+    finally:
+        eng.dispose()

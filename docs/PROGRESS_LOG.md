@@ -64,3 +64,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §6.6, §6.7 (with §2) / T-KPI-01, T-UNA-01
 - Deviations or decisions (link docs/DECISIONS.md): D-012 (half-up rounding; share precision; unallocated cash composition; queue flags)
 - Next step: S1.09 Validation and strict fixed-schema CSV import
+
+## 2026-10-13 — [S1.09] Validation and strict fixed-schema CSV import
+- PR: #75 | Branch: s1-09-validation-import | Commit: see PR head
+- Tests: `uv run pytest -q` → 414 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%; importer and engine 100%
+- Spec / test IDs covered: §4.1–§4.6, §5, §9 (shape) / T-IMP-01, T-IMP-02, T-IMP-03, T-UNA-02; T-IMP-04, T-IMP-05 at service level (HTTP in S1.13)
+- Deviations or decisions (link docs/DECISIONS.md): D-013 (route to S1.13; scope; write semantics; codes; review-driven rules)
+- Next step: S1.10 Repository layer, audit writer and seeded reset

@@ -56,7 +56,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §6.6, §6.7
   - Tests: T-KPI-01, T-UNA-01
   - Done when: DSO 149.7; customer shares match; unallocated cash never changes open amounts.
-- [ ] **S1.09** Validation and strict fixed-schema CSV import
+- [x] **S1.09** Validation and strict fixed-schema CSV import
   - Goal: Validation of the fixed canonical CSV schema with the error codes of Section 4; atomic, idempotent import (mapping hash `fixed-schema-v1`). The mapping layer and T-IMP-06 are deferred.
   - Spec: §4.1 to §4.6, §5
   - Tests: T-IMP-01, T-IMP-02, T-IMP-03, T-IMP-04, T-IMP-05, T-UNA-02
@@ -77,10 +77,10 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Tests: T-SEC-09, T-SEC-11
   - Done when: POST without a valid token returns 403; headers present on pages and API.
 - [ ] **S1.13** Dashboard and queue (first screen)
-  - Goal: `/api/dashboard`, `/api/queue`, HTMX pages, a persistent `SYNTHETIC DEMO DATA` banner, heuristic labels and the DSO tooltip.
-  - Spec: §6, §9, §10
-  - Tests: T-API-01, T-API-02, T-API-03, T-UI-02, T-UI-05
-  - Done when: The seeded demo shows the golden totals and queue order; labels say heuristic and synthetic.
+  - Goal: `/api/dashboard`, `/api/queue`, `POST /api/imports/{kind}` (wraps the S1.09 importer; D-013), HTMX pages, a persistent `SYNTHETIC DEMO DATA` banner, heuristic labels and the DSO tooltip.
+  - Spec: §6, §9, §10, §4.6
+  - Tests: T-API-01, T-API-02, T-API-03, T-UI-02, T-UI-05; T-IMP-04 and T-IMP-05 over HTTP
+  - Done when: The seeded demo shows the golden totals and queue order; labels say heuristic and synthetic; a bad upload returns HTTP 422 and a repeat upload is a duplicate.
 - [ ] **S1.14** Slice 1 close-out
   - Goal: Full suite green; README states what works; demo steps recorded; tag `slice-1-complete`.
   - Spec: §16

@@ -76,3 +76,9 @@ def golden_events() -> list[EventRecord]:
         )
         for r in read_fixture_csv("events.csv")
     ]
+
+
+@pytest.fixture
+def fixture_text() -> Callable[[str], str]:
+    """Raw text of ``fixtures/<name>`` (for the CSV validator, which parses text)."""
+    return lambda name: (FIXTURES / name).read_text(encoding="utf-8")
