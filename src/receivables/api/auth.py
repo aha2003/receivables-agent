@@ -9,9 +9,11 @@ from starlette.concurrency import run_in_threadpool
 from receivables.adapters.db.repo import get_user
 from receivables.api.security import SessionUser, session_user
 
-__all__ = ["PUBLIC_PATHS", "auth_gate", "error_response"]
+__all__ = ["PUBLIC_PATHS", "PUBLIC_PREFIXES", "auth_gate", "error_response"]
 
 PUBLIC_PATHS = frozenset({"/healthz", "/login"})
+AUTH_SESSION_FIELDS = ("uid", "username", "role", "iat")
+PUBLIC_PREFIXES = ("/static/",)  # self-hosted CSS/JS; the login page needs it before sign-in
 
 
 def error_response(status: int, error: str, detail: str) -> JSONResponse:
@@ -39,11 +41,15 @@ def _current_user(request: Request) -> SessionUser | None:
 async def auth_gate(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    if request.url.path in PUBLIC_PATHS:
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
         return await call_next(request)
     user = await run_in_threadpool(_current_user, request)
     if user is None:
-        request.session.clear()
+        # Drop the sign-in fields but keep the anonymous CSRF token, so a login form that is
+        # already open (for example in another tab) still works.
+        for field in AUTH_SESSION_FIELDS:
+            request.session.pop(field, None)
         if _wants_html(request):
             return RedirectResponse("/login", status_code=303)
         return error_response(401, "unauthenticated", "A valid session is required.")

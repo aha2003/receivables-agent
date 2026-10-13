@@ -1,0 +1,6 @@
+/* Vendored-free, self-hosted styles (no CDN). SYNTHETIC DEMO DATA banner stays visible. */
+body { font-family: system-ui, sans-serif; margin: 0; color: #1b1b1b; background: #fafafa; }
+.banner { background: #7a1f1f; color: #fff; font-weight: 600; padding: 0.5rem 1rem; text-align: center; }
+main { max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
+form label { display: block; margin: 0.5rem 0; }
+[role="alert"] { color: #8a1c1c; font-weight: 600; }

@@ -1,5 +1,6 @@
 """App fixtures: a migrated temp database, one synthetic user and a controllable clock."""
 
+import re
 import secrets
 from collections.abc import Iterator
 from datetime import datetime
@@ -59,5 +60,21 @@ def client(app: FastAPI) -> Iterator[TestClient]:
         yield c
 
 
-def login(client: TestClient, username: str = USERNAME, password: str = PASSWORD) -> int:
-    return client.post("/login", data={"username": username, "password": password}).status_code
+def csrf(client: TestClient) -> str:
+    """The session's CSRF token: from /api/me when signed in, else from the /login form."""
+    me = client.get("/api/me")
+    if me.status_code == 200:
+        return me.json()["csrf_token"]
+    match = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text)
+    assert match, "login form has no csrf_token field"
+    return match.group(1)
+
+
+def login(
+    client: TestClient,
+    username: str = USERNAME,
+    password: str = PASSWORD,
+    token: str | None = None,
+) -> int:
+    data = {"username": username, "password": password, "csrf_token": token or csrf(client)}
+    return client.post("/login", data=data).status_code
