@@ -33,3 +33,21 @@ app:
   session_ttl_minutes: 480       # [A]
   login_rate_limit_per_minute: 5 # [A]
   retention_days_after_pilot: 30 # [A]
+agent:
+  autonomy_level: 1              # 0 shadow, 1 assist (default), 2 policy-gated
+  max_cases_per_tick: 20
+  max_steps_per_case: 5
+  llm_timeout_seconds: 30
+  promise_grace_days: 2          # [A]
+  l2:
+    allowlisted_customers: []
+    max_total_open_amount: 25000 # [A]
+    min_days_between_contacts: 7 # [A]
+    daily_send_cap: 20           # [A]
+    business_days: [Mon, Tue, Wed, Thu, Fri]
+    business_hours: ["09:00", "17:00"]
+    timezone: Asia/Dubai
+    kill_switch: false
+mail:
+  gateway: sandbox               # sandbox | smtp
+  enabled: false

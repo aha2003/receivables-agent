@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import DefaultClause, Engine, exc, inspect, text
+from sqlalchemy import DefaultClause, Engine, TextClause, exc, inspect, text
 from sqlalchemy.orm import Session
 
 from receivables.adapters.db import engine as engine_module
@@ -28,6 +28,17 @@ TABLES = {
     "audit_log",
     "imports",
 }
+# SPEC §18.10, migration 0002 (constraints in tests/db/test_agent_schema.py).
+AGENT_TABLES = {
+    "cases",
+    "agent_runs",
+    "agent_steps",
+    "approvals",
+    "tasks",
+    "customer_playbook",
+    "mail_outbox",
+}
+TABLES = TABLES | AGENT_TABLES
 TS = "2026-10-31T05:00:00Z"
 
 
@@ -238,7 +249,9 @@ def test_models_match_migrated_schema(engine: Engine) -> None:
                 assert db_default is None, (name, col.name, db_default)
             else:
                 assert isinstance(model_default, DefaultClause)
-                assert db_default == f"'{model_default.arg}'", (name, col.name, db_default)
+                arg = model_default.arg
+                expected = arg.text if isinstance(arg, TextClause) else f"'{arg}'"  # 0 vs '0'
+                assert db_default == expected, (name, col.name, db_default)
         db_unique = {tuple(u["column_names"]) for u in insp.get_unique_constraints(name)}
         model_unique = {(c.name,) for c in table.columns if c.unique}
         assert db_unique == model_unique, name
