@@ -11,6 +11,7 @@ import pytest
 
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.money import to_fils
+from receivables.core.scoring import EventRecord
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures"
@@ -59,3 +60,19 @@ def golden_ledger_inputs() -> tuple[list[InvoiceRecord], list[PaymentRecord]]:
         for r in read_fixture_csv("payments.csv")
     ]
     return invoices, payments
+
+
+@pytest.fixture
+def golden_events() -> list[EventRecord]:
+    """The §6.8 golden events as core records."""
+    return [
+        EventRecord(
+            event_id=r["event_id"],
+            invoice_number=r["invoice_number"],
+            event_type=r["event_type"],
+            event_date=date.fromisoformat(r["event_date"]),
+            label=r["label"] or None,
+            promise_date=date.fromisoformat(r["promise_date"]) if r["promise_date"] else None,
+        )
+        for r in read_fixture_csv("events.csv")
+    ]
