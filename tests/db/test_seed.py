@@ -113,17 +113,29 @@ def test_reset_audit_row(tmp_path: Path) -> None:
     assert json.loads(row["before_json"]) == {"existing_file": False}
 
 
-def test_reset_deletes_wal_and_shm_files(tmp_path: Path) -> None:
-    db_file = tmp_path / "r.db"
-    url = f"sqlite:///{db_file}"
+def test_reset_deletes_wal_and_shm_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """§5: reset itself removes the old database, -wal and -shm before moving the new file in."""
+    import receivables.seed as seed_module
+
+    url = f"sqlite:///{tmp_path / 'r.db'}"
     reset(url, FIXTURES, CLOCK)
     stale_wal = tmp_path / "r.db-wal"
     stale_shm = tmp_path / "r.db-shm"
-    stale_wal.write_bytes(b"stale")
-    stale_shm.write_bytes(b"stale")
+    stale_wal.write_bytes(b"stale wal from an older database")
+    stale_shm.write_bytes(b"stale shm")
+    removed: list[Path] = []
+    real_remove = seed_module._remove
+
+    def recording_remove(paths: tuple[Path, ...]) -> None:
+        removed.extend(paths)
+        real_remove(paths)
+
+    monkeypatch.setattr(seed_module, "_remove", recording_remove)
     reset(url, FIXTURES, CLOCK)
-    assert not stale_wal.exists() or stale_wal.read_bytes() != b"stale"
-    assert not stale_shm.exists() or stale_shm.read_bytes() != b"stale"
+    assert {tmp_path / "r.db", stale_wal, stale_shm} <= set(removed)
+    assert not stale_wal.exists()
+    assert not stale_shm.exists()
+    assert not (tmp_path / "r.db.reset-tmp").exists()
 
 
 def test_reset_creates_missing_directory(tmp_path: Path) -> None:
@@ -159,6 +171,8 @@ def test_seed_stops_on_a_rejected_fixture(tmp_path: Path) -> None:
 
     broken = tmp_path / "fixtures"
     broken.mkdir()
+    for name in ("invoices", "payments", "events"):
+        (broken / f"{name}.csv").write_bytes((FIXTURES / f"{name}.csv").read_bytes())
     (broken / "customers.csv").write_text("customer_id,customer_name,trn\nC-1,Fictional,12345\n")
     url = f"sqlite:///{tmp_path / 's.db'}"
     upgrade_to_head(url)
@@ -168,3 +182,88 @@ def test_seed_stops_on_a_rejected_fixture(tmp_path: Path) -> None:
             seed(engine, broken, CLOCK)
     finally:
         engine.dispose()
+
+
+def _golden_db(tmp_path: Path) -> tuple[str, dict[str, list[tuple[object, ...]]]]:
+    url = f"sqlite:///{tmp_path / 'keep.db'}"
+    reset(url, FIXTURES, CLOCK)
+    return url, _snapshot(url)
+
+
+def test_missing_fixtures_leave_the_database_intact(tmp_path: Path) -> None:
+    from receivables.seed import SeedError
+
+    url, before = _golden_db(tmp_path)
+    with pytest.raises(SeedError, match="missing fixture"):
+        reset(url, tmp_path / "no-such-dir", CLOCK)
+    assert _snapshot(url) == before
+    assert _audit_actions(url) == ["import.accepted"] * 4 + ["database.reset"]
+
+
+def test_rejected_fixture_leaves_the_database_intact(tmp_path: Path) -> None:
+    from receivables.seed import SeedError
+
+    url, before = _golden_db(tmp_path)
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    for name in ("customers", "invoices", "payments", "events"):
+        (broken / f"{name}.csv").write_bytes((FIXTURES / f"{name}.csv").read_bytes())
+    (broken / "payments.csv").write_text(
+        "payment_id,invoice_number,customer_id,payment_date,amount\nP-1,INV-404,,2026-10-01,5.00\n"
+    )
+    with pytest.raises(SeedError, match=r"payments\.csv rejected"):
+        reset(url, broken, CLOCK)
+    assert _snapshot(url) == before
+    assert not (tmp_path / "keep.db.reset-tmp").exists()
+
+
+def test_reset_refuses_while_another_connection_is_writing(tmp_path: Path) -> None:
+    import sqlite3
+
+    url, before = _golden_db(tmp_path)
+    holder = sqlite3.connect(tmp_path / "keep.db", isolation_level=None)
+    try:
+        holder.execute("BEGIN IMMEDIATE")
+        with pytest.raises(ResetRefused, match="in use"):
+            reset(url, FIXTURES, CLOCK)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert _snapshot(url) == before
+    assert not (tmp_path / "keep.db.reset-tmp").exists()
+
+
+def test_reset_refuses_an_empty_non_sqlite_file(tmp_path: Path) -> None:
+    empty = tmp_path / "README"
+    empty.write_bytes(b"")
+    with pytest.raises(ResetRefused, match="not a SQLite database"):
+        reset(f"sqlite:///{empty}", FIXTURES, CLOCK)
+    assert empty.exists() and empty.read_bytes() == b""
+
+
+def test_reset_refuses_a_symlink(tmp_path: Path) -> None:
+    url, before = _golden_db(tmp_path)
+    link = tmp_path / "link.db"
+    link.symlink_to(tmp_path / "keep.db")
+    with pytest.raises(ResetRefused, match="symlink"):
+        reset(f"sqlite:///{link}", FIXTURES, CLOCK)
+    assert link.is_symlink()
+    assert _snapshot(url) == before
+
+
+def test_reset_refuses_a_fifo(tmp_path: Path) -> None:
+    import os
+
+    fifo = tmp_path / "pipe.db"
+    os.mkfifo(fifo)
+    with pytest.raises(ResetRefused, match="not a regular file"):
+        reset(f"sqlite:///{fifo}", FIXTURES, CLOCK)
+
+
+def test_reset_refuses_a_directory_at_the_wal_path_before_deleting_anything(tmp_path: Path) -> None:
+    url, before = _golden_db(tmp_path)
+    (tmp_path / "keep.db-wal").mkdir()
+    with pytest.raises(ResetRefused, match="not a regular file"):
+        reset(url, FIXTURES, CLOCK)
+    (tmp_path / "keep.db-wal").rmdir()
+    assert _snapshot(url) == before

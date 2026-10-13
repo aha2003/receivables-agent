@@ -78,3 +78,31 @@ def test_seed_failure_is_an_error_exit(
     monkeypatch.setenv("FIXTURES_DIR", str(broken))
     assert main(["seed"]) == 1
     assert "seed failed" in capsys.readouterr().err
+
+
+def test_missing_fixtures_is_an_error_exit_and_keeps_the_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = tmp_path / "demo.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
+    monkeypatch.setenv("FIXTURES_DIR", str(FIXTURES))
+    assert main(["reset"]) == 0
+    size = db.stat().st_size
+    capsys.readouterr()
+    monkeypatch.setenv("FIXTURES_DIR", str(tmp_path / "nowhere"))
+    assert main(["reset"]) == 1
+    assert "missing fixture" in capsys.readouterr().err
+    assert db.stat().st_size == size
+
+
+def test_os_error_is_an_error_exit(
+    env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import receivables.cli as cli
+
+    def boom(*_: object, **__: object) -> None:
+        raise PermissionError("simulated: permission denied")
+
+    monkeypatch.setattr(cli, "reset", boom)
+    assert main(["reset"]) == 1
+    assert "permission denied" in capsys.readouterr().err

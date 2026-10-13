@@ -34,7 +34,7 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     for name, text in (
         ("seed", "import the golden synthetic company (idempotent)"),
-        ("reset", "delete the database, migrate a fresh one and seed it"),
+        ("reset", "replace the database with a fresh seeded copy (stop the app first)"),
     ):
         sub = commands.add_parser(name, help=text)
         sub.add_argument(
@@ -98,6 +98,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except SeedError as err:
         print(f"seed failed: {err}", file=sys.stderr)
+        return 1
+    except OSError as err:
+        print(f"{args.command} failed: {err}", file=sys.stderr)
         return 1
     for line in _summary(url, as_of):
         print(line)

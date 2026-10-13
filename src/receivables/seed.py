@@ -1,11 +1,22 @@
 """Seed and reset the synthetic demo company (SPEC §5 purge semantics; SYNTHETIC DEMO DATA).
 
 ``seed`` imports the golden fixtures through the strict importer; running it again reports
-duplicates and changes nothing. ``reset`` follows §5: delete the database file and its
-``-wal``/``-shm`` files, migrate a fresh file, seed it and write one audit row. It refuses
-anything that is not a SQLite file database (docs/DECISIONS.md D-014).
+duplicates and changes nothing.
+
+``reset`` gives the §5 end state (fresh migrated database, golden data, one audit row) without
+ever leaving a half-finished database: every precondition is checked and every fixture read
+first, the replacement is migrated, seeded and audited in a staging file next to the database,
+and only then are the old file and its ``-wal``/``-shm`` deleted and the staging file moved
+into place. If anything fails before the swap, the old database is untouched. Reset refuses
+anything that is not a regular SQLite file, and refuses while another connection is writing.
+It cannot detect idle connections held by another process, so stop the app first
+(docs/DECISIONS.md D-014).
 """
 
+import os
+import sqlite3
+import stat
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,15 +32,16 @@ from receivables.adapters.db.repo import table_counts, write_audit
 __all__ = ["SEED_ORDER", "ResetRefused", "ResetResult", "SeedError", "reset", "seed"]
 
 SEED_ORDER = ("customers", "invoices", "payments", "events")
+STAGING_SUFFIX = ".reset-tmp"
 _SQLITE_HEADER = b"SQLite format 3\x00"
 
 
 class SeedError(RuntimeError):
-    """A golden fixture was rejected by the importer (the fixtures or importer are broken)."""
+    """A golden fixture is missing or was rejected by the importer."""
 
 
 class ResetRefused(RuntimeError):
-    """The configured database is not something reset may delete."""
+    """The configured database is not something reset may replace right now."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,23 +51,54 @@ class ResetResult:
     counts: dict[str, int]
 
 
-def seed(
-    engine: Engine, fixtures_dir: Path, clock: Clock, actor: str = "seed"
-) -> list[ImportResult]:
-    """Import the golden customers, invoices, payments and events, in dependency order."""
-    results: list[ImportResult] = []
+def _read_fixtures(fixtures_dir: Path) -> dict[str, bytes]:
+    files: dict[str, bytes] = {}
     for kind in SEED_ORDER:
         path = fixtures_dir / f"{kind}.csv"
-        result = import_csv(
-            engine, kind, path.read_bytes(), filename=path.name, clock=clock, actor=actor
-        )
+        try:
+            files[kind] = path.read_bytes()
+        except FileNotFoundError:
+            raise SeedError(f"missing fixture {path}") from None
+    return files
+
+
+def _seed_files(
+    engine: Engine, files: Mapping[str, bytes], clock: Clock, actor: str
+) -> list[ImportResult]:
+    results: list[ImportResult] = []
+    for kind in SEED_ORDER:
+        name = f"{kind}.csv"
+        result = import_csv(engine, kind, files[kind], filename=name, clock=clock, actor=actor)
         if result.status == "rejected":
-            raise SeedError(f"{path.name} rejected: {[(e.line, e.code) for e in result.errors]}")
+            raise SeedError(f"{name} rejected: {[(e.line, e.code) for e in result.errors]}")
         results.append(result)
     return results
 
 
+def seed(
+    engine: Engine, fixtures_dir: Path, clock: Clock, actor: str = "seed"
+) -> list[ImportResult]:
+    """Import the golden customers, invoices, payments and events, in dependency order."""
+    return _seed_files(engine, _read_fixtures(fixtures_dir), clock, actor)
+
+
+def _siblings(path: Path) -> tuple[Path, Path, Path]:
+    return path, Path(f"{path}-wal"), Path(f"{path}-shm")
+
+
+def _require_regular_or_absent(path: Path) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(mode):
+        raise ResetRefused(f"{path} is a symlink; refusing to replace it")
+    if not stat.S_ISREG(mode):
+        raise ResetRefused(f"{path} is not a regular file; refusing to replace it")
+
+
 def _database_file(url: str) -> Path:
+    """The SQLite file named by ``url``, after every check that guards the delete."""
     parsed = make_url(url)
     database = parsed.database
     if parsed.get_backend_name() != "sqlite":
@@ -63,42 +106,68 @@ def _database_file(url: str) -> Path:
     if not database or database == ":memory:" or database.startswith("file:"):
         raise ResetRefused("reset needs a SQLite database file, not an in-memory database")
     path = Path(database)
-    if path.is_dir():
-        raise ResetRefused(f"{path} is a directory")
+    for candidate in (*_siblings(path), *_siblings(Path(f"{path}{STAGING_SUFFIX}"))):
+        _require_regular_or_absent(candidate)
     if path.exists():
         with path.open("rb") as f:
             header = f.read(len(_SQLITE_HEADER))
-        if header and header != _SQLITE_HEADER:
+        if header != _SQLITE_HEADER:
             raise ResetRefused(f"{path} is not a SQLite database; refusing to delete it")
     return path
 
 
-def reset(url: str, fixtures_dir: Path, clock: Clock, actor: str = "reset") -> ResetResult:
-    """Delete the database file (and -wal/-shm), migrate a fresh one, seed it, audit it."""
-    path = _database_file(url)
-    existed = path.exists()
-    for victim in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
-        victim.unlink(missing_ok=True)
-    upgrade_to_head(url)
-    engine = make_engine(url)
+def _ensure_not_in_use(path: Path) -> None:
+    """Refuse if another connection holds a write transaction on the old database."""
+    probe = sqlite3.connect(path, timeout=0, isolation_level=None)
     try:
-        imports = seed(engine, fixtures_dir, clock, actor=actor)
-        with engine.begin() as conn:
-            write_audit(
-                conn,
-                clock,
-                actor=actor,
-                action="database.reset",
-                entity_type="database",
-                entity_id=path.name,
-                before={"existing_file": existed},
-                after={
-                    "row_counts": table_counts(conn),
-                    "imports": [r.import_id for r in imports],
-                },
-            )
-        with engine.connect() as conn:
-            counts = table_counts(conn)
+        probe.execute("BEGIN EXCLUSIVE")
+        probe.execute("ROLLBACK")
+    except sqlite3.OperationalError as err:
+        raise ResetRefused(f"{path} is in use by another connection ({err})") from None
     finally:
-        engine.dispose()
+        probe.close()
+
+
+def _remove(paths: tuple[Path, ...]) -> None:
+    for p in paths:
+        p.unlink(missing_ok=True)
+
+
+def reset(url: str, fixtures_dir: Path, clock: Clock, actor: str = "reset") -> ResetResult:
+    """Replace the database with a freshly migrated, seeded and audited copy (§5)."""
+    path = _database_file(url)
+    files = _read_fixtures(fixtures_dir)
+    existed = path.exists()
+    staging = Path(f"{path}{STAGING_SUFFIX}")
+    staging_url = make_url(url).set(database=str(staging)).render_as_string(hide_password=False)
+    _remove(_siblings(staging))  # leftovers of an interrupted earlier reset
+    try:
+        upgrade_to_head(staging_url)
+        engine = make_engine(staging_url)
+        try:
+            imports = _seed_files(engine, files, clock, actor)
+            with engine.begin() as conn:
+                write_audit(
+                    conn,
+                    clock,
+                    actor=actor,
+                    action="database.reset",
+                    entity_type="database",
+                    entity_id=path.name,
+                    before={"existing_file": existed},
+                    after={
+                        "row_counts": table_counts(conn),
+                        "imports": [r.import_id for r in imports],
+                    },
+                )
+            with engine.connect() as conn:
+                counts = table_counts(conn)
+        finally:
+            engine.dispose()  # last connection closed: SQLite checkpoints and drops the WAL
+        if existed:
+            _ensure_not_in_use(path)
+        _remove(_siblings(path))
+        os.replace(staging, path)
+    finally:
+        _remove(_siblings(staging))
     return ResetResult(path=path, imports=imports, counts=counts)
