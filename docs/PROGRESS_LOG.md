@@ -50,3 +50,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §6.1, §6.2 (with §2 definitions) / T-LED-01, T-LED-02, T-AGE-01, T-AGE-02
 - Deviations or decisions (link docs/DECISIONS.md): D-010 (revised: follow §2; open amount clamps at 0; write-offs never settle)
 - Next step: S1.07 History, risk score, queue and next actions (pure)
+
+## 2026-10-13 — [S1.07] History, risk score, queue and next actions (pure)
+- PR: #73 | Branch: s1-07-history-risk-queue | Commit: see PR head
+- Tests: `uv run pytest -q` → 283 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §6.3, §6.4, §6.5 (with §2, §5 engine defaults) / T-HIS-01, T-RSK-01, T-RSK-02, T-QUE-01, T-ACT-01
+- Deviations or decisions (link docs/DECISIONS.md): D-011 (band on rounded score; EngineConfig; config.yaml loader moved; promise/dispute edge cases); D-008 updated
+- Next step: S1.08 KPIs and unallocated cash (pure)
