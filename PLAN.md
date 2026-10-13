@@ -46,7 +46,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §6.1, §6.2
   - Tests: T-LED-01, T-LED-02, T-AGE-01, T-AGE-02
   - Done when: Total open 193,000.00 and overdue 147,000.00 at 2026-10-31; boundary buckets correct.
-- [ ] **S1.07** History, risk score, queue and next actions (pure)
+- [x] **S1.07** History, risk score, queue and next actions (pure)
   - Goal: Customer history with portfolio fallback, heuristic risk score and bands, priority value, queue ordering, next-action rules.
   - Spec: §6.3 to §6.5
   - Tests: T-HIS-01, T-RSK-01, T-RSK-02, T-QUE-01, T-ACT-01
