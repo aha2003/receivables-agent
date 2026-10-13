@@ -41,7 +41,7 @@ Planning window Oct–Nov 2026 [A]. Priority P0. Exit: golden numbers match, see
   - Spec: §6.8 to §6.10
   - Tests: fixture loader test: 3 customers, 14 invoices, 4 payments, 2 events, 15 labelled messages
   - Done when: Fixture content matches the spec exactly; all data is synthetic.
-- [ ] **S1.06** Ledger and aging (pure)
+- [x] **S1.06** Ledger and aging (pure)
   - Goal: Open amounts, as-of time travel, days overdue and buckets.
   - Spec: §6.1, §6.2
   - Tests: T-LED-01, T-LED-02, T-AGE-01, T-AGE-02

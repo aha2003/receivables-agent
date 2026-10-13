@@ -43,3 +43,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §6.8, §6.9, §6.10 / fixture loader test (counts), spec-parity and consistency checks
 - Deviations or decisions (link docs/DECISIONS.md): D-009 (fixture formats)
 - Next step: S1.06 Ledger and aging (pure)
+
+## 2026-10-13 — [S1.06] Ledger and aging (pure)
+- PR: #71 | Branch: s1-06-ledger-aging | Commit: see PR head
+- Tests: `uv run pytest -q` → 222 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 100%
+- Spec / test IDs covered: §6.1, §6.2 (with §2 definitions) / T-LED-01, T-LED-02, T-AGE-01, T-AGE-02
+- Deviations or decisions (link docs/DECISIONS.md): D-010 (revised: follow §2; open amount clamps at 0; write-offs never settle)
+- Next step: S1.07 History, risk score, queue and next actions (pure)
