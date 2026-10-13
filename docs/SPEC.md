@@ -1086,9 +1086,10 @@ Same conventions as Section 5 (STRICT tables, integer booleans, ISO text timesta
 CREATE TABLE cases (
   invoice_number TEXT PRIMARY KEY REFERENCES invoices(invoice_number),
   state TEXT NOT NULL CHECK (state IN ('NEW','ASSESSED','AWAITING_REPLY','DISPUTE_OPEN','PROMISE_PENDING','ESCALATED','RESOLVED')),
-  next_followup TEXT, updated_at TEXT NOT NULL) STRICT;
+  next_followup TEXT CHECK (next_followup IS NULL OR date(next_followup) IS next_followup),
+  updated_at TEXT NOT NULL) STRICT;
 CREATE TABLE agent_runs (
-  run_id TEXT PRIMARY KEY, as_of TEXT NOT NULL, now_ts TEXT NOT NULL,
+  run_id TEXT PRIMARY KEY, as_of TEXT NOT NULL CHECK (date(as_of) IS as_of), now_ts TEXT NOT NULL,
   autonomy_level INTEGER NOT NULL CHECK (autonomy_level IN (0,1,2)),
   planner TEXT NOT NULL CHECK (planner IN ('llm','rules')),
   fallback INTEGER NOT NULL DEFAULT 0 CHECK (fallback IN (0,1)), model TEXT,
@@ -1110,7 +1111,7 @@ CREATE TABLE approvals (
 CREATE TABLE tasks (
   task_id TEXT PRIMARY KEY, invoice_number TEXT REFERENCES invoices(invoice_number),
   owner_role TEXT NOT NULL CHECK (owner_role IN ('finance','sales','operations','management')),
-  text TEXT NOT NULL, due_date TEXT,
+  text TEXT NOT NULL, due_date TEXT CHECK (due_date IS NULL OR date(due_date) IS due_date),
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done','cancelled')), created_by TEXT NOT NULL) STRICT;
 CREATE TABLE customer_playbook (
   customer_id TEXT PRIMARY KEY REFERENCES customers(customer_id),
