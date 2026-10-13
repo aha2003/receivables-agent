@@ -148,20 +148,72 @@ def test_static_css_is_served_without_a_session(client: TestClient) -> None:
     assert response.headers["content-type"].startswith("text/css")
 
 
+def _raw_get(app: FastAPI, path: str) -> tuple[int, bytes]:
+    """Send ``path`` to the ASGI app verbatim (the HTTP test client would normalise ``..``)."""
+    import anyio
+
+    messages: list[dict[str, object]] = []
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"host", b"testserver")],
+        "client": ("testclient", 1),
+        "server": ("testserver", 443),
+    }
+
+    async def run() -> None:
+        done = anyio.Event()
+        sent_request = False
+
+        async def receive() -> dict[str, object]:
+            nonlocal sent_request
+            if not sent_request:
+                sent_request = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await done.wait()  # like a real server: disconnect only after the response
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict[str, object]) -> None:
+            messages.append(message)
+            if message["type"] == "http.response.body" and not message.get("more_body"):
+                done.set()
+
+        await app(scope, receive, send)  # pyright: ignore[reportArgumentType]
+
+    anyio.run(run)
+    status = next(m["status"] for m in messages if m["type"] == "http.response.start")
+    body = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body")  # pyright: ignore[reportArgumentType]
+    return int(status), body  # pyright: ignore[reportArgumentType]
+
+
 @pytest.mark.parametrize(
     "path",
     [
         "/static/",
         "/static/css/",
         "/static/../api/me",
+        "/static/../../../pyproject.toml",
+        "/static/css/../../templates/base.html",
         "/static/%2e%2e/%2e%2e/pyproject.toml",
-        "/static/css/../../main.py",
+        "/static/css/..%2f..%2fmain.py",
     ],
 )
-def test_static_refuses_listing_and_traversal(client: TestClient, path: str) -> None:
-    response = client.get(path)
-    assert response.status_code in {401, 404}
-    assert "[project]" not in response.text and "def create_app" not in response.text
+def test_static_refuses_listing_and_traversal(app: FastAPI, path: str) -> None:
+    status, body = _raw_get(app, path)
+    assert status == 404, (path, status)
+    assert b"[project]" not in body and b"def create_app" not in body and b"<html" not in body
+
+
+def test_raw_helper_reaches_the_static_mount(app: FastAPI) -> None:
+    status, body = _raw_get(app, "/static/css/app.css")
+    assert status == 200 and b"banner" in body
 
 
 def test_only_the_static_prefix_is_public(client: TestClient) -> None:
@@ -222,3 +274,37 @@ def test_visiting_a_protected_page_keeps_the_open_login_form_valid(client: TestC
     token = csrf(client)  # login form opened in one tab
     assert client.get("/", headers={"accept": "text/html"}).status_code == 303  # another tab
     assert login(client, token=token) == 303
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected"),
+    [
+        ("Application/X-WWW-Form-Urlencoded", 303),
+        ("application/x-www-form-urlencoded; charset=UTF-8", 303),
+        # python-multipart lowercases the media type only when there are no parameters, so
+        # Starlette sees no form at all here; the request fails closed (D-016).
+        ("APPLICATION/X-WWW-FORM-URLENCODED; charset=UTF-8", 403),
+    ],
+)
+def test_form_content_type_is_case_insensitive(
+    client: TestClient, content_type: str, expected: int
+) -> None:
+    from urllib.parse import urlencode
+
+    assert login(client) == 303
+    body = urlencode({"csrf_token": csrf(client)})
+    response = client.post("/logout", content=body, headers={"content-type": content_type})
+    assert response.status_code == expected
+
+
+def test_unusual_methods_are_checked_too(app: FastAPI, client: TestClient) -> None:
+    @app.api_route("/api/test-only-propfind", methods=["PROPFIND"])
+    def propfind() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        return {"ok": True}
+
+    assert login(client) == 303
+    assert client.request("PROPFIND", "/api/test-only-propfind").status_code == 403
+    ok = client.request(
+        "PROPFIND", "/api/test-only-propfind", headers={"x-csrf-token": csrf(client)}
+    )
+    assert ok.status_code == 200
