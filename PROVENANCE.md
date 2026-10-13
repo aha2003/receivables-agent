@@ -16,6 +16,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
 | jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
 | pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
+| pyyaml | 6.0.3 | MIT | config.yaml loader (BaseLoader, strings only) | S1.13 |
 | python-multipart | 0.0.32 | Apache-2.0 | Login form parsing | S1.11 |
 | sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | S1.11 |
@@ -54,6 +55,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | pyright | 1.1.414 | MIT | Type checking (downloads Node.js and pyright from npm on first run) |
 | pytest | 9.1.1 | MIT | Test runner |
 | pytest-cov | 7.1.0 | MIT | Coverage |
+| types-pyyaml | 6.0.12.20260906 | Apache-2.0 | Type stubs for pyyaml (pyright) |
 | ruff | 0.17.0 | MIT | Lint, format, security rules |
 
 ## Development dependencies (transitive)
@@ -90,7 +92,6 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | pygments | 2.21.0 | BSD-2-Clause |
 | pyparsing | 3.3.3 | MIT |
 | python-discovery | 1.6.2 | MIT |
-| pyyaml | 6.0.3 | MIT |
 | requests | 2.34.2 | Apache-2.0 |
 | rich | 15.0.0 | MIT |
 | sortedcontainers | 2.4.0 | Apache-2.0 |
@@ -98,6 +99,15 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | tomli-w | 1.2.0 | MIT |
 | urllib3 | 2.8.0 | MIT |
 | virtualenv | 21.14.7 | MIT |
+
+## Vendored assets (served from `src/receivables/web/static/vendor/`, never from a CDN)
+
+| Asset | Version | Licence | Source | SHA-256 |
+|---|---|---|---|---|
+| htmx (`htmx.min.js`) | 2.0.10 | 0BSD (Zero-Clause BSD) | https://github.com/bigskysoftware/htmx/releases/download/v2.0.10/htmx.min.js | `71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de` |
+| htmx licence (`LICENSE`) | 2.0.10 | 0BSD | https://github.com/bigskysoftware/htmx/releases/download/v2.0.10/LICENSE | `d3d2456f76414f2456104660ebd65aff1c04cd7966b942bdabd63f3cdb316a38` |
+
+Downloaded from the official GitHub release with the maintainer's approval (S1.13). `tests/api/test_web_security.py` checks every vendored file against these hashes. htmx runs with `allowEval`, `allowScriptTags` and indicator styles disabled (CSP-compatible, D-017).
 
 ## Build backend and external tools
 
