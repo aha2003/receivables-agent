@@ -417,6 +417,13 @@ def test_a_resolved_dispute_returns_the_case_to_assessed_before_planning(db: Eng
                 " VALUES ('INV-005', 'DISPUTE_OPEN', '2026-10-01T05:00:00Z')"
             )
         )
+        c.execute(
+            text(
+                "INSERT INTO events (event_id, invoice_number, event_type, event_date, label)"
+                " VALUES ('E-10', 'INV-005', 'DISPUTE_OPENED', '2026-09-20', 'MISSING_PO'),"
+                " ('E-11', 'INV-005', 'DISPUTE_RESOLVED', '2026-10-10', NULL)"
+            )
+        )
     tick(db)
     transitions = rows(
         db,
@@ -442,20 +449,16 @@ def test_escalating_twice_creates_one_task(db: Engine) -> None:
     ]
 
 
-def test_a_failing_case_is_rolled_back_and_the_tick_completes(db: Engine) -> None:
+def test_any_planner_exception_falls_back_to_the_rule_planner(db: Engine) -> None:
     planner = ScriptedPlanner(
-        {"INV-011": RuntimeError("boom")}, default=lambda n: plan_case_json(db, n)
+        {"INV-011": RuntimeError("boom with data")}, default=lambda n: plan_case_json(db, n)
     )
     summary = tick(db, planner=planner)
-    assert summary.case_errors == 1 and summary.cases_considered == 9
-    assert "INV-011" not in tools_by_invoice(db)
-    assert rows(db, "SELECT COUNT(*) AS n FROM cases WHERE invoice_number = 'INV-011'") == [
-        {"n": 0}
-    ]
-    failed = rows(db, "SELECT after_json FROM audit_log WHERE action = 'agent.case_failed'")
+    assert (summary.case_errors, summary.fallback) == (0, True)
+    assert tools_by_invoice(db)["INV-011"] == T_AGT_08["INV-011"]
+    failed = rows(db, "SELECT after_json FROM audit_log WHERE action = 'agent.planner_failed'")
     assert [json.loads(f["after_json"])["error"] for f in failed] == ["RuntimeError"]
     assert "boom" not in failed[0]["after_json"]
-    assert len(tools_by_invoice(db)) == 8
 
 
 def test_failing_steps_are_recorded_and_the_case_continues(db: Engine) -> None:
@@ -680,3 +683,306 @@ def test_a_case_failing_midway_leaves_no_trace_and_no_count(db: Engine) -> None:
     assert summary.case_errors == 1
     assert summary.steps_executed == sum(s["status"] == "executed" for s in trace)
     assert [s["seq"] for s in trace] == list(range(1, len(trace) + 1))
+
+
+# --- spec-review regressions ---------------------------------------------------------------------
+
+
+def _draft_ids(engine: Engine) -> dict[tuple[str, ...], str]:
+    return {
+        tuple(json.loads(d["invoice_numbers_json"])): d["draft_id"]
+        for d in rows(engine, "SELECT draft_id, invoice_numbers_json FROM drafts")
+    }
+
+
+def _send_draft(draft_id: str) -> Any:
+    return lambda invoice: {
+        "invoice_number": invoice,
+        "steps": [{"tool": "send_email", "args": {"draft_id": draft_id}, "reason": "r"}],
+    }
+
+
+def _last_send(engine: Engine, invoice: str) -> dict[str, Any]:
+    sends = rows(engine, "SELECT * FROM agent_steps WHERE tool = 'send_email' ORDER BY rowid")
+    return [s for s in sends if s["invoice_number"] == invoice][-1]
+
+
+def test_a_rejected_draft_is_never_sent(db: Engine) -> None:
+    tick(db)
+    draft_id = _draft_ids(db)[("INV-003",)]
+    with db.begin() as c:
+        c.execute(
+            text("UPDATE drafts SET status = 'rejected' WHERE draft_id = :d"), {"d": draft_id}
+        )
+    planner = ScriptedPlanner(
+        {"INV-003": _send_draft(draft_id)}, default=lambda n: plan_case_json(db, n)
+    )
+    tick(db, level=2, planner=planner, cfg=config(allowlisted_customers=("CUST-A",)))
+    send = _last_send(db, "INV-003")
+    assert (send["status"], json.loads(send["result_json"])) == (
+        "failed",
+        {"error": "DRAFT_NOT_AVAILABLE"},
+    )
+    assert rows(db, "SELECT COUNT(*) AS n FROM mail_outbox") == [{"n": 0}]
+
+
+def test_a_draft_whose_facts_changed_fails_validation(db: Engine) -> None:
+    both = {
+        "invoice_number": "INV-003",
+        "steps": [
+            {
+                "tool": "draft_message",
+                "args": {"invoice_numbers": ["INV-003", "INV-013"], "tone": 1},
+                "reason": "r",
+            }
+        ],
+    }
+    tick(db, planner=ScriptedPlanner({"INV-003": both}, default=lambda n: plan_case_json(db, n)))
+    draft_id = _draft_ids(db)[("INV-003", "INV-013")]
+    with db.begin() as c:  # INV-013 is paid after the draft was written
+        c.execute(
+            text(
+                "INSERT INTO payments (payment_id, invoice_number, payment_date, amount_fils)"
+                " VALUES ('P-013', 'INV-013', '2026-10-30', 400000)"
+            )
+        )
+    planner = ScriptedPlanner(
+        {"INV-003": _send_draft(draft_id)}, default=lambda n: plan_case_json(db, n)
+    )
+    tick(db, level=2, planner=planner, cfg=config(allowlisted_customers=("CUST-A",)))
+    send = _last_send(db, "INV-003")
+    assert send["status"] == "converted_to_approval"
+    assert json.loads(send["policy_reasons_json"]) == ["POLICY_VALIDATION_FAILED"]
+    assert rows(db, "SELECT COUNT(*) AS n FROM mail_outbox") == [{"n": 0}]
+
+
+class FailOnSendStep(DbAgentStore):
+    def add_step(self, step: Any) -> None:
+        if step.invoice_number == "INV-003" and step.tool == "send_email":
+            raise RuntimeError("disk full")
+        super().add_step(step)
+
+
+def test_queued_approval_writes_do_not_leak_into_later_cases(db: Engine) -> None:
+    with db.begin() as c:
+        summary = run_tick(
+            FailOnSendStep(c, CLOCK),
+            as_of=AS_OF,
+            now_local=CLOCK.now(),
+            autonomy_level=1,
+            config=tick_config(config()),
+        )
+    assert summary.case_errors == 1
+    inv12 = _last_send(db, "INV-012")
+    assert inv12["status"] == "converted_to_approval"
+    assert rows(db, "SELECT COUNT(*) AS n FROM approvals") == [{"n": 1}]
+
+
+class FailOnMessageSent(DbAgentStore):
+    def save_case(
+        self,
+        invoice_number: str,
+        before: Any,
+        after: Any,
+        trigger: str,
+        run_id: str,
+        event_id: str | None = None,
+    ) -> None:
+        if trigger == "MessageSent":
+            raise RuntimeError("locked")
+        super().save_case(invoice_number, before, after, trigger, run_id, event_id)
+
+
+class FailOnTask(DbAgentStore):
+    def add_task(self, task_id: str, *, fields: Any) -> None:
+        if fields["text"].startswith("Escalated"):
+            raise RuntimeError("locked")
+        super().add_task(task_id, fields=fields)
+
+
+def test_a_step_failing_partway_leaves_none_of_its_writes(db: Engine) -> None:
+    with db.begin() as c:
+        run_tick(
+            FailOnMessageSent(c, CLOCK),
+            as_of=AS_OF,
+            now_local=CLOCK.now(),
+            autonomy_level=2,
+            config=tick_config(config(allowlisted_customers=("CUST-A",))),
+        )
+    assert _last_send(db, "INV-003")["status"] == "failed"
+    assert rows(db, "SELECT COUNT(*) AS n FROM mail_outbox") == [{"n": 0}]
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-003'") == [
+        {"state": "ASSESSED"}
+    ]
+
+
+def test_an_escalation_without_its_task_is_rolled_back(db: Engine) -> None:
+    with db.begin() as c:
+        run_tick(
+            FailOnTask(c, CLOCK),
+            as_of=AS_OF,
+            now_local=CLOCK.now(),
+            autonomy_level=1,
+            config=tick_config(config()),
+        )
+    escalate = next(
+        s for s in steps(db) if s["invoice_number"] == "INV-011" and s["tool"] == "escalate"
+    )
+    assert escalate["status"] == "failed"
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-011'") == [
+        {"state": "ASSESSED"}
+    ]
+    tick(db)  # the next tick escalates and creates the task
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-011'") == [
+        {"state": "ESCALATED"}
+    ]
+    assert rows(db, "SELECT COUNT(*) AS n FROM tasks WHERE invoice_number = 'INV-011'") == [
+        {"n": 1}
+    ]
+
+
+def test_a_dispute_event_is_applied_once(db: Engine) -> None:
+    tick(db)  # INV-004: NEW -> ASSESSED -> DISPUTE_OPEN (event E-001)
+    escalate = {
+        "invoice_number": "INV-004",
+        "steps": [
+            {
+                "tool": "escalate",
+                "args": {"invoice_number": "INV-004", "to_role": "finance"},
+                "reason": "r",
+            }
+        ],
+    }
+    tick(
+        db, planner=ScriptedPlanner({"INV-004": escalate}, default=lambda n: plan_case_json(db, n))
+    )
+    tick(db)
+    tick(db)
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-004'") == [
+        {"state": "ESCALATED"}
+    ]
+    triggers = [
+        json.loads(r["after_json"])["trigger"]
+        for r in rows(
+            db,
+            "SELECT after_json FROM audit_log WHERE action = 'case.transition'"
+            " AND entity_id = 'INV-004' ORDER BY audit_id",
+        )
+    ]
+    assert triggers == ["BecameOverdue", "Assessed", "DisputeOpened", "EscalateExecuted"]
+    assert rows(
+        db,
+        "SELECT COUNT(*) AS n FROM tasks"
+        " WHERE invoice_number = 'INV-004' AND text LIKE 'Escalated%'",
+    ) == [{"n": 1}]
+
+
+def test_an_event_that_changes_nothing_is_still_marked_applied(db: Engine) -> None:
+    with db.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO cases (invoice_number, state, updated_at)"
+                " VALUES ('INV-004', 'DISPUTE_OPEN', '2026-10-01T05:00:00Z')"
+            )
+        )
+    tick(db)
+    marked = rows(db, "SELECT after_json FROM audit_log WHERE action = 'case.event_applied'")
+    assert [json.loads(m["after_json"])["event_id"] for m in marked] == ["E-001"]
+    with db.connect() as c:
+        assert ("INV-004", "E-001") in DbAgentStore(c, CLOCK).applied_events()
+
+
+def test_l0_marks_no_events(db: Engine) -> None:
+    tick(db, level=0)
+    assert rows(db, "SELECT COUNT(*) AS n FROM audit_log WHERE entity_type = 'case'") == [{"n": 0}]
+
+
+def test_sandbox_mail_is_stamped_with_the_tick_time(db: Engine) -> None:
+    now = datetime(2026, 11, 3, 10, 0, tzinfo=DUBAI)  # a day after the store's clock
+    with db.begin() as c:
+        run_tick(
+            DbAgentStore(c, CLOCK),
+            as_of=AS_OF,
+            now_local=now,
+            autonomy_level=2,
+            config=tick_config(config(allowlisted_customers=("CUST-A",))),
+        )
+        store = DbAgentStore(c, CLOCK)
+        assert store.sends_on(date(2026, 11, 3), "Asia/Dubai") == 1
+        assert store.sends_on(date(2026, 11, 2), "Asia/Dubai") == 0
+    assert rows(db, "SELECT created_at FROM mail_outbox") == [
+        {"created_at": "2026-11-03T06:00:00Z"}
+    ]
+
+
+class FailOnPaid(FailOnMessageSent):
+    def save_case(
+        self,
+        invoice_number: str,
+        before: Any,
+        after: Any,
+        trigger: str,
+        run_id: str,
+        event_id: str | None = None,
+    ) -> None:
+        if trigger == "PaidInFull":
+            raise RuntimeError("locked")
+        DbAgentStore.save_case(self, invoice_number, before, after, trigger, run_id, event_id)
+
+
+def test_a_failing_resolution_is_audited_and_the_tick_continues(db: Engine) -> None:
+    with db.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO cases (invoice_number, state, updated_at)"
+                " VALUES ('INV-001', 'AWAITING_REPLY', '2026-10-01T05:00:00Z')"
+            )
+        )
+    with db.begin() as c:
+        summary = run_tick(
+            FailOnPaid(c, CLOCK),
+            as_of=AS_OF,
+            now_local=CLOCK.now(),
+            autonomy_level=1,
+            config=tick_config(config()),
+        )
+    assert (summary.case_errors, summary.cases_considered) == (1, 9)
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-001'") == [
+        {"state": "AWAITING_REPLY"}
+    ]
+    failed = rows(db, "SELECT entity_id FROM audit_log WHERE action = 'agent.case_failed'")
+    assert failed == [{"entity_id": "INV-001"}]
+    assert len(tools_by_invoice(db)) == 9
+
+
+class FailFirstEscalationTask(DbAgentStore):
+    failed = False
+
+    def add_task(self, task_id: str, *, fields: Any) -> None:
+        if fields["text"].startswith("Escalated") and not self.failed:
+            self.failed = True
+            raise RuntimeError("locked")
+        super().add_task(task_id, fields=fields)
+
+
+def test_a_failed_step_restores_the_in_memory_case_state(db: Engine) -> None:
+    step = {"tool": "escalate", "args": {"invoice_number": "INV-011", "to_role": "finance"}}
+    plan = {
+        "invoice_number": "INV-011",
+        "steps": [{**step, "reason": "a"}, {**step, "reason": "b"}],
+    }
+    with db.begin() as c:
+        run_tick(
+            FailFirstEscalationTask(c, CLOCK),
+            as_of=AS_OF,
+            now_local=CLOCK.now(),
+            autonomy_level=1,
+            config=tick_config(config()),
+            planner=ScriptedPlanner({"INV-011": plan}, default=lambda n: plan_case_json(db, n)),
+        )
+    escalations = [s for s in steps(db) if s["invoice_number"] == "INV-011"]
+    assert [s["status"] for s in escalations] == ["failed", "executed"]
+    assert json.loads(escalations[1]["result_json"])["task_id"] is not None  # entered on retry
+    assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-011'") == [
+        {"state": "ESCALATED"}
+    ]

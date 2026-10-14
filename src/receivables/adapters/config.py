@@ -263,8 +263,9 @@ class _L2(_Strict):
 
 class _Agent(_Strict):
     autonomy_level: PlainInt = Field(default=1, ge=0, le=2)  # 0 shadow, 1 assist, 2 policy-gated
-    max_cases_per_tick: PlainInt = Field(default=20, ge=1)
-    max_steps_per_case: PlainInt = Field(default=5, ge=1)
+    max_cases_per_tick: PlainInt = Field(default=20, ge=1, le=20)  # §18.6: at most 20
+    # §18.6 allows at most 5 steps; the rule planner's plans have up to 3, which must fit.
+    max_steps_per_case: PlainInt = Field(default=5, ge=3, le=5)
     llm_timeout_seconds: PlainInt = Field(default=30, ge=1, le=300)
     promise_grace_days: PlainInt = Field(default=2, ge=0)
     l2: _L2 = _L2()

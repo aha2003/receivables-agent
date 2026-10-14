@@ -85,7 +85,7 @@ def test_rejections_keep_only_sanitised_tool_names() -> None:
     }
     result = validate_plan(raw, "INV-003")
     assert isinstance(result, PlanRejection)
-    assert result.tools[0] == "wire_transferDROPTABLEinvoices" + "x" * 10  # 40 characters
+    assert result.tools[0] == "?"  # not a plain lower-case name: no free text in the audit
     assert result.tools[1:] == ("?",) * 9  # at most 10 names
     assert len(result.tools) == 10
 
@@ -95,3 +95,25 @@ def test_planner_reasons_are_plain_bounded_text() -> None:
     plan = validate_plan(raw, "INV-003")
     assert isinstance(plan, Plan)
     assert plan.steps[0].reason == "ok" + "y" * 198
+
+
+@pytest.mark.parametrize(
+    ("tool", "listed"),
+    [
+        ("get_case", "get_case"),
+        ("wire_transfer", "wire_transfer"),
+        ("john.doe", "?"),
+        ("Ahmed Khan", "?"),
+        ("x" * 41, "?"),
+    ],
+)
+def test_listed_tool_names(tool: str, listed: str) -> None:
+    raw = {"invoice_number": "INV-003", "steps": [step(tool), step("wire_transfer")]}
+    result = validate_plan(raw, "INV-003")
+    assert isinstance(result, PlanRejection) and result.tools[0] == listed
+
+
+def test_too_many_steps_stops_before_checking_steps() -> None:
+    raw = {"invoice_number": "INV-003", "steps": [step("wire_transfer")] * 1000}
+    result = validate_plan(raw, "INV-003")
+    assert isinstance(result, PlanRejection) and result.reasons == ("TOO_MANY_STEPS",)

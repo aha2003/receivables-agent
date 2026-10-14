@@ -160,6 +160,9 @@ def test_agent_overrides(tmp_path: Path) -> None:
         "agent:\n  autonomy_level: '1.0'\n",
         "agent:\n  max_cases_per_tick: 0\n",
         "agent:\n  max_steps_per_case: 0\n",
+        "agent:\n  max_steps_per_case: 2\n",  # rule plans have up to 3 steps
+        "agent:\n  max_steps_per_case: 6\n",  # §18.6: at most 5
+        "agent:\n  max_cases_per_tick: 21\n",  # §18.6: at most 20
         "agent:\n  llm_timeout_seconds: 0\n",
         "agent:\n  promise_grace_days: -2\n",
         "agent:\n  unknown: 1\n",

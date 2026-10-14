@@ -36,7 +36,6 @@ from receivables.agent.tools import TOOL_REGISTRY
 from receivables.core.config import EngineConfig
 from receivables.core.draft_validator import check_draft
 from receivables.core.drafts import build_fact_block, render_template
-from receivables.core.scoring import active_dispute_label
 
 __all__ = [
     "AgentStore",
@@ -58,6 +57,8 @@ DOC_LABELS = {
     "statement": "statement of account",
 }
 INTERNAL_TASK_DAYS = 3
+MAX_CASES_PER_TICK = 20  # §18.6 step 1
+STALE_DRAFT = "STALE_DRAFT"  # the draft no longer matches today's facts
 
 
 class PlannerError(Exception):
@@ -90,6 +91,10 @@ class DraftRecord:
     customer_id: str
     invoice_numbers: tuple[str, ...]
     tone: int
+    dispute_label: str | None
+    subject: str
+    body: str
+    status: str
     violations: tuple[str, ...]
 
 
@@ -134,9 +139,12 @@ class AgentStore(Protocol):
         after: CaseState,
         trigger: str,
         run_id: str,
+        event_id: str | None = None,
     ) -> None: ...
+    def applied_events(self) -> set[tuple[str, str]]: ...
+    def mark_event(self, invoice_number: str, event_id: str, trigger: str, run_id: str) -> None: ...
     def set_followup(self, invoice_number: str, on: date) -> None: ...
-    def case_scope(self) -> AbstractContextManager[None]: ...
+    def savepoint(self) -> AbstractContextManager[None]: ...
     def start_run(self, summary: RunSummary, now: datetime) -> None: ...
     def finish_run(self, summary: RunSummary) -> None: ...
     def add_step(self, step: StepRecord) -> None: ...
@@ -162,18 +170,28 @@ class _Tick:
     executed: int = 0
     denied: int = 0
     states: dict[str, CaseState] = field(default_factory=dict)
+    applied_events: set[tuple[str, str]] = field(default_factory=set)
     # Writes that reference the step row (approvals), run once that row exists.
     after_step: list[Callable[[], None]] = field(default_factory=list)
 
-    def apply(self, invoice: str, trigger: CaseTrigger) -> Any:
+    def apply(self, invoice: str, trigger: CaseTrigger, event_id: str | None = None) -> Any:
         before = self.states.get(invoice)
         result = transition(before, trigger)
         if result.applied and result.to_state is not None and result.to_state != before:
             if self.autonomy > 0:  # L0 shadow changes nothing (§18.4); states stay in memory
                 self.store.save_case(
-                    invoice, before, result.to_state, type(trigger).__name__, self.run_id
+                    invoice,
+                    before,
+                    result.to_state,
+                    type(trigger).__name__,
+                    self.run_id,
+                    event_id,
                 )
             self.states[invoice] = result.to_state
+        elif event_id is not None and self.autonomy > 0:  # considered, even without a change
+            self.store.mark_event(invoice, event_id, type(trigger).__name__, self.run_id)
+        if event_id is not None and self.autonomy > 0:
+            self.applied_events.add((invoice, event_id))
         return result
 
 
@@ -196,30 +214,43 @@ def run_tick(
     run_id = new_run_id()
     tick = _Tick(store, facts, config, run_id, now_local, autonomy_level)
     tick.states = dict(store.case_states())
+    tick.applied_events = set(store.applied_events())
     summary = RunSummary(
         run_id, as_of, autonomy_level, "llm" if planner else "rules", False,
         planner.model if planner else None, 0, 0, 0, 0,
     )  # fmt: skip
     store.start_run(summary, now_local)
 
+    case_errors = 0
     # Cases whose invoice is no longer open are resolved (§18.2 "open amount reaches 0").
     for invoice, state in sorted(tick.states.items()):
         row = facts.rows.get(invoice)
         if state is not CaseState.RESOLVED and row is not None and row.open_amount == 0:
-            tick.apply(invoice, PaidInFull())
+            try:
+                with store.savepoint():
+                    tick.apply(invoice, PaidInFull())
+            except Exception as error:
+                tick.states[invoice] = state
+                case_errors += 1
+                store.audit(
+                    "agent.case_failed",
+                    "invoice",
+                    invoice,
+                    {"run_id": run_id, "error": _code(error)},
+                )
 
     ordered = sorted(facts.scored.values(), key=lambda s: (-s.priority_value, s.invoice_number))
-    selected = [s.invoice_number for s in ordered[: config.max_cases_per_tick]]
+    budget = min(config.max_cases_per_tick, MAX_CASES_PER_TICK)
+    selected = [s.invoice_number for s in ordered[:budget]]
     fallback = False
-    case_errors = 0
     for invoice in selected:
-        states, seq, executed, denied = dict(tick.states), tick.seq, tick.executed, tick.denied
+        saved = (dict(tick.states), set(tick.applied_events), tick.seq, tick.executed, tick.denied)
         try:
-            with store.case_scope():  # a failing case is rolled back as a whole
+            with store.savepoint():  # a failing case is rolled back as a whole
                 fallback |= _run_case(tick, invoice, planner)
         except Exception as error:  # one bad case never stops the tick (§18.6 step 7)
-            tick.states, tick.seq, tick.executed, tick.denied = states, seq, executed, denied
-            case_errors += 1
+            tick.states, tick.applied_events, tick.seq, tick.executed, tick.denied = saved
+            case_errors += 1  # queued approval writes are dropped when the next case starts
             store.audit(
                 "agent.case_failed", "invoice", invoice, {"run_id": run_id, "error": _code(error)}
             )
@@ -241,13 +272,21 @@ def _code(error: Exception) -> str:
 
 
 def _open_case(tick: _Tick, invoice: str) -> None:
+    """Create and assess the case, then apply the latest dispute event once (§18.2)."""
     tick.apply(invoice, BecameOverdue())
     tick.apply(invoice, Assessed())
-    label = active_dispute_label(tick.facts.events.get(invoice, ()), tick.facts.as_of)
-    if label is not None:
-        tick.apply(invoice, DisputeOpened())
-    elif tick.states.get(invoice) is CaseState.DISPUTE_OPEN:
-        tick.apply(invoice, DisputeResolved())
+    disputes = [
+        e
+        for e in tick.facts.events.get(invoice, ())
+        if e.event_type in {"DISPUTE_OPENED", "DISPUTE_RESOLVED"}
+    ]
+    if not disputes:
+        return
+    latest = max(disputes, key=lambda e: (e.event_date, e.event_id))
+    if (invoice, latest.event_id) in tick.applied_events:
+        return  # already applied: later state changes (e.g. escalation) stand
+    trigger = DisputeOpened() if latest.event_type == "DISPUTE_OPENED" else DisputeResolved()
+    tick.apply(invoice, trigger, latest.event_id)
 
 
 def _read(tool: str, args: Mapping[str, Any], facts: AgentFacts) -> Any:
@@ -271,7 +310,7 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
         return plan_case(tick.facts, invoice), False
     try:
         raw = planner.propose(_observation(tick, invoice))
-    except PlannerError as error:
+    except Exception as error:  # any planner failure falls back (§18.6 step 7)
         tick.store.audit(
             "agent.planner_failed",
             "invoice",
@@ -293,6 +332,7 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
 
 
 def _run_case(tick: _Tick, invoice: str, planner: PlanSource | None) -> bool:
+    tick.after_step.clear()
     _open_case(tick, invoice)
     plan, fell_back = _plan(tick, invoice, planner)
     drafts: dict[int, str] = {}  # plan position -> draft id created by that step
@@ -340,19 +380,29 @@ def _record(
 def _run_step(
     tick: _Tick, invoice: str, step: PlanStep, step_id: str, drafts: Mapping[int, str]
 ) -> StepRecord:
-    spec = TOOL_REGISTRY[step.tool]
     if tick.autonomy == 0:  # L0 shadow: record only
         return _record(tick, invoice, step, step_id, "skipped", None)
+    states, events, pending = dict(tick.states), set(tick.applied_events), len(tick.after_step)
     try:
-        if step.tool == "send_email":
-            return _send_email(tick, invoice, step, step_id, drafts)
-        if spec.kind == "read":
-            out = _read(step.tool, step.json_args(), tick.facts)
-            status = "executed" if out.ok else "failed"
-            return _record(tick, invoice, step, step_id, status, out.data or {"error": out.error})
-        result = _EFFECTS[step.tool](tick, invoice, step.json_args(), step_id)
+        with tick.store.savepoint():  # a step's writes stand or fall together
+            return _execute(tick, invoice, step, step_id, drafts)
     except Exception as error:  # a failing step is recorded, the case continues
+        tick.states, tick.applied_events = states, events
+        del tick.after_step[pending:]
         return _record(tick, invoice, step, step_id, "failed", {"error": _code(error)})
+
+
+def _execute(
+    tick: _Tick, invoice: str, step: PlanStep, step_id: str, drafts: Mapping[int, str]
+) -> StepRecord:
+    spec = TOOL_REGISTRY[step.tool]
+    if step.tool == "send_email":
+        return _send_email(tick, invoice, step, step_id, drafts)
+    if spec.kind == "read":
+        out = _read(step.tool, step.json_args(), tick.facts)
+        status = "executed" if out.ok else "failed"
+        return _record(tick, invoice, step, step_id, status, out.data or {"error": out.error})
+    result = _EFFECTS[step.tool](tick, invoice, step.json_args(), step_id)
     status = "failed" if "error" in result else "executed"
     return _record(tick, invoice, step, step_id, status, result)
 
@@ -484,6 +534,31 @@ _EFFECTS: dict[str, Callable[[_Tick, str, dict[str, Any], Any], dict[str, Any]]]
 }
 
 
+def _recheck(tick: _Tick, draft: DraftRecord) -> tuple[str, ...]:
+    """The draft's violations against today's facts, not those saved when it was made."""
+    facts = tick.facts
+    try:
+        rows = [facts.rows[n] for n in draft.invoice_numbers]
+        block = build_fact_block(
+            rows,
+            customer_name=facts.customers[draft.customer_id].customer_name,
+            sender_name=tick.config.sender_name,
+            as_of=facts.as_of,
+            tone=draft.tone,
+            dispute_label=draft.dispute_label,
+        )
+    except (KeyError, ValueError):  # an invoice is no longer overdue, or unknown
+        return tuple(sorted({*draft.violations, STALE_DRAFT}))
+    found = check_draft(
+        draft.subject,
+        draft.body,
+        block,
+        max_words=tick.config.max_words,
+        invoice_regex=tick.config.invoice_regex,
+    )
+    return tuple(sorted({*draft.violations, *found}))
+
+
 def _send_email(
     tick: _Tick, invoice: str, step: PlanStep, step_id: str, drafts: Mapping[int, str]
 ) -> StepRecord:
@@ -492,7 +567,12 @@ def _send_email(
     draft_id = drafts.get(int(ref.split(":")[1])) if ref else args.get("draft_id")
     draft = tick.store.get_draft(draft_id) if draft_id else None
     customer_id = tick.facts.rows[invoice].customer_id
-    if draft is None or draft.customer_id != customer_id or invoice not in draft.invoice_numbers:
+    if (
+        draft is None
+        or draft.status != "draft"  # rejected, approved or already sent drafts are not reused
+        or draft.customer_id != customer_id
+        or invoice not in draft.invoice_numbers
+    ):
         return _record(tick, invoice, step, step_id, "failed", {"error": "DRAFT_NOT_AVAILABLE"})
     l2 = tick.config.l2
     customer = tick.facts.customers[customer_id]
@@ -511,14 +591,16 @@ def _send_email(
             invoice_numbers=draft.invoice_numbers,
             tone=draft.tone,
             recipient=recipient,
-            violations=draft.violations,
+            violations=_recheck(tick, draft),
         ),
         tick.now_local,
         l2,
     )
     if decision.allowed and tick.autonomy == 2:
         mail_id = f"{step_id}-M"
-        tick.store.add_sandbox_mail(mail_id, fields={"draft_id": draft.draft_id, "to": recipient})
+        tick.store.add_sandbox_mail(
+            mail_id, fields={"draft_id": draft.draft_id, "to": recipient, "at": tick.now_local}
+        )
         tick.apply(invoice, MessageSent())
         return _record(
             tick, invoice, step, step_id, "executed",

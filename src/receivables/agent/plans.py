@@ -19,7 +19,7 @@ from receivables.agent.tools import MAX_PLAN_STEPS, TOOL_REGISTRY
 __all__ = ["PLAN_REJECTED", "PlanRejection", "validate_plan"]
 
 PLAN_REJECTED = "PLAN_REJECTED"
-_SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]")
+_PLAIN_NAME = re.compile(r"[a-z][a-z0-9_]{0,39}")
 _MAX_LISTED_TOOLS = 10
 _MAX_REASON_CHARS = 200
 
@@ -37,13 +37,20 @@ class PlanRejection:
     status: str = PLAN_REJECTED
 
 
+def _unknown(tool: object) -> str:
+    """A tool outside the registry, as a short code-like name (no free text in the audit)."""
+    if isinstance(tool, str) and _PLAIN_NAME.fullmatch(tool):
+        return tool
+    return "?"
+
+
 def _tool_names(steps: object) -> tuple[str, ...]:
     if not isinstance(steps, Sequence) or isinstance(steps, str | bytes):
         return ()
     names: list[str] = []
     for step in list(steps)[:_MAX_LISTED_TOOLS]:
         tool = step.get("tool") if isinstance(step, Mapping) else None
-        names.append(_SAFE_NAME.sub("", tool)[:40] if isinstance(tool, str) else "?")
+        names.append(tool if isinstance(tool, str) and tool in TOOL_REGISTRY else _unknown(tool))
     return tuple(names)
 
 
@@ -65,7 +72,7 @@ def validate_plan(
     if not steps:
         reasons.add("NO_STEPS")
     if len(steps) > min(max_steps, MAX_PLAN_STEPS):
-        reasons.add("TOO_MANY_STEPS")
+        return PlanRejection(tuple(sorted(reasons | {"TOO_MANY_STEPS"})), tools)
 
     built: list[PlanStep] = []
     for step in steps:

@@ -21,6 +21,7 @@ from receivables.adapters.db.models import (
     AgentRun,
     AgentStep,
     Approval,
+    AuditLog,
     Case,
     Correspondence,
     Draft,
@@ -49,6 +50,10 @@ _DELIVERED = ("delivered_sandbox", "sent")
 
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _utc(moment: datetime) -> str:
+    return moment.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _local_date(timestamp: str, timezone: str) -> date | None:
@@ -97,6 +102,7 @@ class DbAgentStore:
         after: CaseState,
         trigger: str,
         run_id: str,
+        event_id: str | None = None,
     ) -> None:
         now = self._now()
         if before is None:
@@ -117,8 +123,37 @@ class DbAgentStore:
             entity_type="case",
             entity_id=invoice_number,
             before=None if before is None else {"state": before.value},
-            after={"state": after.value, "trigger": trigger, "run_id": run_id},
+            after={
+                "state": after.value,
+                "trigger": trigger,
+                "run_id": run_id,
+                "event_id": event_id,
+            },
         )
+
+    def mark_event(self, invoice_number: str, event_id: str, trigger: str, run_id: str) -> None:
+        """Record that an event was applied without changing the state (it is not re-applied)."""
+        self.audit(
+            "case.event_applied",
+            "case",
+            invoice_number,
+            {"trigger": trigger, "run_id": run_id, "event_id": event_id},
+        )
+
+    def applied_events(self) -> set[tuple[str, str]]:
+        """(invoice, event id) pairs already applied to cases, from the audit log."""
+        rows = self.conn.execute(
+            select(AuditLog.entity_id, AuditLog.after_json).where(
+                AuditLog.entity_type == "case",
+                AuditLog.action.in_(("case.transition", "case.event_applied")),
+            )
+        ).all()
+        applied: set[tuple[str, str]] = set()
+        for row in rows:
+            event_id = json.loads(row.after_json or "{}").get("event_id")
+            if event_id is not None:
+                applied.add((row.entity_id, event_id))
+        return applied
 
     def set_followup(self, invoice_number: str, on: date) -> None:
         self.conn.execute(
@@ -128,7 +163,7 @@ class DbAgentStore:
         )
 
     @contextmanager
-    def case_scope(self) -> Iterator[None]:
+    def savepoint(self) -> Iterator[None]:
         with self.conn.begin_nested():
             yield
 
@@ -140,7 +175,7 @@ class DbAgentStore:
             insert(AgentRun).values(
                 run_id=summary.run_id,
                 as_of=summary.as_of.isoformat(),
-                now_ts=now.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                now_ts=_utc(now),
                 autonomy_level=summary.autonomy_level,
                 planner=summary.planner,
                 fallback=0,
@@ -226,6 +261,10 @@ class DbAgentStore:
             customer_id=draft.customer_id,
             invoice_numbers=tuple(json.loads(draft.invoice_numbers_json)),
             tone=draft.tone,
+            dispute_label=json.loads(draft.facts_json).get("dispute_label"),
+            subject=draft.subject,
+            body=draft.body,
+            status=draft.status,
             violations=tuple(json.loads(draft.violations_json)),
         )
 
@@ -251,7 +290,7 @@ class DbAgentStore:
                 body=draft.body,
                 gateway="sandbox",
                 status="delivered_sandbox",
-                created_at=self._now(),
+                created_at=_utc(fields["at"]),  # the tick's now_local, as the daily cap counts
             )
         )
 
