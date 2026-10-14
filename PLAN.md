@@ -121,7 +121,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.6
   - Tests: T-AGT-08
   - Done when: Tool sequences match the table for every golden queue item.
-- [ ] **S2.07** Orchestrator tick and trace
+- [x] **S2.07** Orchestrator tick and trace
   - Goal: Select up to 20 cases, up to 5 steps each, policy-check every side effect, convert denied or L1 sends to approvals, record runs and steps with the injected clock.
   - Spec: §18.6
   - Tests: T-AGT-01, T-AGT-02, T-AGT-04, T-AGT-05, T-AGT-07
