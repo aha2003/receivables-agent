@@ -61,7 +61,13 @@ def decide(
     draft_changes: dict[str, object] | None = None,
     **limit_changes: object,
 ) -> PolicyDecision:
-    case = send_facts_from(facts, numbers, sends_today=sends_today, outbound_dates=outbound_dates)
+    case = send_facts_from(
+        facts,
+        numbers,
+        sends_today=sends_today,
+        timezone="Asia/Dubai",
+        outbound_dates=outbound_dates,
+    )
     draft = draft_for(facts, *numbers, **(draft_changes or {}))
     return evaluate_send(case, draft, now, limits(allowlisted_customers=allow, **limit_changes))
 
@@ -228,7 +234,10 @@ def test_recipient_must_match_exactly(facts: AgentFacts, recipient: str) -> None
 
 def test_customer_without_contact_email_is_never_a_valid_recipient(facts: AgentFacts) -> None:
     case = dataclasses.replace(
-        send_facts_from(facts, ["INV-003"], sends_today=0, outbound_dates=()), contact_email=None
+        send_facts_from(
+            facts, ["INV-003"], sends_today=0, timezone="Asia/Dubai", outbound_dates=()
+        ),
+        contact_email=None,
     )
     draft = draft_for(facts, "INV-003")
     decision = evaluate_send(case, draft, NOW, limits(allowlisted_customers=("CUST-A",)))
@@ -276,12 +285,48 @@ def test_recent_contact_uses_the_local_calendar_date(facts: AgentFacts) -> None:
         sent_at="2026-10-01T06:00:00Z",
     )
     facts = dataclasses.replace(facts, messages=(account_level, message, inbound, other))
-    case = send_facts_from(facts, ["INV-003"], sends_today=0)
+    case = send_facts_from(facts, ["INV-003"], sends_today=0, timezone="Asia/Dubai")
     assert case.outbound_dates == (date(2026, 10, 1), date(2026, 10, 27))
     decision = evaluate_send(
         case, draft_for(facts, "INV-003"), NOW, limits(allowlisted_customers=("CUST-A",))
     )
     assert decision.reasons == ("POLICY_RECENT_CONTACT",)
+
+
+def test_outbound_dates_follow_the_policy_time_zone(facts: AgentFacts) -> None:
+    message = MessageHeader(
+        message_id="M-OUT",
+        invoice_number="INV-003",
+        customer_id="CUST-A",
+        direction="outbound",
+        sent_at="2026-10-26T21:00:00Z",
+        language="en",
+    )
+    facts = dataclasses.replace(facts, messages=(message,))
+    dubai = send_facts_from(facts, ["INV-003"], sends_today=0, timezone="Asia/Dubai")
+    utc = send_facts_from(facts, ["INV-003"], sends_today=0, timezone="UTC")
+    assert (dubai.outbound_dates, utc.outbound_dates) == (
+        (date(2026, 10, 27),),
+        (date(2026, 10, 26),),
+    )
+
+
+@pytest.mark.parametrize("numbers", [(), ("INV-003", "INV-013")])
+def test_draft_invoices_outside_the_facts_fail_validation(
+    facts: AgentFacts, numbers: tuple[str, ...]
+) -> None:
+    case = send_facts_from(
+        facts, ["INV-003"], sends_today=0, timezone="Asia/Dubai", outbound_dates=()
+    )
+    draft = dataclasses.replace(draft_for(facts, "INV-003"), invoice_numbers=numbers)
+    decision = evaluate_send(case, draft, NOW, limits(allowlisted_customers=("CUST-A",)))
+    assert decision.reasons == ("POLICY_VALIDATION_FAILED",)
+
+
+@pytest.mark.parametrize("tone", [0, -1, 2, 3])
+def test_only_tone_one_is_allowed(facts: AgentFacts, tone: int) -> None:
+    decision = decide(facts, "INV-003", allow=("CUST-A",), draft_changes={"tone": tone})
+    assert decision.reasons == ("POLICY_TONE_NOT_ALLOWED",)
 
 
 def test_naive_now_local_is_refused(facts: AgentFacts) -> None:
@@ -291,13 +336,15 @@ def test_naive_now_local_is_refused(facts: AgentFacts) -> None:
 
 def test_send_facts_need_one_customer(facts: AgentFacts) -> None:
     with pytest.raises(ValueError, match="one customer"):
-        send_facts_from(facts, ["INV-003", "INV-004"], sends_today=0)
+        send_facts_from(facts, ["INV-003", "INV-004"], sends_today=0, timezone="Asia/Dubai")
     with pytest.raises(KeyError):
-        send_facts_from(facts, ["INV-999"], sends_today=0)
+        send_facts_from(facts, ["INV-999"], sends_today=0, timezone="Asia/Dubai")
 
 
 def test_send_facts_from_golden_data(facts: AgentFacts) -> None:
-    case = send_facts_from(facts, ["INV-004", "INV-011"], sends_today=3, outbound_dates=())
+    case = send_facts_from(
+        facts, ["INV-004", "INV-011"], sends_today=3, timezone="Asia/Dubai", outbound_dates=()
+    )
     assert case == SendFacts(
         customer_id="CUST-B",
         contact_email="accounts@beta.example",

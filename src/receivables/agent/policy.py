@@ -11,7 +11,7 @@ from datetime import date, datetime, time
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from receivables.agent.facts import BUSINESS_TZ, AgentFacts, MessageHeader
+from receivables.agent.facts import AgentFacts, MessageHeader
 from receivables.core.scoring import active_dispute_label
 
 __all__ = [
@@ -113,7 +113,10 @@ def evaluate_send(
         "POLICY_OUTSIDE_HOURS": _WEEKDAYS[local.weekday()] not in config.business_days
         or not start <= local.time() < end,
         "POLICY_DAILY_CAP": case_facts.sends_today >= config.daily_send_cap,
-        "POLICY_VALIDATION_FAILED": bool(draft.violations),
+        # Fail closed: a draft naming no invoice, or one these facts do not cover, is invalid.
+        "POLICY_VALIDATION_FAILED": bool(draft.violations)
+        or not draft.invoice_numbers
+        or not set(draft.invoice_numbers) <= set(case_facts.open_amounts),
         "POLICY_RECIPIENT_NOT_ALLOWED": case_facts.contact_email is None
         or draft.recipient != case_facts.contact_email,
     }
@@ -126,12 +129,16 @@ def send_facts_from(
     invoice_numbers: Iterable[str],
     *,
     sends_today: int,
+    timezone: str,
     outbound_dates: Iterable[date] | None = None,
 ) -> SendFacts:
     """``SendFacts`` for a message about ``invoice_numbers`` (all of one customer).
 
-    ``outbound_dates`` defaults to the local dates of the customer's outbound messages in
-    ``facts``; callers add sandbox outbox sends (S2.07, S3.09).
+    ``timezone`` must be the policy's ``config.timezone`` so message dates and ``now_local``
+    share one calendar. ``outbound_dates`` defaults to the customer's outbound messages in
+    ``facts``, which holds only messages dated on or before ``facts.as_of``: when
+    ``now_local`` is later than ``as_of`` the caller must pass every outbound message up to
+    now, including sandbox outbox sends (S2.07, S3.09).
     """
     numbers = tuple(invoice_numbers)
     rows = [facts.rows[n] for n in numbers]  # KeyError: an unknown invoice is a caller bug
@@ -141,7 +148,7 @@ def send_facts_from(
     customer_id = customers.pop()
     if outbound_dates is None:
         outbound_dates = [
-            datetime.fromisoformat(m.sent_at).astimezone(BUSINESS_TZ).date()
+            datetime.fromisoformat(m.sent_at).astimezone(ZoneInfo(timezone)).date()
             for m in facts.messages
             if m.direction == "outbound" and _message_customer(facts, m) == customer_id
         ]
