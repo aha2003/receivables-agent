@@ -1,5 +1,7 @@
 """The scrubbing log pipeline (SPEC §3.1, NFR-07; D-031). All values are synthetic."""
 
+import asyncio
+import io
 import logging
 from typing import Any
 
@@ -144,8 +146,6 @@ def test_non_http_scopes_pass_through(scope_type: str) -> None:
     async def inner(scope: Any, receive: Any, send: Any) -> None:
         seen.append(scope["type"])
 
-    import asyncio
-
     asyncio.run(RequestIdMiddleware(inner)({"type": scope_type}, None, None))  # type: ignore[arg-type]
     assert seen == [scope_type]
 
@@ -163,3 +163,44 @@ def test_a_record_that_cannot_be_formatted_is_dropped_not_leaked(
     }
     printed = capsys.readouterr()
     assert [v for v in PII if v in logs.text() + printed.out + printed.err] == []
+
+
+def test_an_app_cannot_set_its_own_request_id() -> None:
+    async def page(_: Request) -> PlainTextResponse:
+        return PlainTextResponse("ok", headers={"X-Request-ID": "chosen-by-the-app"})
+
+    app = Starlette(routes=[Route("/", page)])
+    app.add_middleware(RequestIdMiddleware)
+    with TestClient(app) as client:
+        response = client.get("/")
+    assert response.headers.get_list("x-request-id") == [response.headers["x-request-id"]]
+    assert len(response.headers["x-request-id"]) == 32
+
+
+def test_the_request_id_is_unbound_after_the_request() -> None:
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        assert "request_id" in structlog.contextvars.get_contextvars()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def run() -> dict[str, Any]:
+        async def send(_: Any) -> None:
+            return None
+
+        structlog.contextvars.bind_contextvars(user="kept")
+        await RequestIdMiddleware(inner)({"type": "http"}, None, send)  # type: ignore[arg-type]
+        return structlog.contextvars.get_contextvars()
+
+    assert asyncio.run(run()) == {"user": "kept"}
+
+
+def test_a_record_already_formatted_elsewhere_has_no_duplicate_message() -> None:
+    other = logging.StreamHandler(io.StringIO())
+    other.setFormatter(logging.Formatter("%(message)s"))  # sets record.message before ours runs
+    log.addHandler(other)
+    try:
+        with json_logs(lambda: NAMES) as logs:
+            log.info("for %s", NAME)
+    finally:
+        log.removeHandler(other)
+    (line,) = logs.lines()
+    assert "message" not in line and line["event"] == "for [CUSTOMER]"
