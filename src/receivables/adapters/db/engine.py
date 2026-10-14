@@ -51,7 +51,8 @@ def make_engine(url: str) -> Engine:
     database = parsed.database
     if database and database != ":memory:" and not database.startswith("file:"):
         Path(database).parent.mkdir(parents=True, exist_ok=True)  # e.g. data/ on a fresh clone
-    engine = create_engine(url)
+    # Bound values (message bodies, names) never appear in error messages or logs (NFR-07).
+    engine = create_engine(url, hide_parameters=True)
     event.listen(engine, "connect", _disable_driver_transactions)
     event.listen(engine, "connect", _apply_pragmas)
     event.listen(engine, "begin", _emit_begin)

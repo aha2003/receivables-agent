@@ -9,6 +9,8 @@ so every client applies exactly the same checks. Invalid output raises
 
 import hashlib
 import json
+import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any, Protocol
@@ -21,6 +23,8 @@ from receivables.adapters.llm.schemas import (
 )
 
 __all__ = ["PROMPT_VERSIONS", "LLMClient", "RawLLMClient", "canonical_request", "request_key"]
+
+log = logging.getLogger("receivables.llm")
 
 # Bumped whenever a prompt changes, so recorded cassettes stop matching (S3.04, S3.06-S3.08).
 PROMPT_VERSIONS = {"classify": "classify-v1", "plan": "plan-v1", "draft": "draft-v1"}
@@ -65,8 +69,34 @@ class RawLLMClient(ABC):
     """
 
     def _complete(self, kind: str, payload: Mapping[str, Any]) -> str:
-        canonical_request(kind, payload)
-        return self.complete(kind, payload)
+        prompt_sha256 = request_key(kind, payload)  # also refuses a request that is not JSON
+        started = time.perf_counter()
+        outcome = "ok"
+        try:
+            return self.complete(kind, payload)
+        except Exception as error:
+            outcome = type(error).__name__  # the type only: a message may hold data
+            raise
+        finally:
+            input_tokens, output_tokens = self.usage()
+            # NFR-07: model, latency, token counts and a prompt hash only; never the content.
+            log.info(
+                "llm.call",
+                extra={
+                    "kind": kind,
+                    "model": str(getattr(self, "model", "unknown")),
+                    "prompt_version": PROMPT_VERSIONS[kind],
+                    "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "prompt_sha256": prompt_sha256,
+                    "outcome": outcome,
+                },
+            )
+
+    def usage(self) -> tuple[int | None, int | None]:
+        """Input and output tokens of the last call, when the client knows them (S3.04)."""
+        return None, None
 
     @abstractmethod
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:

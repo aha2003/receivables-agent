@@ -22,7 +22,7 @@ def _config(replay: bool, cassette_dir: str = "tests/cassettes") -> Config:
 
 
 def test_fake_mode_gives_an_unscripted_fake() -> None:
-    client = make_llm_client(Settings(), _config(False))
+    client = make_llm_client(Settings(), _config(False), customer_names=tuple).inner
     assert isinstance(client, FakeClient)
     with pytest.raises(FakeScriptExhausted):  # callers take their specified fallback
         client.draft({})
@@ -30,21 +30,23 @@ def test_fake_mode_gives_an_unscripted_fake() -> None:
 
 def test_replay_mode_reads_the_cassette_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(ROOT)
-    client = make_llm_client(Settings(llm_mode="replay"), _config(True))
+    client = make_llm_client(Settings(llm_mode="replay"), _config(True), customer_names=tuple).inner
     assert isinstance(client, ReplayClient)
 
 
 def test_replay_mode_with_no_cassettes_is_refused(tmp_path: Path) -> None:
     with pytest.raises(CassetteError, match="no cassette"):
-        make_llm_client(Settings(llm_mode="replay"), _config(True, str(tmp_path / "none")))
+        make_llm_client(
+            Settings(llm_mode="replay"), _config(True, str(tmp_path / "none")), customer_names=tuple
+        )
 
 
 def test_live_mode_is_refused_until_the_live_client_exists() -> None:
     with pytest.raises(LiveModeUnavailable, match=r"S3\.04"):
-        make_llm_client(Settings(llm_mode="live"), _config(False))
+        make_llm_client(Settings(llm_mode="live"), _config(False), customer_names=tuple)
 
 
 @pytest.mark.parametrize(("mode", "replay"), [("fake", True), ("replay", False), ("live", True)])
 def test_a_mode_conflict_is_refused_before_any_client_is_built(mode: str, replay: bool) -> None:
     with pytest.raises(LlmModeConflict):
-        make_llm_client(Settings(llm_mode=mode), _config(replay))  # type: ignore[arg-type]
+        make_llm_client(Settings(llm_mode=mode), _config(replay), customer_names=tuple)  # type: ignore[arg-type]

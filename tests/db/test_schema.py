@@ -445,3 +445,19 @@ def test_in_memory_engine_needs_no_directory() -> None:
             assert c.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
     finally:
         eng.dispose()
+
+
+def test_errors_never_show_bound_values(tmp_path: Path) -> None:
+    # NFR-07: a failing statement's message (which uvicorn would log) holds no message body.
+    eng = make_engine(f"sqlite:///{tmp_path / 'p.db'}")
+    body = "We cannot pay INV-004, call Beta Contracting LLC on 050 123 4567"
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("CREATE TABLE t (body TEXT NOT NULL UNIQUE) STRICT"))
+            conn.execute(text("INSERT INTO t VALUES (:b)"), {"b": body})
+        with pytest.raises(exc.IntegrityError) as error, eng.begin() as conn:
+            conn.execute(text("INSERT INTO t VALUES (:b)"), {"b": body})
+        assert "hidden due to hide_parameters" in str(error.value)
+        assert body not in str(error.value) and "Beta" not in str(error.value)
+    finally:
+        eng.dispose()
