@@ -209,6 +209,13 @@ def test_only_overdue_invoices_are_planned(facts: AgentFacts, number: str) -> No
         plan_case(facts, number)
 
 
+def test_a_dispute_label_without_a_rule_is_refused(make_agent_facts: MakeFacts) -> None:
+    # The importer only accepts the six dispute labels; facts built another way must not slip.
+    facts = _with_dispute(make_agent_facts, "INV-003", "UNCLEAR")
+    with pytest.raises(ValueError, match="no rule for dispute label"):
+        plan_case(facts, "INV-003")
+
+
 def test_unknown_invoice(facts: AgentFacts) -> None:
     with pytest.raises(KeyError):
         plan_case(facts, "INV-999")
