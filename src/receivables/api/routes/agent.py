@@ -87,7 +87,7 @@ def _now(raw: str | None) -> datetime | None:
 
 def summary_json(summary: RunSummary, *, dry_run: bool) -> dict[str, Any]:
     return {
-        "run_id": summary.run_id,
+        "run_id": None if dry_run else summary.run_id,  # a dry run's trace was rolled back
         "as_of": summary.as_of.isoformat(),
         "autonomy_level": summary.autonomy_level,
         "planner": summary.planner,
@@ -105,22 +105,28 @@ def summary_json(summary: RunSummary, *, dry_run: bool) -> dict[str, Any]:
 async def agent_run(request: Request) -> dict[str, Any]:
     body: RunRequest = await _body(request, RunRequest)
     state = request.app.state
+    user: SessionUser = request.state.user
     configured = state.config.agent.autonomy_level
     level = configured if body.autonomy_level is None else body.autonomy_level
     if level > configured:  # raising autonomy is a human config change (D-026)
         raise HTTPException(403, f"autonomy_level may not exceed the configured level {configured}")
-    now = _now(body.now)
-    if now is not None and level == 2 and not body.dry_run:  # sends use the server clock only
-        raise HTTPException(422, "now may only be given for dry runs or below autonomy level 2")
+    now, as_of = _now(body.now), _as_of(body.as_of)
+    if level == 2 and not body.dry_run:  # a run that can send uses the server clock only
+        if now is not None:
+            raise HTTPException(422, "now may only be given for dry runs or below autonomy level 2")
+        if as_of is not None and as_of != state.clock.today():
+            raise HTTPException(422, "as_of must be today for a level 2 run that can send")
     summary = await run_in_threadpool(
         run_agent_tick,
         state.engine,
         state.clock,
         state.config,
-        as_of=_as_of(body.as_of),
+        as_of=as_of,
         autonomy_level=level,
         now_local=now,
         dry_run=body.dry_run,
+        requested_by=user.username,
+        request=body.model_dump(),
     )
     return summary_json(summary, dry_run=body.dry_run)
 
@@ -267,14 +273,11 @@ async def kill_switch_state(request: Request) -> dict[str, bool]:
 
 
 def _reauthenticated_at(request: Request, user: SessionUser) -> datetime | None:
-    """Only the server-side session record for this same user counts (D-025, D-026)."""
+    """Only the server-side re-entry for this same user, matched by the cookie's nonce."""
     record = request.session.get(REAUTH_SESSION_KEY)
     if not isinstance(record, dict) or record.get("uid") != user.user_id:
         return None
-    try:
-        return datetime.fromisoformat(str(record.get("at")))
-    except ValueError:
-        return None
+    return request.app.state.reauth.reauthenticated_at(user.user_id, record.get("nonce"))
 
 
 def _stored_user(request: Request, user: SessionUser) -> Any:
@@ -315,7 +318,9 @@ def _check_password(request: Request, user: SessionUser, password: str) -> bool:
     return stored is not None and verify_password(stored.password_hash, password)
 
 
-def _audit_reauth(request: Request, user: SessionUser, ok: bool) -> None:
+def _audit_reauth(
+    request: Request, user: SessionUser, ok: bool, *, rate_limited: bool = False
+) -> None:
     with request.app.state.engine.begin() as conn:
         write_audit(
             conn,
@@ -325,7 +330,7 @@ def _audit_reauth(request: Request, user: SessionUser, ok: bool) -> None:
             entity_type="user",
             entity_id=str(user.user_id),
             before=None,
-            after={"ok": ok},
+            after={"ok": ok, "rate_limited": True} if rate_limited else {"ok": ok},
         )
 
 
@@ -337,15 +342,20 @@ async def reauth(request: Request) -> Response:
     limiter = request.app.state.login_limiter
     key = (request.client.host if request.client else "unknown", f"reauth:{user.username}")
     if not limiter.acquire(key):
+        if limiter.lockout_started(key):  # audited once per lockout, like login
+            await run_in_threadpool(_audit_reauth, request, user, False, rate_limited=True)
         return error_response(429, "rate_limited", "Too many failed attempts. Wait a minute.")
     ok = await run_in_threadpool(_check_password, request, user, body.password)
     await run_in_threadpool(_audit_reauth, request, user, ok)
-    if not ok:  # the reserved attempt stays counted as a failure
+    registry = request.app.state.reauth
+    if not ok:  # the reserved attempt stays counted as a failure; any earlier re-entry ends
+        registry.forget(user.user_id)
         request.session.pop(REAUTH_SESSION_KEY, None)
         return error_response(401, "invalid_credentials", "Password not accepted.")
     limiter.clear(key)
     at = request.app.state.clock.now()
-    request.session[REAUTH_SESSION_KEY] = {"uid": user.user_id, "at": at.isoformat()}
+    nonce = registry.record(user.user_id, at)
+    request.session[REAUTH_SESSION_KEY] = {"uid": user.user_id, "nonce": nonce}
     return JSONResponse(
         {"reauthenticated_at": at.isoformat(), "valid_seconds": int(REAUTH_WINDOW.total_seconds())}
     )

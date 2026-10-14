@@ -6,14 +6,28 @@ amounts are decimal strings.
 """
 
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, text
 
 from receivables.api.snapshot import money, take_snapshot
 
 __all__ = ["invoice_detail"]
+
+
+def _local_date(timestamp: str, tz: ZoneInfo) -> date | None:
+    try:
+        moment = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    return None if moment.tzinfo is None else moment.astimezone(tz).date()
+
+
+def _known_by(timestamp: str, tz: ZoneInfo, as_of: date) -> bool:
+    day = _local_date(timestamp, tz)
+    return day is not None and day <= as_of
 
 
 def _loads(value: str | None) -> Any:
@@ -25,7 +39,7 @@ def _audit(conn: Connection, invoice: str, kinds: list[str]) -> list[dict[str, A
     the file kinds holding its rows (the audit log has no per-row import link)."""
     rows = conn.execute(
         text(
-            "SELECT * FROM audit_log WHERE entity_id = :n"
+            "SELECT * FROM audit_log WHERE (entity_id = :n AND entity_type IN ('case', 'invoice'))"
             " OR (action = 'agent.step' AND json_extract(after_json, '$.invoice_number') = :n)"
             " OR (action = 'import.accepted'"
             "     AND json_extract(after_json, '$.file_kind') IN (SELECT value FROM json_each(:k)))"
@@ -59,6 +73,7 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
         key=lambda e: (e.event_date, e.event_id),
     )
     kinds = ["invoices"] + (["payments"] if payments else []) + (["events"] if events else [])
+    tz = ZoneInfo(state.config.agent.l2.timezone)
     with state.engine.connect() as conn:
         messages = (
             conn.execute(
@@ -107,6 +122,11 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
             .first()
         )
         audit = _audit(conn, invoice_number, kinds)
+    # Messages known on as_of (dated in local business time, D-020); case, drafts and audit
+    # show the current state (D-026).
+    messages = [m for m in messages if _known_by(m["sent_at"], tz, as_of)]
+    shown = {m["message_id"] for m in messages}
+    classifications = [c for c in classifications if c["message_id"] in shown]
     return {
         "as_of": as_of.isoformat(),
         "invoice_number": row.invoice_number,

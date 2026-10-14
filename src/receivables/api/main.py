@@ -29,7 +29,7 @@ from receivables.api.routes import agent as agent_routes
 from receivables.api.routes import auth as auth_routes
 from receivables.api.routes import data as data_routes
 from receivables.api.routes import pages as page_routes
-from receivables.api.security import LoginRateLimiter
+from receivables.api.security import LoginRateLimiter, ReauthRegistry
 from receivables.core.money import from_fils
 from receivables.core.queue import unallocated_cash_message
 from receivables.settings import Settings
@@ -76,6 +76,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.state.engine = engine if engine is not None else make_engine(settings.database_url)
     app.state.session_ttl = timedelta(minutes=config.app.session_ttl_minutes)
     app.state.login_limiter = LoginRateLimiter(clock, limit=config.app.login_rate_limit_per_minute)
+    app.state.reauth = ReauthRegistry()
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["aed"] = aed
     templates.env.filters["unallocated_message"] = unallocated_cash_message

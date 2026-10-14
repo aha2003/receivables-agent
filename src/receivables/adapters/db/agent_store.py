@@ -365,6 +365,8 @@ def run_agent_tick(
     planner: PlanSource | None = None,
     now_local: datetime | None = None,
     dry_run: bool = False,
+    requested_by: str | None = None,
+    request: Mapping[str, Any] | None = None,
 ) -> RunSummary:
     """One tick in one transaction; ``dry_run`` rolls the whole tick back, trace included.
 
@@ -386,6 +388,17 @@ def run_agent_tick(
                 config=dataclasses.replace(tick_config(config), l2=l2),
                 planner=planner,
             )
+            if requested_by is not None:  # who started the run, with the values they chose
+                write_audit(
+                    conn,
+                    clock,
+                    actor=requested_by,
+                    action="agent.run_requested",
+                    entity_type="agent_run",
+                    entity_id=summary.run_id,
+                    before=None,
+                    after={"run_id": summary.run_id, "request": dict(request or {})},
+                )
         except BaseException:
             transaction.rollback()
             raise

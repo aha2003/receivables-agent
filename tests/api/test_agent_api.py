@@ -3,9 +3,10 @@
 Synthetic golden data only. The app clock starts at 2026-10-31T09:00 Dubai.
 """
 
+import json
 import secrets
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import Engine, text
 
-from receivables.adapters.clock import SimulatedClock
+from receivables.adapters.clock import DUBAI, SimulatedClock
 from receivables.adapters.db.repo import insert_user
 from receivables.api.main import create_app
 from receivables.api.security import hash_password
@@ -68,7 +69,8 @@ def rows(engine: Engine, sql: str) -> list[dict[str, Any]]:
 
 
 def test_t_api_04_invoice_detail(user: TestClient) -> None:
-    body = user.get("/api/invoices/INV-004", params={"as_of": "2026-10-31"}).json()
+    body = user.get("/api/invoices/INV-004").json()  # as_of defaults to today (2026-10-31)
+    assert body["as_of"] == "2026-10-31"
     assert body["po_number"] == "PO-B-004"
     assert body["payments"] == []
     assert [(e["event_id"], e["event_type"], e["label"]) for e in body["events"]] == [
@@ -165,10 +167,10 @@ def test_dry_run_leaves_nothing_behind(user: TestClient, seeded: Engine) -> None
     before = rows(seeded, "SELECT COUNT(*) AS n FROM audit_log")
     summary = post(user, "/api/agent/run", {"as_of": "2026-10-31", "dry_run": True}).json()
     assert summary["dry_run"] is True and summary["cases_considered"] == 9
+    assert summary["run_id"] is None  # its trace was rolled back
     for table in ("agent_runs", "agent_steps", "cases", "drafts", "tasks", "approvals"):
         assert rows(seeded, f"SELECT COUNT(*) AS n FROM {table}") == [{"n": 0}], table  # noqa: S608
     assert rows(seeded, "SELECT COUNT(*) AS n FROM audit_log") == before
-    assert user.get(f"/api/agent/runs/{summary['run_id']}").status_code == 404
 
 
 def test_run_defaults_and_lower_levels(user: TestClient) -> None:
@@ -218,7 +220,10 @@ def test_unknown_run_is_404(user: TestClient) -> None:
 def l2_client(engine: Engine, clock: SimulatedClock, tmp_path: Path) -> Iterator[TestClient]:
     seed(engine, FIXTURES, clock)
     config = tmp_path / "config.yaml"
-    config.write_text("agent:\n  autonomy_level: 2\n", encoding="utf-8")
+    config.write_text(
+        "agent:\n  autonomy_level: 2\n  l2:\n    allowlisted_customers: [CUST-A]\n",
+        encoding="utf-8",
+    )
     settings = Settings(
         session_secret=SecretStr(SECRET), database_url=str(engine.url), config_path=str(config)
     )
@@ -305,7 +310,9 @@ def test_reauth_is_rate_limited_and_audited(admin: TestClient, seeded: Engine) -
     assert codes == [401] * 5 + [429]
     assert post(admin, "/api/reauth", {"password": ADMIN_PASSWORD}).status_code == 429
     audits = rows(seeded, "SELECT after_json FROM audit_log WHERE action = 'auth.reauth'")
-    assert [a["after_json"] for a in audits] == ['{"ok": false}'] * 5
+    assert [a["after_json"] for a in audits] == ['{"ok": false}'] * 5 + [
+        '{"ok": false, "rate_limited": true}'  # once per lockout, not per refused try
+    ]
 
 
 @pytest.mark.parametrize("body", [{}, {"on": "true"}, {"on": True, "extra": 1}])
@@ -349,20 +356,36 @@ def test_every_state_change_needs_csrf(user: TestClient, method: str, path: str)
 
 
 class _FakeRequest:
-    def __init__(self, session: dict[str, Any]) -> None:
+    def __init__(self, session: dict[str, Any], registry: Any) -> None:
         self.session = session
+        self.app = type("App", (), {"state": type("State", (), {"reauth": registry})()})()
 
 
 @pytest.mark.parametrize(
     "record",
-    [None, "2026-10-31", {"uid": 2, "at": "2026-10-31T09:00:00+04:00"}, {"uid": 1, "at": "x"}],
+    [
+        None,
+        "2026-10-31",
+        {"uid": 2, "nonce": "good"},  # another user's record
+        {"uid": 1, "nonce": "stale"},  # an older cookie
+        {"uid": 1, "nonce": 7},
+        {"uid": 1},
+    ],
 )
-def test_only_a_well_formed_reauth_for_the_same_user_counts(record: Any) -> None:
-    from receivables.api.routes.agent import _reauthenticated_at
-    from receivables.api.security import SessionUser
+def test_only_the_current_reentry_for_the_same_user_counts(record: Any) -> None:
+    from datetime import datetime
 
-    request: Any = _FakeRequest({} if record is None else {"reauth": record})
-    assert _reauthenticated_at(request, SessionUser(1, "admin.user", "admin")) is None
+    from receivables.adapters.clock import DUBAI
+    from receivables.api.routes.agent import _reauthenticated_at
+    from receivables.api.security import ReauthRegistry, SessionUser
+
+    registry = ReauthRegistry()
+    nonce = registry.record(1, datetime(2026, 10, 31, 9, tzinfo=DUBAI))
+    user = SessionUser(1, "admin.user", "admin")
+    good: Any = _FakeRequest({"reauth": {"uid": 1, "nonce": nonce}}, registry)
+    assert _reauthenticated_at(good, user) is not None
+    request: Any = _FakeRequest({} if record is None else {"reauth": record}, registry)
+    assert _reauthenticated_at(request, user) is None
 
 
 def test_a_user_removed_mid_request_is_unauthenticated(
@@ -380,3 +403,111 @@ def test_a_failed_reentry_cancels_an_earlier_one(admin: TestClient) -> None:
     assert post(admin, "/api/reauth", {"password": "wrong"}).status_code == 401
     refused = post(admin, "/api/agent/kill-switch", {"on": True})
     assert (refused.status_code, refused.json()["error"]) == (403, "reauth_required")
+
+
+# --- spec-review regressions -------------------------------------------------------------------
+
+
+def test_replaying_an_older_cookie_after_a_failed_reentry_gives_nothing(admin: TestClient) -> None:
+    assert post(admin, "/api/reauth", {"password": ADMIN_PASSWORD}).status_code == 200
+    saved = dict(admin.cookies)
+    assert post(admin, "/api/reauth", {"password": "wrong"}).status_code == 401
+    admin.cookies.clear()
+    admin.cookies.update(saved)  # the cookie from before the failure
+    refused = post(admin, "/api/agent/kill-switch", {"on": True})
+    assert (refused.status_code, refused.json()["error"]) == (403, "reauth_required")
+
+
+def test_replaying_an_older_cookie_after_logout_gives_nothing(admin: TestClient) -> None:
+    assert post(admin, "/api/reauth", {"password": ADMIN_PASSWORD}).status_code == 200
+    saved = dict(admin.cookies)
+    admin.post("/logout", data={"csrf_token": csrf(admin)})
+    admin.cookies.clear()
+    admin.cookies.update(saved)
+    refused = post(admin, "/api/agent/kill-switch", {"on": True})
+    assert (refused.status_code, refused.json()["error"]) == (403, "reauth_required")
+
+
+def test_a_run_is_attributed_to_the_person_who_asked(user: TestClient, seeded: Engine) -> None:
+    summary = post(user, "/api/agent/run", {"as_of": "2026-10-31", "autonomy_level": 0}).json()
+    requested = rows(seeded, "SELECT * FROM audit_log WHERE action = 'agent.run_requested'")
+    assert len(requested) == 1
+    assert (requested[0]["actor"], requested[0]["entity_id"]) == ("demo.user", summary["run_id"])
+    detail = json.loads(requested[0]["after_json"])
+    assert detail["request"] == {
+        "as_of": "2026-10-31",
+        "now": None,
+        "autonomy_level": 0,
+        "dry_run": False,
+    }
+    trace = user.get(f"/api/agent/runs/{summary['run_id']}").json()
+    assert "agent.run_requested" in {e["action"] for e in trace["events"]}
+
+
+def test_messages_follow_as_of(user: TestClient, seeded: Engine) -> None:
+    with seeded.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO correspondence (message_id, invoice_number, direction, sent_at,"
+                " subject, body) VALUES ('M-1', 'INV-004', 'inbound', '2026-10-20T06:00:00Z',"
+                " 'Synthetic', 'Synthetic body'), ('M-2', 'INV-004', 'inbound',"
+                " '2026-11-05T06:00:00Z', 'Later', 'Later body'), ('M-3', 'INV-004',"
+                " 'inbound', 'not a time', 'Bad', 'Bad body')"
+            )
+        )
+    body = user.get("/api/invoices/INV-004", params={"as_of": "2026-10-31"}).json()
+    assert [m["message_id"] for m in body["messages"]] == ["M-1"]
+
+
+def test_audit_rows_of_other_entities_with_the_same_id_are_not_shown(
+    user: TestClient, seeded: Engine
+) -> None:
+    from receivables.adapters.clock import FixedClock
+    from receivables.adapters.db.repo import write_audit
+
+    with seeded.begin() as c:
+        write_audit(
+            c,
+            FixedClock(datetime(2026, 10, 31, 9, tzinfo=DUBAI)),
+            actor="x",
+            action="user.renamed",
+            entity_type="user",
+            entity_id="INV-004",
+            before=None,
+            after={},
+        )
+    body = user.get("/api/invoices/INV-004").json()
+    assert "user.renamed" not in {a["action"] for a in body["audit"]}
+
+
+def test_as_of_must_be_today_for_a_real_l2_run(l2_client: TestClient) -> None:
+    assert post(l2_client, "/api/agent/run", {"as_of": "2026-09-30"}).status_code == 422
+    assert post(l2_client, "/api/agent/run", {"as_of": "2026-11-15"}).status_code == 422
+    dry = {"as_of": "2026-09-30", "dry_run": True}
+    assert post(l2_client, "/api/agent/run", dry).status_code == 200
+    lower = {"as_of": "2026-09-30", "autonomy_level": 1}
+    assert post(l2_client, "/api/agent/run", lower).status_code == 200
+    assert post(l2_client, "/api/agent/run", {"as_of": "2026-10-31"}).status_code == 200
+
+
+def test_an_l2_dry_run_that_would_send_leaves_nothing_behind(
+    l2_client: TestClient, engine: Engine, clock: SimulatedClock
+) -> None:
+    clock.set(datetime(2026, 11, 2, 10, 0, tzinfo=DUBAI))  # Monday, business hours
+    assert login(l2_client) == 303  # the earlier session has expired (8 hours)
+    tables = ("mail_outbox", "agent_runs", "agent_steps", "cases", "drafts", "approvals")
+
+    def counts() -> dict[str, int]:
+        found = {t: rows(engine, f"SELECT COUNT(*) AS n FROM {t}")[0]["n"] for t in tables}  # noqa: S608
+        found["audit_log"] = rows(engine, "SELECT COUNT(*) AS n FROM audit_log")[0]["n"]
+        return found
+
+    before = counts()
+    response = post(l2_client, "/api/agent/run", {"dry_run": True})
+    assert response.status_code == 200, response.text
+    dry = response.json()
+    assert dry["steps_executed"] > 0
+    assert counts() == before
+    real = post(l2_client, "/api/agent/run", {}).json()
+    assert real["run_id"] is not None
+    assert rows(engine, "SELECT COUNT(*) AS n FROM mail_outbox") == [{"n": 1}]  # INV-003, CUST-A
