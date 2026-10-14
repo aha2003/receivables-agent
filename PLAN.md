@@ -126,7 +126,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.6
   - Tests: T-AGT-01, T-AGT-02, T-AGT-04, T-AGT-05, T-AGT-07
   - Done when: A tick is deterministic, budget-limited and fully traced; an unknown tool is rejected.
-- [ ] **S2.08** Policy audit and kill switch
+- [x] **S2.08** Policy audit and kill switch
   - Goal: Audit every executed and denied step; admin-only, audited kill switch.
   - Spec: §18.5, §3.3
   - Tests: T-POL-09, T-AUD-01

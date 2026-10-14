@@ -7,6 +7,7 @@ and each step. Persistence goes through the ``AgentStore`` port, so this module 
 the database; time comes from the caller (``now_local`` from the injected clock).
 """
 
+import dataclasses
 import logging
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
@@ -111,6 +112,8 @@ class StepRecord:
     policy_reasons: tuple[str, ...]
     status: str
     result: Mapping[str, Any] | None
+    state_before: str | None = None  # the case state around the step, for its audit row
+    state_after: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +174,13 @@ class _Tick:
     denied: int = 0
     states: dict[str, CaseState] = field(default_factory=dict)
     applied_events: set[tuple[str, str]] = field(default_factory=set)
+    kill_switch: bool = False
+
+    @property
+    def persist(self) -> bool:
+        """L0 shadow and the kill switch change nothing (§18.4, §18.5); states stay in memory."""
+        return self.autonomy > 0 and not self.kill_switch
+
     # Writes that reference the step row (approvals), run once that row exists.
     after_step: list[Callable[[], None]] = field(default_factory=list)
 
@@ -178,7 +188,7 @@ class _Tick:
         before = self.states.get(invoice)
         result = transition(before, trigger)
         if result.applied and result.to_state is not None and result.to_state != before:
-            if self.autonomy > 0:  # L0 shadow changes nothing (§18.4); states stay in memory
+            if self.persist:
                 self.store.save_case(
                     invoice,
                     before,
@@ -188,9 +198,9 @@ class _Tick:
                     event_id,
                 )
             self.states[invoice] = result.to_state
-        elif event_id is not None and self.autonomy > 0:  # considered, even without a change
+        elif event_id is not None and self.persist:  # considered, even without a change
             self.store.mark_event(invoice, event_id, type(trigger).__name__, self.run_id)
-        if event_id is not None and self.autonomy > 0:
+        if event_id is not None and self.persist:
             self.applied_events.add((invoice, event_id))
         return result
 
@@ -213,6 +223,7 @@ def run_tick(
     facts = store.load_facts(as_of, config.engine)
     run_id = new_run_id()
     tick = _Tick(store, facts, config, run_id, now_local, autonomy_level)
+    tick.kill_switch = config.l2.kill_switch  # read once, at the start of the tick
     tick.states = dict(store.case_states())
     tick.applied_events = set(store.applied_events())
     summary = RunSummary(
@@ -306,7 +317,7 @@ def _observation(tick: _Tick, invoice: str) -> dict[str, Any]:
 
 def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, bool]:
     """The plan to run and whether the rule planner replaced the planner's output."""
-    if planner is None:
+    if planner is None or tick.kill_switch:  # no planner call while the switch is on
         return plan_case(tick.facts, invoice), False
     try:
         raw = planner.propose(_observation(tick, invoice))
@@ -339,7 +350,15 @@ def _run_case(tick: _Tick, invoice: str, planner: PlanSource | None) -> bool:
     for position, step in enumerate(plan.steps, start=1):
         tick.seq += 1
         step_id = f"{tick.run_id}-S{tick.seq:03d}"
+        before = tick.states.get(invoice)
         record = _run_step(tick, invoice, step, step_id, drafts)
+        after = tick.states.get(invoice)
+        if tick.persist:  # otherwise nothing about the case was saved; do not imply it was
+            record = dataclasses.replace(
+                record,
+                state_before=None if before is None else before.value,
+                state_after=None if after is None else after.value,
+            )
         if record.status == "executed" and step.tool == "draft_message" and record.result:
             drafts[position] = str(record.result["draft_id"])
         tick.executed += record.status == "executed"
@@ -380,6 +399,11 @@ def _record(
 def _run_step(
     tick: _Tick, invoice: str, step: PlanStep, step_id: str, drafts: Mapping[int, str]
 ) -> StepRecord:
+    if tick.kill_switch:  # nothing executes (§18.5); the trace says why
+        return _record(
+            tick, invoice, step, step_id, "denied", None,
+            allowed=False, reasons=("POLICY_KILL_SWITCH",),
+        )  # fmt: skip
     if tick.autonomy == 0:  # L0 shadow: record only
         return _record(tick, invoice, step, step_id, "skipped", None)
     states, events, pending = dict(tick.states), set(tick.applied_events), len(tick.after_step)

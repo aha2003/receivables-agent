@@ -1,15 +1,22 @@
 """Seed and reset (SPEC §5 purge): reset is idempotent and leaves exactly the golden data."""
 
 import json
-from datetime import datetime
+import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import text
 
 from receivables.adapters.clock import DUBAI, FixedClock
+from receivables.adapters.db.controls import (
+    runtime_kill_switch,
+    runtime_kill_switch_in_file,
+    set_kill_switch,
+)
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
+from receivables.adapters.db.repo import UserRecord
 from receivables.seed import ResetRefused, reset, seed
 
 CLOCK = FixedClock(datetime(2026, 10, 31, 9, 0, tzinfo=DUBAI))
@@ -218,8 +225,6 @@ def test_rejected_fixture_leaves_the_database_intact(tmp_path: Path) -> None:
 
 
 def test_reset_refuses_while_another_connection_is_writing(tmp_path: Path) -> None:
-    import sqlite3
-
     url, before = _golden_db(tmp_path)
     holder = sqlite3.connect(tmp_path / "keep.db", isolation_level=None)
     try:
@@ -267,3 +272,50 @@ def test_reset_refuses_a_directory_at_the_wal_path_before_deleting_anything(tmp_
         reset(url, FIXTURES, CLOCK)
     (tmp_path / "keep.db-wal").rmdir()
     assert _snapshot(url) == before
+
+
+# --- the kill switch survives a reset (D-025) --------------------------------------------------
+
+
+def test_reset_keeps_an_engaged_kill_switch(tmp_path: Path) -> None:
+    db = tmp_path / "ks.db"
+    url = f"sqlite:///{db}"
+    reset(url, FIXTURES, CLOCK)
+    admin = UserRecord(user_id=1, username="admin.user", password_hash="x", role="admin")
+    engine = make_engine(url)
+    set_kill_switch(
+        engine, CLOCK, admin, on=True, reauthenticated_at=CLOCK.now() - timedelta(minutes=1)
+    )
+    engine.dispose()
+
+    reset(url, FIXTURES, CLOCK)
+    engine = make_engine(url)
+    try:
+        with engine.connect() as c:
+            assert runtime_kill_switch(c) is True
+            carried = c.execute(
+                text("SELECT actor, after_json FROM audit_log WHERE action = 'kill_switch.set'")
+            ).one()
+        assert carried.actor == "reset"
+        assert json.loads(carried.after_json) == {"on": True, "carried_over": "database.reset"}
+    finally:
+        engine.dispose()
+
+
+def test_reset_without_an_engaged_switch_leaves_it_off(tmp_path: Path) -> None:
+
+    url = f"sqlite:///{tmp_path / 'off.db'}"
+    reset(url, FIXTURES, CLOCK)
+    reset(url, FIXTURES, CLOCK)
+    engine = make_engine(url)
+    try:
+        with engine.connect() as c:
+            assert runtime_kill_switch(c) is False
+    finally:
+        engine.dispose()
+
+
+def test_a_file_without_an_audit_log_has_no_switch(tmp_path: Path) -> None:
+    path = tmp_path / "empty.db"
+    sqlite3.connect(path).close()
+    assert runtime_kill_switch_in_file(path) is False
