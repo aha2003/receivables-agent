@@ -4,18 +4,18 @@ Competition prototype (Dubai Chamber of Digital Economy AI Agents Championship).
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 17/64 steps (27%)** █████░░░░░░░░░░░░░░░
+**Overall: 18/64 steps (28%)** ██████░░░░░░░░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
-| Slice 2 — Visible agent loop | 3 | 11 | █████░░░░░░░░░░░░░░░ 27% |
+| Slice 2 — Visible agent loop | 4 | 11 | ███████░░░░░░░░░░░░░ 36% |
 | Slice 3 — Claude integration + human approval | 0 | 13 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Checkpoint C1 — January 2027 submission pack | 0 | 7 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** S2.04 Policy engine
+**Next up:** S2.05 Template drafts and draft validator (pure)
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · log: `docs/PROGRESS_LOG.md` · demo: `docs/DEMO.md`
