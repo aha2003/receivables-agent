@@ -33,6 +33,7 @@ from receivables.api.security import LoginRateLimiter, ReauthRegistry
 from receivables.core.money import from_fils
 from receivables.core.queue import unallocated_cash_message
 from receivables.settings import Settings
+from receivables.web.labels import flag_text, policy_text, status_text
 
 __all__ = ["MIN_SECRET_LENGTH", "create_app"]
 
@@ -80,6 +81,9 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["aed"] = aed
     templates.env.filters["unallocated_message"] = unallocated_cash_message
+    templates.env.filters["policy_text"] = policy_text
+    templates.env.filters["status_text"] = status_text
+    templates.env.filters["flag_text"] = flag_text
     app.state.templates = templates
 
     app.include_router(auth_routes.router)

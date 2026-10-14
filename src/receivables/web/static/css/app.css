@@ -20,3 +20,12 @@ svg.bar rect { fill: #2f5d8a; }
 dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 dl.facts dt { font-weight: 600; }
 form.upload { margin: 0.75rem 0; }
+.banner.kill { background: #000; }
+.ok { color: #1f6a2f; font-weight: 600; }
+.notice { background: #fff6d6; border-left: 4px solid #b38600; padding: 0.4rem 0.6rem; }
+ul.reasons, ul.flags { margin: 0.25rem 0; padding-left: 1.1rem; }
+code.args { font-size: 0.8rem; word-break: break-word; }
+pre.body { white-space: pre-wrap; background: #fff; border: 1px solid #ddd; padding: 0.5rem; }
+article.draft, article.run { border-top: 1px solid #ddd; padding-top: 0.5rem; }
+form.run-agent { margin: 0.5rem 0 1rem; }
+form.run-agent label { display: inline-block; margin-right: 1rem; }

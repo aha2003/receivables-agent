@@ -89,7 +89,8 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
         classifications = (
             conn.execute(
                 text(
-                    "SELECT c.message_id, c.label, c.confidence, c.needs_review, c.status"
+                    "SELECT c.message_id, c.label, c.confidence, c.needs_review, c.status,"
+                    " c.flags_json"
                     " FROM classifications c JOIN correspondence m ON m.message_id = c.message_id"
                     " WHERE m.invoice_number = :n ORDER BY c.message_id"
                 ),
@@ -164,7 +165,14 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
         ],
         "messages": [dict(m) for m in messages],
         "classifications": [
-            {**dict(c), "confidence": None if c["confidence"] is None else str(c["confidence"])}
+            {
+                "message_id": c["message_id"],
+                "label": c["label"],
+                "confidence": None if c["confidence"] is None else str(c["confidence"]),
+                "needs_review": bool(c["needs_review"]),
+                "status": c["status"],
+                "flags": json.loads(c["flags_json"]),
+            }
             for c in classifications
         ],
         "drafts": [

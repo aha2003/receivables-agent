@@ -3,6 +3,7 @@
 {% block content %}
 {% set as_of = snap.as_of.isoformat() %}
 <h1>Receivables dashboard</h1>
+{% include "_run_form.html" %}
 {% include "_as_of.html" %}
 
 <div class="headline">
