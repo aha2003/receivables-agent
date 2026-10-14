@@ -25,7 +25,7 @@ from receivables.adapters.db.controls import (
 )
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
-from receivables.adapters.db.repo import UserRecord
+from receivables.adapters.db.repo import UserRecord, write_audit
 from receivables.seed import seed
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
@@ -228,3 +228,81 @@ def test_denied_steps_under_the_kill_switch_are_audited(db: Engine) -> None:
         json.loads(a["after_json"])["policy_reasons"] == ["POLICY_KILL_SWITCH"] for a in audits
     )
     assert count(db, "agent_steps") == len(audits)
+
+
+# --- spec-review regressions --------------------------------------------------------------------
+
+
+class RecordingPlanner:
+    model = "recording"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def propose(self, observation: Any) -> object:
+        self.calls += 1
+        return {}
+
+
+def test_existing_cases_are_untouched_under_the_switch(db: Engine) -> None:
+    tick(db, config(allowlisted_customers=("CUST-A",)))  # builds cases, drafts, a sandbox send
+    before = {t: rows(db, f"SELECT * FROM {t}") for t in ("cases", "drafts", "tasks", "approvals")}  # noqa: S608
+    audits_before = count(db, "audit_log")
+    with db.begin() as c:  # INV-005 is paid and a dispute is resolved: events to apply
+        c.execute(
+            text(
+                "INSERT INTO payments (payment_id, invoice_number, payment_date, amount_fils)"
+                " VALUES ('P-X', 'INV-005', '2026-10-30', 2000000)"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO events (event_id, invoice_number, event_type, event_date)"
+                " VALUES ('E-X', 'INV-004', 'DISPUTE_RESOLVED', '2026-10-30')"
+            )
+        )
+    planner = RecordingPlanner()
+    run_agent_tick(
+        db, CLOCK, config(kill_switch=True), as_of=AS_OF, autonomy_level=2, planner=planner
+    )
+    after = {t: rows(db, f"SELECT * FROM {t}") for t in ("cases", "drafts", "tasks", "approvals")}  # noqa: S608
+    assert after == before
+    assert count(db, "mail_outbox") == 1  # only the send from the first tick
+    new_actions = {
+        r["action"]
+        for r in rows(db, f"SELECT action FROM audit_log WHERE audit_id > {audits_before}")  # noqa: S608
+    }
+    assert new_actions == {"agent.run_started", "agent.step", "agent.run_finished"}
+    assert planner.calls == 0  # no planner (LLM) call while the switch is on
+
+
+def test_step_audits_under_the_switch_claim_no_case_state(db: Engine) -> None:
+    tick(db, config(kill_switch=True))
+    audits = rows(db, "SELECT before_json, after_json FROM audit_log WHERE action = 'agent.step'")
+    assert {a["before_json"] for a in audits} == {'{"case_state": null}'}
+    assert {json.loads(a["after_json"])["case_state"] for a in audits} == {None}
+
+
+def test_a_refused_off_leaves_the_switch_on(db: Engine) -> None:
+    set_kill_switch(db, CLOCK, ADMIN, on=True, reauthenticated_at=NOW)
+    with pytest.raises(AdminActionRefused):
+        set_kill_switch(db, CLOCK, USER, on=False, reauthenticated_at=NOW)
+    with pytest.raises(AdminActionRefused):
+        set_kill_switch(db, CLOCK, ADMIN, on=False, reauthenticated_at=None)
+    with db.connect() as c:
+        assert runtime_kill_switch(c) is True
+
+
+def test_only_the_kill_switch_entity_sets_the_switch(db: Engine) -> None:
+    with db.begin() as c:
+        write_audit(
+            c,
+            CLOCK,
+            actor="x",
+            action="kill_switch.set",
+            entity_type="invoice",
+            entity_id="INV-003",
+            before=None,
+            after={"on": True},
+        )
+        assert runtime_kill_switch(c) is False

@@ -317,7 +317,7 @@ def _observation(tick: _Tick, invoice: str) -> dict[str, Any]:
 
 def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, bool]:
     """The plan to run and whether the rule planner replaced the planner's output."""
-    if planner is None:
+    if planner is None or tick.kill_switch:  # no planner call while the switch is on
         return plan_case(tick.facts, invoice), False
     try:
         raw = planner.propose(_observation(tick, invoice))
@@ -353,11 +353,12 @@ def _run_case(tick: _Tick, invoice: str, planner: PlanSource | None) -> bool:
         before = tick.states.get(invoice)
         record = _run_step(tick, invoice, step, step_id, drafts)
         after = tick.states.get(invoice)
-        record = dataclasses.replace(
-            record,
-            state_before=None if before is None else before.value,
-            state_after=None if after is None else after.value,
-        )
+        if tick.persist:  # otherwise nothing about the case was saved; do not imply it was
+            record = dataclasses.replace(
+                record,
+                state_before=None if before is None else before.value,
+                state_after=None if after is None else after.value,
+            )
         if record.status == "executed" and step.tool == "draft_message" and record.result:
             drafts[position] = str(record.result["draft_id"])
         tick.executed += record.status == "executed"

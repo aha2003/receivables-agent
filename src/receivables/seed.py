@@ -24,6 +24,7 @@ from sqlalchemy import Engine
 from sqlalchemy.engine import make_url
 
 from receivables.adapters.clock import Clock
+from receivables.adapters.db.controls import carry_kill_switch, runtime_kill_switch_in_file
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.importer import ImportResult, import_csv
 from receivables.adapters.db.migrate import upgrade_to_head
@@ -141,6 +142,7 @@ def reset(url: str, fixtures_dir: Path, clock: Clock, actor: str = "reset") -> R
     staging = Path(f"{path}{STAGING_SUFFIX}")
     staging_url = make_url(url).set(database=str(staging)).render_as_string(hide_password=False)
     _remove(_siblings(staging))  # leftovers of an interrupted earlier reset
+    switch_on = existed and runtime_kill_switch_in_file(path)  # an engaged switch survives
     try:
         upgrade_to_head(staging_url)
         engine = make_engine(staging_url)
@@ -160,6 +162,8 @@ def reset(url: str, fixtures_dir: Path, clock: Clock, actor: str = "reset") -> R
                         "imports": [r.import_id for r in imports],
                     },
                 )
+                if switch_on:
+                    carry_kill_switch(conn, clock, actor=actor, reason="database.reset")
             with engine.connect() as conn:
                 counts = table_counts(conn)
         finally:

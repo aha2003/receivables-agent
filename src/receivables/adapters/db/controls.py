@@ -8,7 +8,9 @@ too, in their own transaction, so they are kept even though the call raises.
 """
 
 import json
+import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import Connection, Engine, select
 
@@ -21,8 +23,10 @@ __all__ = [
     "KILL_SWITCH_ACTION",
     "REAUTH_WINDOW",
     "AdminActionRefused",
+    "carry_kill_switch",
     "kill_switch_on",
     "runtime_kill_switch",
+    "runtime_kill_switch_in_file",
     "set_kill_switch",
 ]
 
@@ -43,11 +47,46 @@ def runtime_kill_switch(conn: Connection) -> bool:
     """The switch as last set by an admin (off if never set)."""
     latest = conn.execute(
         select(AuditLog.after_json)
-        .where(AuditLog.action == KILL_SWITCH_ACTION)
-        .order_by(AuditLog.audit_id.desc())
+        .where(
+            AuditLog.action == KILL_SWITCH_ACTION,
+            AuditLog.entity_type == "control",
+            AuditLog.entity_id == "kill_switch",
+        )
+        .order_by(AuditLog.audit_id.desc())  # autoincrement: a stable order even at equal times
         .limit(1)
     ).scalar_one_or_none()
     return bool(json.loads(latest)["on"]) if latest else False
+
+
+def runtime_kill_switch_in_file(path: Path) -> bool:
+    """The runtime switch stored in an existing database file, read only (for reset)."""
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, timeout=0)
+    try:
+        row = conn.execute(
+            "SELECT after_json FROM audit_log WHERE action = ? AND entity_type = 'control'"
+            " AND entity_id = 'kill_switch' ORDER BY audit_id DESC LIMIT 1",
+            (KILL_SWITCH_ACTION,),
+        ).fetchone()
+    except sqlite3.DatabaseError:  # no audit log (not migrated): never switched on
+        return False
+    finally:
+        conn.close()
+    return bool(json.loads(row[0])["on"]) if row else False
+
+
+def carry_kill_switch(conn: Connection, clock: Clock, *, actor: str, reason: str) -> None:
+    """Re-assert an engaged switch in a replacement database (reset or purge must not clear it)."""
+    write_audit(
+        conn,
+        clock,
+        actor=actor,
+        action=KILL_SWITCH_ACTION,
+        entity_type="control",
+        entity_id="kill_switch",
+        before={"on": False},
+        after={"on": True, "carried_over": reason},
+    )
 
 
 def kill_switch_on(conn: Connection, config: Config) -> bool:
