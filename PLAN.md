@@ -106,7 +106,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.3
   - Tests: T-AGT-03
   - Done when: Registered tool names equal the 11 in the spec; none writes invoice or payment amounts.
-- [ ] **S2.04** Policy engine
+- [x] **S2.04** Policy engine
   - Goal: `evaluate_send` with every reason code, evaluating all rules without short-circuit.
   - Spec: §18.4, §18.5
   - Tests: T-POL-01 to T-POL-11 (except the kill-switch wiring in S2.08)

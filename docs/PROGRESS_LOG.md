@@ -127,3 +127,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.3 (FR-30) / T-AGT-03 (names equal the 11 spec tools; no tool writes invoices, payments, customers or events; no amount/recipient/SQL/path argument); strict argument validation; read tools on golden data (as_of, flags, priority, unallocated cash, playbook defaults, message headers) with no customer PII
 - Deviations or decisions (link docs/DECISIONS.md): D-020 (send_email draft_id or draft_ref, §18.3 sentence; headers only until S3.02; Dubai dating of messages; non-read handlers in later steps)
 - Next step: S2.04 Policy engine
+
+## 2026-10-14 — [S2.04] Policy engine
+- PR: see branch | Branch: s2-04-policy-engine | Commit: see PR head
+- Tests: `uv run pytest -q` → 1020 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%
+- Spec / test IDs covered: §18.4, §18.5 (FR-32) / T-POL-01 to T-POL-11 (T-POL-10 with a supplied violation until S2.05; kill switch from config, toggle in S2.08); rule boundaries; Hypothesis property: reasons are exactly the failing rules, sorted (no short-circuit)
+- Deviations or decisions (link docs/DECISIONS.md): D-021 (SendFacts/SendDraft/L2Limits; local calendar dates; exact recipient; fail closed on draft invoices outside the facts)
+- Next step: S2.05 Template drafts and draft validator (pure)
