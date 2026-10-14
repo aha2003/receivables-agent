@@ -141,3 +141,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §8.1, §8.2, §8.4 (FR-09, FR-14 in part, NFR-01) / T-DRF-01, T-DRF-02, T-DRF-04; T-POL-10 through the real validator; template text checked against the spec; every template passes the validator (Hypothesis over the golden queue, tones and labels)
 - Deviations or decisions (link docs/DECISIONS.md): D-022 (drafts.sender_name config key; contact_name constant; BODY_TOO_LONG; normalised superset detection; overdue-only fact block)
 - Next step: S2.06 Rule planner
+
+## 2026-10-14 — [S2.06] Rule planner
+- PR: see branch | Branch: s2-06-rule-planner | Commit: see PR head
+- Tests: `uv run pytest -q` → 1194 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99% (rules_planner 100%)
+- Spec / test IDs covered: §18.6 rule planner and plan schema / T-AGT-08 (tool sequences for all 9 golden queue items); every rule row and label, precedence, age boundaries, playbook gap; property: agrees with the §6.5 next action and tone
+- Deviations or decisions (link docs/DECISIONS.md): D-023 (task owners and due dates, labelled drafts, measured playbook gap, plan consistency checks)
+- Next step: S2.07 Orchestrator tick and trace

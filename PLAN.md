@@ -116,7 +116,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §8.1, §8.2, §8.4
   - Tests: T-DRF-01, T-DRF-02, T-DRF-04
   - Done when: Valid draft passes; violating draft yields exactly the four violation codes.
-- [ ] **S2.06** Rule planner
+- [x] **S2.06** Rule planner
   - Goal: Deterministic planner mirroring 6.5.
   - Spec: §18.6
   - Tests: T-AGT-08
