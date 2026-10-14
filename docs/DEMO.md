@@ -52,7 +52,7 @@ As for Slice 1: `uv run receivables reset` (stop the app first), sign in as `dem
 | 3 | Open **INV-011** from the run page. | Case escalated; trace `draft_message` (tone 3), `escalate` (to finance, with the task it created), `schedule_followup`. |
 | 4 | Open **INV-003**. | Trace: `draft_message`, `send_email`, `schedule_followup`. The send shows "denied" and "waiting for human approval" with its reasons in plain words: "This customer is not on the autopilot allowlist." and, outside Monday to Friday 09:00 to 17:00 Dubai, "Outside business hours". |
 | 5 | Open **Approvals** in the nav. | Two pending items, INV-003 and INV-012, each with the draft subject and the reasons. Approve and Reject are shown but arrive with Slice 3. |
-| 6 | Back on the dashboard, tick **Dry run** and run again. | "Dry run. Nothing was saved." with the counts; no new run appears. |
+| 6 | Back on the dashboard, tick **Dry run** and run again. | A "Dry run" page: "Nothing was saved." with the counts (9 cases, 22 steps would execute, 2 denied by policy); no new run appears in Approvals or the runs. |
 
 Kill switch: an admin turns it on with `POST /api/reauth` (password re-entry) and `POST /api/agent/kill-switch {"on": true}`; every page then shows "KILL SWITCH ON" and the next run records every step as denied with "The kill switch is on: nothing is sent." There is no button for it yet; the automated test exercises it.
 
