@@ -21,7 +21,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from receivables.adapters.clock import Clock, SystemClock
 from receivables.adapters.config import load_config
 from receivables.adapters.db.engine import make_engine
+from receivables.adapters.db.repo import customer_names
 from receivables.adapters.llm.mode import resolve_llm_mode
+from receivables.adapters.log import RequestIdMiddleware, configure_logging
 from receivables.api.auth import auth_gate, error_response
 from receivables.api.csrf import CsrfError, csrf_protect
 from receivables.api.headers import SECURITY_HEADERS, SecurityHeadersMiddleware
@@ -104,7 +106,8 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
         same_site="lax",
         https_only=True,
     )
-    app.add_middleware(SecurityHeadersMiddleware)  # outermost: every response gets the headers
+    app.add_middleware(SecurityHeadersMiddleware)  # every response gets the headers
+    app.add_middleware(RequestIdMiddleware)  # outermost: every log line of a request has its id
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> Any:
@@ -133,5 +136,8 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
 
 def __getattr__(name: str) -> Any:
     if name == "app":
-        return create_app(Settings(), clock=SystemClock())
+        app = create_app(Settings(), clock=SystemClock())
+        # Only a real server process logs: JSON lines, scrubbed of personal data (NFR-07).
+        configure_logging(customer_names(app.state.engine))
+        return app
     raise AttributeError(name)

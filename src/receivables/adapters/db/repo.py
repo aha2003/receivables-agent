@@ -6,7 +6,7 @@ injected clock and the table's triggers keep it append-only.
 """
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -34,6 +34,7 @@ from receivables.core.validation import CustomerRow
 __all__ = [
     "LedgerInputs",
     "UserRecord",
+    "customer_names",
     "get_user",
     "get_user_by_username",
     "insert_user",
@@ -55,6 +56,16 @@ class LedgerInputs:
     invoices: list[InvoiceRecord]
     payments: list[PaymentRecord]
     events: list[EventRecord]
+
+
+def customer_names(engine: Engine) -> Callable[[], tuple[str, ...]]:
+    """Reads the current customer names at every call (redaction, D-031)."""
+
+    def read() -> tuple[str, ...]:
+        with engine.connect() as conn:
+            return tuple(conn.execute(select(Customer.customer_name)).scalars())
+
+    return read
 
 
 def load_customers(conn: Connection) -> list[CustomerRow]:
