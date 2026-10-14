@@ -21,6 +21,7 @@ __all__ = [
     "CaseTrigger",
     "DisputeOpened",
     "DisputeResolved",
+    "EscalateExecuted",
     "MessageSent",
     "NoReply",
     "PaidInFull",
@@ -91,6 +92,11 @@ class NoReply:
 
 
 @dataclass(frozen=True, slots=True)
+class EscalateExecuted:
+    """The ``escalate`` tool was executed (§18.3; row added by D-019)."""
+
+
+@dataclass(frozen=True, slots=True)
 class PaidInFull:
     """The open amount reached 0."""
 
@@ -104,6 +110,7 @@ type CaseTrigger = (
     | PromiseMade
     | PromiseBroken
     | NoReply
+    | EscalateExecuted
     | PaidInFull
 )
 
@@ -136,6 +143,8 @@ def _target(state: CaseState | None, trigger: CaseTrigger) -> CaseState | None:
             return S.AWAITING_REPLY if state is S.ASSESSED else None
         case DisputeOpened():
             return S.DISPUTE_OPEN
+        case EscalateExecuted():
+            return S.ESCALATED
         case DisputeResolved():
             return S.ASSESSED if state is S.DISPUTE_OPEN else None
         case PromiseMade(promise_date=promise_date, as_of=as_of):
@@ -157,6 +166,6 @@ def transition(state: CaseState | None, trigger: CaseTrigger) -> Transition:
     target = _target(state, trigger)
     if target is None:
         return Transition(state, state, trigger, applied=False, escalation_task=False)
-    # No row leads from ESCALATED to itself, so reaching ESCALATED always means entering it.
-    entering_escalation = target is CaseState.ESCALATED
+    # One task per entry: running ``escalate`` on an escalated case adds no second task.
+    entering_escalation = target is CaseState.ESCALATED and state is not CaseState.ESCALATED
     return Transition(state, target, trigger, applied=True, escalation_task=entering_escalation)

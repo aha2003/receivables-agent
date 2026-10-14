@@ -13,6 +13,7 @@ from receivables.agent.cases import (
     CaseTrigger,
     DisputeOpened,
     DisputeResolved,
+    EscalateExecuted,
     MessageSent,
     NoReply,
     PaidInFull,
@@ -156,6 +157,23 @@ def test_no_reply_escalates_only_from_awaiting_reply(state: CaseState) -> None:
     assert transition(state, NoReply(5, 200)).applied is False
 
 
+@pytest.mark.parametrize("state", [s for s in NOT_RESOLVED if s is not S.ESCALATED])
+def test_escalate_tool_escalates_from_any_state_except_resolved(state: CaseState) -> None:
+    result = transition(state, EscalateExecuted())
+    assert (result.applied, result.to_state, result.escalation_task) == (True, S.ESCALATED, True)
+
+
+def test_escalate_tool_on_an_escalated_case_adds_no_second_task() -> None:
+    result = transition(S.ESCALATED, EscalateExecuted())
+    assert (result.applied, result.to_state, result.escalation_task) == (True, S.ESCALATED, False)
+
+
+def test_rule_planner_escalation_of_a_first_tick_case() -> None:
+    # T-AGT-08: INV-011, INV-009 and INV-014 are escalated by the rule planner on a first tick.
+    state = transition(transition(None, BecameOverdue()).to_state, Assessed()).to_state
+    assert transition(state, EscalateExecuted()).to_state is S.ESCALATED
+
+
 @pytest.mark.parametrize("state", list(CaseState))
 def test_paid_in_full_resolves_from_any_state(state: CaseState) -> None:
     result = transition(state, PaidInFull())
@@ -172,6 +190,7 @@ TRIGGERS: list[CaseTrigger] = [
     PromiseMade(promise_date=AS_OF, as_of=AS_OF),
     PromiseBroken(),
     NoReply(3, 90),
+    EscalateExecuted(),
     PaidInFull(),
 ]
 
@@ -216,6 +235,7 @@ ALLOWED = (
     | {(s, S.DISPUTE_OPEN) for s in NOT_RESOLVED}
     | {(s, S.PROMISE_PENDING) for s in NOT_RESOLVED}
     | {(S.PROMISE_PENDING, S.ESCALATED), (S.AWAITING_REPLY, S.ESCALATED)}
+    | {(s, S.ESCALATED) for s in NOT_RESOLVED}
     | {(s, S.RESOLVED) for s in CaseState}
 )
 
@@ -233,6 +253,7 @@ triggers = st.one_of(
         unanswered_outbound=st.integers(0, 10),
         days_overdue=st.integers(-30, 400),
     ),
+    st.builds(EscalateExecuted),
     st.builds(PaidInFull),
 )
 
@@ -246,6 +267,9 @@ def test_every_transition_is_in_the_table_and_deterministic(
     assert result.from_state == state and result.trigger == trigger
     if result.applied:
         assert (state, result.to_state) in ALLOWED
+        assert result.escalation_task == (
+            result.to_state is S.ESCALATED and state is not S.ESCALATED
+        )
     else:
         assert result.to_state == state and not result.escalation_task
 
