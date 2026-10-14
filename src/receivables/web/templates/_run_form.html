@@ -1,5 +1,7 @@
 <form method="post" action="/agent/run" class="run-agent">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>As of <input type="date" name="as_of"{% if autonomy_level == 2 %} title="At level 2 a run that can send always uses today"{% endif %}></label>
   <label><input type="checkbox" name="dry_run" value="on"> Dry run (nothing is saved)</label>
   <button type="submit">Run agent now (level L{{ autonomy_level }})</button>
 </form>
+<p class="note">Leave the date empty to use today.{% if autonomy_level == 2 %} At level 2 another date is only allowed for a dry run.{% endif %}</p>

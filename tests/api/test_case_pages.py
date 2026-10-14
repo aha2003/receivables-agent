@@ -410,3 +410,26 @@ def test_ledger_still_open_for_an_invoice_unknown_at_that_date(
     # The message is dated 1 Oct; INV-006 is issued on 10 Oct, so on 2 Oct it is unknown.
     flags = _flags_section(page(user, "/invoices/INV-005?as_of=2026-10-02"))
     assert "still shows this invoice open" in flags and "40,000" not in flags
+
+
+# --- the run form's as_of (S2.11) ---------------------------------------------------------------
+
+
+def test_the_run_form_takes_an_as_of_below_level_2(user: TestClient) -> None:
+    response = user.post("/agent/run", data={"csrf_token": csrf(user), "as_of": "2026-10-31"})
+    assert response.status_code == 303
+    assert "<dt>As of</dt><dd>2026-10-31</dd>" in page(user, response.headers["location"])
+    assert (
+        user.post("/agent/run", data={"csrf_token": csrf(user), "as_of": "31/10/2026"}).status_code
+        == 422
+    )
+    empty = user.post("/agent/run", data={"csrf_token": csrf(user), "as_of": ""})
+    assert empty.status_code == 303  # an empty field means today
+
+
+def test_the_run_form_keeps_today_for_a_sending_l2_run(l2_client: TestClient) -> None:
+    other = {"csrf_token": csrf(l2_client), "as_of": "2026-10-31"}  # today is 2026-11-02
+    assert l2_client.post("/agent/run", data=other).status_code == 422
+    assert l2_client.post("/agent/run", data={**other, "dry_run": "on"}).status_code == 200
+    today = {"csrf_token": csrf(l2_client), "as_of": "2026-11-02"}
+    assert l2_client.post("/agent/run", data=today).status_code == 303

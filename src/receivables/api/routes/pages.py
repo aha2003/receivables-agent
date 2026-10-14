@@ -8,7 +8,7 @@ forms that also work without JavaScript.
 from collections.abc import Mapping
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
@@ -181,19 +181,34 @@ async def run_page(request: Request, run_id: str) -> Response:
 
 @router.post("/agent/run", response_class=HTMLResponse)
 async def run_agent_form(
-    request: Request, dry_run: Annotated[str | None, Form()] = None
+    request: Request,
+    dry_run: Annotated[str | None, Form()] = None,
+    as_of: Annotated[str | None, Form()] = None,
 ) -> Response:
-    """Run one tick at the configured level and the server's own time and date (D-026)."""
+    """Run one tick at the configured level and the server's own time (D-026).
+
+    ``as_of`` may differ from today only below level 2 or in a dry run, as in the API.
+    """
     state = request.app.state
     is_dry = dry_run == "on"
+    day = parse_as_of(request, as_of) if as_of else None  # empty field: today
+    level = state.config.agent.autonomy_level
+    if day is not None and level == 2 and not is_dry and day != state.clock.today():
+        raise HTTPException(422, "as_of must be today for a level 2 run that can send")
     summary = await run_in_threadpool(
         run_agent_tick,
         state.engine,
         state.clock,
         state.config,
+        as_of=day,
         dry_run=is_dry,
         requested_by=request.state.user.username,
-        request={"as_of": None, "now": None, "autonomy_level": None, "dry_run": is_dry},
+        request={
+            "as_of": None if day is None else day.isoformat(),
+            "now": None,
+            "autonomy_level": None,
+            "dry_run": is_dry,
+        },
     )
     if is_dry:  # the trace was rolled back: show the counts only
         return await _render(request, "run.html", {"trace": None, "summary": summary})
