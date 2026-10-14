@@ -400,3 +400,14 @@ def test_send_decisions_are_found_by_draft_whatever_the_run(
 
 def test_the_case_section_says_it_shows_the_current_state(user: TestClient) -> None:
     assert "show the current state, whatever the date above" in page(user, "/invoices/INV-004")
+
+
+def test_ledger_still_open_for_an_invoice_unknown_at_that_date(
+    user: TestClient, seeded: Engine
+) -> None:
+    flag = [{"code": "LEDGER_STILL_OPEN", "invoice_number": "INV-006", "amount": "40000.00"}]
+    _classify(seeded, "M-7", "INV-005", flag, "pending")
+    flags = _flags_section(
+        page(user, "/invoices/INV-005?as_of=2026-09-30")
+    )  # INV-006 not yet issued
+    assert "still shows this invoice open" in flags and "40,000" not in flags
