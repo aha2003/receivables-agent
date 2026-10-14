@@ -156,7 +156,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §3.5, §7.2
   - Tests: T-LLM-04
   - Done when: A cassette replays byte-identically; an unrecorded request raises; no network is touched.
-- [ ] **S3.02** Redaction and pseudonymisation (pure)
+- [x] **S3.02** Redaction and pseudonymisation (pure)
   - Goal: Redact TRN, IBAN, email and phone; pseudonymise customer names.
   - Spec: §7.5
   - Tests: T-RED-01
