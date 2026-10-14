@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, text
 
-from receivables.api.snapshot import money, take_snapshot
+from receivables.api.snapshot import Snapshot, money, take_snapshot
 
 __all__ = ["invoice_detail"]
 
@@ -62,8 +62,12 @@ def _audit(conn: Connection, invoice: str, kinds: list[str]) -> list[dict[str, A
     ]
 
 
-def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, Any] | None:
-    snap = take_snapshot(state.engine, as_of, state.config.engine)
+def invoice_detail(
+    state: Any, invoice_number: str, as_of: date, snap: Snapshot | None = None
+) -> dict[str, Any] | None:
+    """The §9 invoice detail; pass ``snap`` to reuse a snapshot taken for the same ``as_of``."""
+    if snap is None:
+        snap = take_snapshot(state.engine, as_of, state.config.engine)
     row = next((r for r in snap.rows if r.invoice_number == invoice_number), None)
     if row is None:
         return None

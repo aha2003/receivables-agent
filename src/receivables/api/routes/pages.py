@@ -5,6 +5,7 @@ SYNTHETIC DEMO DATA banner and the ``as_of`` of its numbers; htmx only enhances 
 forms that also work without JavaScript.
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -13,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from receivables.adapters.db.agent_store import run_agent_tick
 from receivables.adapters.db.controls import kill_switch_on
-from receivables.api.agent_views import case_runs, pending_approvals, run_trace
+from receivables.api.agent_views import case_runs, pending_approvals, run_trace, send_decisions
 from receivables.api.csrf import ensure_token
 from receivables.api.imports import ImportRefusal, run_import
 from receivables.api.invoice_detail import invoice_detail
@@ -23,6 +24,7 @@ from receivables.core.aging import BUCKETS, aging_summary
 from receivables.core.queue import HEURISTIC_NOTE
 from receivables.core.scoring import BANDS
 from receivables.core.validation import FILE_KINDS
+from receivables.web.labels import flag_text
 
 router = APIRouter()
 
@@ -96,15 +98,33 @@ async def queue_page(
     return await _render(request, "queue.html", context)
 
 
-def _draft_decisions(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """For each draft, the latest send step that used it (runs are newest first)."""
-    found: dict[str, dict[str, Any]] = {}
-    for run in runs:
-        for step in run["steps"]:
-            draft_id = (step["result"] or {}).get("draft_id")
-            if step["tool"] == "send_email" and draft_id and draft_id not in found:
-                found[draft_id] = {**step, "autonomy_level": run["autonomy_level"]}
-    return found
+def _flag_list(raw: Any) -> list[Any]:
+    """A classification's flags as a list of codes or mappings; anything else shown as is."""
+    if isinstance(raw, list):
+        return [f if isinstance(f, str | Mapping) else str(f) for f in raw]
+    return [raw if isinstance(raw, str | Mapping) else str(raw)]
+
+
+def _case_flags(snap: Any, row: Any, item: Any, classifications: list[Any]) -> list[str]:
+    """Plain-language flags for the case, each once (§10, §6.7, §7.4)."""
+    flags: list[Any] = [
+        {"code": f.code, "amount": f.amount} for f in (item.flags if item else ())
+    ]  # §6.7: only queue items carry UNALLOCATED_CASH_ON_ACCOUNT
+    rows = {r.invoice_number: r for r in snap.rows}
+    for c in classifications:
+        if c["status"] == "rejected":  # a human rejected this classification
+            continue
+        for flag in _flag_list(c["flags"]):
+            data = dict(flag) if isinstance(flag, Mapping) else {"code": flag}
+            if data.get("code") == "LEDGER_STILL_OPEN":  # X is the ledger at this page's as_of
+                target = rows.get(str(data.get("invoice_number") or row.invoice_number))
+                data.pop("amount", None)
+                if target is not None and target.open_amount > 0:
+                    data["amount"] = target.open_amount
+                elif target is not None:
+                    data["settled"] = True
+            flags.append(data)
+    return list(dict.fromkeys(flag_text(f) for f in flags))
 
 
 @router.get("/invoices/{invoice_number}", response_class=HTMLResponse)
@@ -117,22 +137,20 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
             request, "not_found.html", {"what": "invoice", "snap": snap}, status=404
         )
     state = request.app.state
-    detail = await run_in_threadpool(invoice_detail, state, invoice_number, snap.as_of)
+    detail = await run_in_threadpool(invoice_detail, state, invoice_number, snap.as_of, snap)
     runs = await run_in_threadpool(case_runs, state.engine, invoice_number)
+    drafts = (detail or {}).get("drafts", [])
+    decisions = await run_in_threadpool(
+        send_decisions, state.engine, [d["draft_id"] for d in drafts]
+    )
     scored = next((s for s in snap.scored if s.invoice_number == invoice_number), None)
-    flags: list[Any] = []
-    cash = snap.kpis.unallocated.by_customer.get(row.customer_id, 0)
-    if cash > 0:
-        flags.append({"code": "UNALLOCATED_CASH_ON_ACCOUNT", "amount": cash})
-    for c in (detail or {}).get("classifications", []):
-        flags.extend(c["flags"])
+    item = next((i for i in snap.queue.items if i.scored.invoice_number == invoice_number), None)
+    flags = _case_flags(snap, row, item, (detail or {}).get("classifications", []))
     context = {
         "snap": snap,
         "row": row,
         "scored": scored,
-        "item": next(
-            (i for i in snap.queue.items if i.scored.invoice_number == invoice_number), None
-        ),
+        "item": item,
         "payments": [p for p in snap.payments_as_of if p.invoice_number == invoice_number],
         "events": [
             e
@@ -142,7 +160,7 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
         "detail": detail,
         "flags": flags,
         "runs": runs,
-        "decisions": _draft_decisions(runs),
+        "decisions": decisions,
     }
     return await _render(request, "invoice.html", context)
 

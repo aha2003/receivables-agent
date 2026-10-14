@@ -140,7 +140,12 @@ def test_t_ui_04_flags_are_visible_in_plain_language(user: TestClient, seeded: E
         ({"code": "E_EVIDENCE_NOT_VERBATIM"}, "word for word"),
         ({"code": "UNVERIFIED_EXTRACTION"}, "could not be verified"),
         ({"code": "LEDGER_STILL_OPEN", "amount": 2000000}, "AED 20,000.00 open"),
-        ({"code": "LEDGER_STILL_OPEN", "amount": "abc"}, "LEDGER_STILL_OPEN"),
+        ({"code": "LEDGER_STILL_OPEN", "amount": "abc"}, "still shows this invoice open"),
+        ("LEDGER_STILL_OPEN", "still shows this invoice open"),
+        ({"code": "LEDGER_STILL_OPEN", "settled": True}, "now shows it settled"),
+        ({"code": "LEDGER_STILL_OPEN", "amount": True}, "still shows this invoice open"),
+        ({"code": "LEDGER_STILL_OPEN", "amount": 9000.0}, "still shows this invoice open"),
+        ({"code": "LEDGER_STILL_OPEN", "amount": 10**5000}, "still shows this invoice open"),
         ({"code": "SOMETHING_NEW"}, "SOMETHING_NEW"),  # never hidden
         ({}, "?"),
     ],
@@ -275,3 +280,123 @@ def test_each_flag_is_shown_once(user: TestClient, seeded: Engine) -> None:
         )
     body = page(user, "/invoices/INV-012?as_of=2026-10-31")
     assert body.count("of unallocated cash. Check whether it belongs to this invoice") == 1
+
+
+# --- spec-review regressions -------------------------------------------------------------------
+
+
+def _classify(engine: Engine, message_id: str, invoice: str, flags: object, status: str) -> None:
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO correspondence (message_id, invoice_number, direction, sent_at)"
+                " VALUES (:m, :n, 'inbound', '2026-10-01T06:00:00Z')"
+            ),
+            {"m": message_id, "n": invoice},
+        )
+        c.execute(
+            text(
+                "INSERT INTO classifications (message_id, label, extraction_json, flags_json,"
+                " needs_review, status, created_at) VALUES (:m, 'ALREADY_PAID', '{}', :f, 1, :s,"
+                " '2026-10-01T06:00:00Z')"
+            ),
+            {"m": message_id, "f": json.dumps(flags), "s": status},
+        )
+
+
+def _flags_section(body: str) -> str:
+    if "<h2>Flags</h2>" not in body:
+        return ""
+    return body.split("<h2>Flags</h2>")[1].split("</section>")[0]
+
+
+def test_ledger_still_open_uses_the_ledger_at_the_page_date(
+    user: TestClient, seeded: Engine
+) -> None:
+    # Classified when 30,000 was open; P-003 (10,000) lands on 2026-10-05.
+    _classify(
+        seeded, "M-1", "INV-005", [{"code": "LEDGER_STILL_OPEN", "amount": "30000.00"}], "pending"
+    )
+    later = _flags_section(page(user, "/invoices/INV-005?as_of=2026-10-31"))
+    assert "the ledger shows AED 20,000.00 open" in later
+    earlier = _flags_section(page(user, "/invoices/INV-005?as_of=2026-10-02"))
+    assert "the ledger shows AED 30,000.00 open" in earlier
+
+
+def test_ledger_still_open_on_a_settled_invoice(user: TestClient, seeded: Engine) -> None:
+    _classify(seeded, "M-2", "INV-001", ["LEDGER_STILL_OPEN"], "pending")
+    flags = _flags_section(page(user, "/invoices/INV-001?as_of=2026-10-31"))
+    assert "the ledger now shows it settled" in flags
+
+
+def test_rejected_classifications_and_duplicates(user: TestClient, seeded: Engine) -> None:
+    _classify(
+        seeded,
+        "M-3",
+        "INV-004",
+        [{"code": "UNMATCHED_INVOICE", "invoice_number": "X-1"}],
+        "pending",
+    )
+    _classify(
+        seeded,
+        "M-4",
+        "INV-004",
+        [{"code": "UNMATCHED_INVOICE", "invoice_number": "X-1"}],
+        "pending",
+    )
+    _classify(
+        seeded,
+        "M-5",
+        "INV-004",
+        [{"code": "UNMATCHED_INVOICE", "invoice_number": "X-2"}],
+        "rejected",
+    )
+    flags = _flags_section(page(user, "/invoices/INV-004?as_of=2026-10-31"))
+    assert flags.count("invoice X-1, which is not in the ledger") == 1
+    assert "X-2" not in flags
+
+
+@pytest.mark.parametrize(
+    "raw", ["CUSTOMER_INVOICE_MISMATCH", {"code": "UNVERIFIED_EXTRACTION"}, [7]]
+)
+def test_odd_flag_shapes_are_shown_not_split(user: TestClient, seeded: Engine, raw: object) -> None:
+    _classify(seeded, "M-6", "INV-004", raw, "pending")
+    flags = _flags_section(page(user, "/invoices/INV-004?as_of=2026-10-31"))
+    assert flags.count('<li class="flag">') >= 2  # the dispute plus this flag, not one per char
+
+
+def test_unallocated_cash_only_on_queue_items(user: TestClient, seeded: Engine) -> None:
+    with seeded.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO payments (payment_id, customer_id, payment_date, amount_fils)"
+                " VALUES ('P-005', 'CUST-C', '2026-10-28', 1200000)"
+            )
+        )
+    assert "unallocated cash" in _flags_section(page(user, "/invoices/INV-012?as_of=2026-10-31"))
+    paid = page(user, "/invoices/INV-007?as_of=2026-10-31")  # CUST-C, settled: not a queue item
+    assert "unallocated cash" not in _flags_section(paid)
+
+
+def test_send_decisions_are_found_by_draft_whatever_the_run(
+    user: TestClient, seeded: Engine
+) -> None:
+    from receivables.api.agent_views import send_decisions
+
+    run_agent(user)
+    with seeded.connect() as c:
+        draft_id = c.execute(
+            text(
+                "SELECT json_extract(result_json, '$.draft_id') FROM agent_steps"
+                " WHERE tool = 'send_email' AND invoice_number = 'INV-003'"
+            )
+        ).scalar_one()
+    decision = send_decisions(seeded, [draft_id, "D-none"])
+    assert set(decision) == {draft_id}
+    assert decision[draft_id]["status"] == "converted_to_approval"
+    assert decision[draft_id]["autonomy_level"] == 1
+    assert send_decisions(seeded, []) == {}
+
+
+def test_the_case_section_says_it_shows_the_current_state(user: TestClient) -> None:
+    assert "show the current state, whatever the date above" in page(user, "/invoices/INV-004")

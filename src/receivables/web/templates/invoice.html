@@ -32,12 +32,13 @@
   <ul class="flags">
     {% if scored and scored.dispute_label %}<li class="flag">Open dispute: {{ scored.dispute_label|replace("_", " ")|lower }}.</li>{% endif %}
     {% if scored and scored.broken_promise %}<li class="flag">The customer's promise to pay has passed and the invoice is still open.</li>{% endif %}
-    {% for f in flags %}<li class="flag">{{ f|flag_text }}</li>{% endfor %}
+    {% for f in flags %}<li class="flag">{{ f }}</li>{% endfor %}
   </ul>
 </section>
 {% endif %}
 <section>
   <h2>Case</h2>
+  <p class="note">The case, drafts and agent trace show the current state, whatever the date above.</p>
   {% if detail and detail.case %}
   <dl class="facts">
     <dt>State</dt><dd>{{ detail.case.state|replace("_", " ")|lower }}</dd>

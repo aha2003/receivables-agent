@@ -44,12 +44,17 @@ def status_text(status: str) -> str:
 
 
 def _aed(amount: Any) -> str | None:
-    """A flag's amount (decimal string or fils) as ``AED 1,234.50``; None if unreadable."""
+    """A flag's amount (decimal string or integer fils) as ``AED 1,234.50``; None otherwise.
+
+    Floats and booleans are refused (never float money); nothing here raises.
+    """
+    if isinstance(amount, bool) or not isinstance(amount, int | str):
+        return None
     try:
-        fils = amount if isinstance(amount, int) else to_fils(Decimal(str(amount)))
+        fils = amount if isinstance(amount, int) else to_fils(Decimal(amount))
+        return f"AED {from_fils(fils):,}"
     except (InvalidOperation, TypeError, ValueError):
         return None
-    return f"AED {from_fils(fils):,}"
 
 
 def flag_text(flag: Any) -> str:
@@ -63,8 +68,17 @@ def flag_text(flag: Any) -> str:
             f"This customer has {amount} of unallocated cash. "
             "Check whether it belongs to this invoice before chasing."
         )
-    if code == "LEDGER_STILL_OPEN" and amount:  # §7.4 wording
-        return f"Customer says paid but the ledger shows {amount} open. Check the bank statement."
+    if code == "LEDGER_STILL_OPEN":  # §7.4 wording; the page passes today's ledger amount
+        if data.get("settled"):
+            return "Customer said this invoice was paid; the ledger now shows it settled."
+        if amount:
+            return (
+                f"Customer says paid but the ledger shows {amount} open. Check the bank statement."
+            )
+        return (
+            "Customer says paid but the ledger still shows this invoice open. "
+            "Check the bank statement."
+        )
     if code == "UNMATCHED_INVOICE":
         ref = f" {invoice}" if invoice else ""
         return (

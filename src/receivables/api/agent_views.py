@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
-__all__ = ["case_runs", "pending_approvals", "run_trace"]
+__all__ = ["case_runs", "pending_approvals", "run_trace", "send_decisions"]
 
 
 def _loads(value: str | None) -> Any:
@@ -174,3 +174,29 @@ def case_runs(engine: Engine, invoice_number: str, limit: int = 10) -> list[dict
         }
         for r in runs
     ]
+
+
+def send_decisions(engine: Engine, draft_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """For each draft, the most recent ``send_email`` step that used it, with its run's level."""
+    if not draft_ids:
+        return {}
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                text(
+                    "SELECT s.*, r.autonomy_level, json_extract(s.result_json, '$.draft_id') AS d"
+                    " FROM agent_steps s JOIN agent_runs r ON r.run_id = s.run_id"
+                    " WHERE s.tool = 'send_email'"
+                    " AND json_extract(s.result_json, '$.draft_id')"
+                    "     IN (SELECT value FROM json_each(:ids))"
+                    " ORDER BY s.rowid DESC"
+                ),
+                {"ids": json.dumps(draft_ids)},
+            )
+            .mappings()
+            .all()
+        )
+    found: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        found.setdefault(r["d"], {**_step(r), "autonomy_level": r["autonomy_level"]})
+    return found
