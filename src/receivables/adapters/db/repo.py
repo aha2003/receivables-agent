@@ -14,7 +14,19 @@ from typing import Any
 from sqlalchemy import Connection, Engine, func, insert, select
 
 from receivables.adapters.clock import Clock, utc_timestamp
-from receivables.adapters.db.models import AuditLog, Base, Customer, Event, Invoice, Payment, User
+from receivables.adapters.db.models import (
+    AuditLog,
+    Base,
+    Correspondence,
+    Customer,
+    CustomerPlaybook,
+    Event,
+    Invoice,
+    Payment,
+    User,
+)
+from receivables.agent.facts import AgentFacts, MessageHeader, PlaybookRecord, build_agent_facts
+from receivables.core.config import EngineConfig
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.scoring import EventRecord
 from receivables.core.validation import CustomerRow
@@ -25,11 +37,14 @@ __all__ = [
     "get_user",
     "get_user_by_username",
     "insert_user",
+    "load_agent_facts",
     "load_customers",
     "load_events",
     "load_invoices",
     "load_ledger_inputs",
+    "load_message_headers",
     "load_payments",
+    "load_playbooks",
     "table_counts",
     "write_audit",
 ]
@@ -113,6 +128,55 @@ def load_ledger_inputs(engine: Engine) -> LedgerInputs:
             payments=load_payments(conn),
             events=load_events(conn),
         )
+
+
+def load_playbooks(conn: Connection) -> list[PlaybookRecord]:
+    rows = conn.execute(select(CustomerPlaybook).order_by(CustomerPlaybook.customer_id)).all()
+    return [
+        PlaybookRecord(
+            customer_id=r.customer_id,
+            promise_kept_rate=r.promise_kept_rate,
+            promises_counted=r.promises_counted,
+            avg_days_to_reply=r.avg_days_to_reply,
+            replies_counted=r.replies_counted,
+            followup_gap_days=r.followup_gap_days,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
+
+
+def load_message_headers(conn: Connection) -> list[MessageHeader]:
+    """Correspondence without subject or body (bodies wait for §7.5 redaction, S3.02)."""
+    c = Correspondence
+    stmt = select(
+        c.message_id, c.invoice_number, c.customer_id, c.direction, c.sent_at, c.language
+    ).order_by(c.sent_at, c.message_id)
+    return [
+        MessageHeader(
+            message_id=r.message_id,
+            invoice_number=r.invoice_number,
+            customer_id=r.customer_id,
+            direction=r.direction,
+            sent_at=r.sent_at,
+            language=r.language,
+        )
+        for r in conn.execute(stmt).all()
+    ]
+
+
+def load_agent_facts(conn: Connection, as_of: date, config: EngineConfig) -> AgentFacts:
+    """Everything the read tools need, read on one connection (call inside a transaction)."""
+    return build_agent_facts(
+        customers=load_customers(conn),
+        invoices=load_invoices(conn),
+        payments=load_payments(conn),
+        events=load_events(conn),
+        playbooks=load_playbooks(conn),
+        messages=load_message_headers(conn),
+        as_of=as_of,
+        config=config,
+    )
 
 
 def table_counts(conn: Connection, tables: Iterable[str] | None = None) -> dict[str, int]:

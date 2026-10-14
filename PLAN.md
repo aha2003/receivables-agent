@@ -101,7 +101,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.2
   - Tests: T-CASE-01
   - Done when: The case walks the full state path in the spec.
-- [ ] **S2.03** Closed tool registry
+- [x] **S2.03** Closed tool registry
   - Goal: Exactly 11 typed tools with Pydantic argument models; read tools implemented; no tool can change amounts or free-form recipients.
   - Spec: §18.3
   - Tests: T-AGT-03

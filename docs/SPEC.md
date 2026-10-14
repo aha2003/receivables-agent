@@ -1002,7 +1002,7 @@ The registry is closed: the set below is exactly the set of tools. Arguments are
 | `escalate` | `invoice_number`, `to_role` | internal write | sets state `ESCALATED` and creates a task | L1 |
 | `send_email` | `draft_id` | **external** | delivers through the MailGateway (18.8) | L2, policy-gated; otherwise becomes an approval request |
 
-`owner_role` and `to_role` are one of `finance`, `sales`, `operations`, `management`. Recording a dispute or promise event from a classification always needs a human accept (Section 7), at every level.
+`owner_role` and `to_role` are one of `finance`, `sales`, `operations`, `management`. In a plan (18.6), `send_email` takes exactly one of `draft_id` (an existing draft) or `draft_ref` (`step:N`, naming an earlier `draft_message` step of the same plan, resolved by the orchestrator to that step's draft). Recording a dispute or promise event from a classification always needs a human accept (Section 7), at every level.
 
 **Not tools, never to be added without a spec change:** editing invoices, payments or amounts; deleting anything; allocating payments automatically; sending to arbitrary addresses; WhatsApp; legal letters; initiating payments; reading files or running code.
 

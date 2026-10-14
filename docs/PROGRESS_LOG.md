@@ -120,3 +120,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.2 (FR-31) / T-CASE-01; every table row, guard boundaries, Hypothesis properties (transitions only from the table, deterministic, RESOLVED final)
 - Deviations or decisions (link docs/DECISIONS.md): D-019 (spec conflict resolved: §18.2 row for the `escalate` tool; unmatched triggers unchanged with applied=False; persistence in S2.07)
 - Next step: S2.03 Closed tool registry
+
+## 2026-10-14 — [S2.03] Closed tool registry
+- PR: see branch | Branch: s2-03-closed-tool-registry | Commit: see PR head
+- Tests: `uv run pytest -q` → 972 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%
+- Spec / test IDs covered: §18.3 (FR-30) / T-AGT-03 (names equal the 11 spec tools; no tool writes invoices, payments, customers or events; no amount/recipient/SQL/path argument); strict argument validation; read tools on golden data (as_of, flags, priority, unallocated cash, playbook defaults, message headers) with no customer PII
+- Deviations or decisions (link docs/DECISIONS.md): D-020 (send_email draft_id or draft_ref, §18.3 sentence; headers only until S3.02; Dubai dating of messages; non-read handlers in later steps)
+- Next step: S2.04 Policy engine
