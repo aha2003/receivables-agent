@@ -17,6 +17,25 @@ from receivables.core.scoring import EventRecord
 from receivables.core.validation import CustomerRow
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Variables that could point a test at the live LLM; removed for every test (D-029).
+LLM_ENVIRONMENT = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL_PLANNER",
+    "ANTHROPIC_MODEL_CLASSIFIER",
+    "ANTHROPIC_MODEL_DRAFTER",
+    "LLM_MODE",
+    "LLM_REPLAY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whatever the shell exports, tests start in fake mode with no API key or model ids."""
+    for name in LLM_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+
+
 FIXTURES = ROOT / "fixtures"
 
 

@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from receivables.adapters.clock import Clock, SystemClock
 from receivables.adapters.config import load_config
 from receivables.adapters.db.engine import make_engine
+from receivables.adapters.llm.mode import resolve_llm_mode
 from receivables.api.auth import auth_gate, error_response
 from receivables.api.csrf import CsrfError, csrf_protect
 from receivables.api.headers import SECURITY_HEADERS, SecurityHeadersMiddleware
@@ -73,6 +74,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     )
     config = load_config(Path(settings.config_path))  # ConfigError stops the app on bad config
     app.state.config = config
+    app.state.llm_mode = resolve_llm_mode(settings, config)  # refuses a mode conflict (D-029)
     app.state.clock = clock
     app.state.engine = engine if engine is not None else make_engine(settings.database_url)
     app.state.session_ttl = timedelta(minutes=config.app.session_ttl_minutes)
