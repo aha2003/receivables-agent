@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "interactions": [
+    {
+      "kind": "classify",
+      "model": null,
+      "prompt_version": "classify-v1",
+      "request": {
+        "language_hint": "en",
+        "text": "Hello, our PO for INV-004 says AED 47,000, not 50,000. Please correct the invoice. (synthetic)"
+      },
+      "request_sha256": "0d14a8d5136e4ca1dde95ee7177e8de346cab619a679ac035f781681b13a0cd6",
+      "response": "{\"amounts_mentioned\": [{\"currency\": \"AED\", \"role\": \"po_amount\", \"value\": \"47000\"}, {\"currency\": \"AED\", \"role\": \"invoice_amount\", \"value\": \"50000\"}], \"confidence\": 0.9, \"dates_mentioned\": [], \"evidence_quote\": \"our PO for INV-004 says AED 47,000, not 50,000\", \"invoice_numbers\": [\"INV-004\"], \"label\": \"PO_AMOUNT_MISMATCH\", \"po_numbers\": [], \"promised_payment_date\": null, \"summary_en\": \"Customer says the invoice amount differs from the purchase order and asks for a correction.\"}"
+    },
+    {
+      "kind": "plan",
+      "model": null,
+      "prompt_version": "plan-v1",
+      "request": {
+        "observation": {
+          "case": {
+            "days_overdue": 30,
+            "invoice_number": "INV-003"
+          },
+          "customer": {
+            "customer_id": "CUST-A"
+          }
+        }
+      },
+      "request_sha256": "32c858cf16d775f456bcd10916e73286977dfb013f267ae3e08979a2052376d0",
+      "response": "{\"invoice_number\": \"INV-003\", \"steps\": [{\"args\": {\"invoice_numbers\": [\"INV-003\"], \"tone\": 1}, \"reason\": \"30 days overdue, no blockers\", \"tool\": \"draft_message\"}, {\"args\": {\"draft_ref\": \"step:1\"}, \"reason\": \"tone 1 reminder\", \"tool\": \"send_email\"}, {\"args\": {\"days\": 7, \"invoice_number\": \"INV-003\"}, \"reason\": \"check in a week\", \"tool\": \"schedule_followup\"}]}"
+    },
+    {
+      "kind": "draft",
+      "model": null,
+      "prompt_version": "draft-v1",
+      "request": {
+        "facts": {
+          "as_of": "2026-10-31",
+          "contact_name": "Accounts Team",
+          "invoices": [
+            {
+              "days_overdue": 30,
+              "due_date": "2026-10-01",
+              "invoice_number": "INV-003",
+              "open_amount": "15000.00"
+            }
+          ],
+          "sender_name": "Accounts Receivable Team",
+          "tone": 1
+        }
+      },
+      "request_sha256": "a68932b3bef6b8ca01b5d0a6fb4f340ee1f1e972afea843ced575da726a29684",
+      "response": "{\"body\": \"Dear Accounts Team,\\n\\nInvoice INV-003 (AED 15,000.00) was due on 2026-10-01 and is still unpaid. Please send the remittance details if you have paid.\\n\\nKind regards,\\nAccounts Receivable Team\", \"subject\": \"Payment reminder: invoice INV-003\"}"
+    }
+  ],
+  "name": "s3-01 hand-written synthetic cassette for T-LLM-04 (not recorded from any model)",
+  "synthetic": true
+}

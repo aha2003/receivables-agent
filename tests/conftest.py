@@ -1,4 +1,5 @@
-"""Shared test helpers: loaders for the synthetic golden fixtures (SPEC §6.8 to §6.10)."""
+"""Shared test helpers: loaders for the synthetic golden fixtures (SPEC §6.8 to §6.10), and the
+suite-wide guards: no network (``tests/network_guard.py``) and no LLM environment (D-029)."""
 
 import csv
 import json
@@ -7,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import network_guard  # tests/network_guard.py; tests/ is on sys.path (rootdir conftest)
 import pytest
 
 from receivables.agent.facts import AgentFacts, MessageHeader, PlaybookRecord, build_agent_facts
@@ -17,6 +19,40 @@ from receivables.core.scoring import EventRecord
 from receivables.core.validation import CustomerRow
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Block the network before any test module is collected or imported (D-029)."""
+    network_guard.install()
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail the run if any test reached for the network, even if the error was swallowed."""
+    attempts = network_guard.unexpected()
+    network_guard.uninstall()
+    if attempts:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        print(f"\nnetwork guard: {len(attempts)} blocked network attempt(s): {attempts[:5]}")
+
+
+# Variables that could point a test at the live LLM; removed for every test (D-029).
+LLM_ENVIRONMENT = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL_PLANNER",
+    "ANTHROPIC_MODEL_CLASSIFIER",
+    "ANTHROPIC_MODEL_DRAFTER",
+    "LLM_MODE",
+    "LLM_REPLAY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whatever the shell exports, tests start in fake mode with no API key or model ids."""
+    for name in LLM_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+
+
 FIXTURES = ROOT / "fixtures"
 
 

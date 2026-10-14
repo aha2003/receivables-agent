@@ -151,7 +151,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
 
 Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo with live Claude; safe fallback on failure; injection and policy tests pass.
 
-- [ ] **S3.01** LLM port with Fake and Replay clients
+- [x] **S3.01** LLM port with Fake and Replay clients
   - Goal: `LLMClient` protocol, Pydantic models for classify, plan and draft, cassette format, FakeClient and ReplayClient.
   - Spec: §3.5, §7.2
   - Tests: T-LLM-04
