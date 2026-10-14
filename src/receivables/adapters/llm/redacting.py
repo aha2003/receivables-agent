@@ -15,10 +15,19 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from receivables.adapters.llm.base import LLMClient
-from receivables.adapters.llm.schemas import Classification, DraftResponse, PlanResponse
+from receivables.adapters.llm.schemas import (
+    Classification,
+    DraftResponse,
+    LLMCallFailed,
+    PlanResponse,
+)
 from receivables.core.redact import prepare_for_llm
 
-__all__ = ["RedactingClient"]
+__all__ = ["RedactingClient", "RedactionUnavailable"]
+
+
+class RedactionUnavailable(LLMCallFailed):
+    """The customer names could not be read, so nothing is sent (callers fall back)."""
 
 
 class RedactingClient:
@@ -54,7 +63,12 @@ class RedactingClient:
         return value
 
     def _names(self) -> tuple[str, ...]:
-        return tuple(self._customer_names()) if self._pseudonymize else ()
+        if not self._pseudonymize:
+            return ()
+        try:
+            return tuple(self._customer_names())
+        except Exception:
+            raise RedactionUnavailable("customer names could not be read") from None
 
     def classify(self, text: str, language_hint: str | None) -> Classification:
         return self.inner.classify(self._clean(text, self._names()), language_hint)

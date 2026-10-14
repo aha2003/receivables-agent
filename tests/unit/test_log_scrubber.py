@@ -110,10 +110,15 @@ def test_configuring_twice_keeps_one_handler_and_silences_sql() -> None:
 
 
 def test_uvicorn_records_go_through_the_same_pipeline() -> None:
-    logging.getLogger("uvicorn.access").addHandler(logging.NullHandler())
-    with json_logs(lambda: NAMES) as logs:
-        assert logging.getLogger("uvicorn.access").handlers == []
-        logging.getLogger("uvicorn.access").info('%s "%s %s"', "127.0.0.1", "GET", f"/x?m={EMAIL}")
+    access = logging.getLogger("uvicorn.access")
+    stray = logging.NullHandler()
+    access.addHandler(stray)  # as uvicorn's own log config would
+    try:
+        with json_logs(lambda: NAMES) as logs:
+            assert access.handlers == []
+            access.info('%s "%s %s"', "127.0.0.1", "GET", f"/x?m={EMAIL}")
+    finally:
+        access.removeHandler(stray)
     (line,) = logs.lines()
     assert line["logger"] == "uvicorn.access" and "[EMAIL]" in line["event"]
 
@@ -204,3 +209,49 @@ def test_a_record_already_formatted_elsewhere_has_no_duplicate_message() -> None
         log.removeHandler(other)
     (line,) = logs.lines()
     assert "message" not in line and line["event"] == "for [CUSTOMER]"
+
+
+def test_extras_cannot_pose_as_pipeline_fields() -> None:
+    with json_logs(lambda: NAMES) as logs:
+        log.info("x", extra={"request_id": EMAIL, "level": NAME, "timestamp": TRN, "logger": IBAN})
+    (line,) = logs.lines()
+    assert (line["level"], line["logger"]) == ("info", "receivables.test")
+    assert "request_id" not in line  # none bound outside a request
+    assert [v for v in PII if v in logs.text()] == []
+
+
+def test_a_failed_write_reports_a_fixed_line_not_the_record(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class Broken(io.StringIO):
+        def write(self, _: str) -> int:
+            raise OSError("pipe closed")
+
+    with json_logs(lambda: NAMES):
+        configure_logging(lambda: NAMES, handler=logging.StreamHandler(Broken()))
+        log.info("for %s at %s", NAME, EMAIL)
+    printed = capsys.readouterr()
+    assert printed.err == "log record dropped: writing failed (logger receivables.test)\n"
+    assert [v for v in PII if v in printed.out + printed.err] == []
+
+
+def test_other_root_handlers_and_sdk_handlers_are_replaced() -> None:
+    root = logging.getLogger()
+    stray = logging.StreamHandler(io.StringIO())
+    with json_logs(lambda: NAMES):
+        root.addHandler(stray)  # e.g. logging.basicConfig from ANTHROPIC_LOG
+        logging.getLogger("anthropic").addHandler(stray)
+        handler = configure_logging(lambda: NAMES, handler=logging.StreamHandler(io.StringIO()))
+        assert root.handlers == [handler]
+        assert logging.getLogger("anthropic").handlers == []
+        assert not logging.getLogger("anthropic").isEnabledFor(logging.INFO)  # no prompt bodies
+
+
+def test_warnings_are_scrubbed_like_any_record() -> None:
+    import warnings
+
+    with json_logs(lambda: NAMES) as logs:
+        warnings.warn(f"odd value for {NAME}: {EMAIL}", UserWarning, stacklevel=1)
+    (line,) = logs.lines()
+    assert line["logger"] == "py.warnings" and "[CUSTOMER]" in line["event"]
+    assert [v for v in PII if v in logs.text()] == []

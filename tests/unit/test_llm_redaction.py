@@ -17,7 +17,8 @@ from llm_capture import CapturingClient
 
 from receivables.adapters.config import Config, load_config
 from receivables.adapters.llm.factory import make_llm_client
-from receivables.adapters.llm.redacting import RedactingClient
+from receivables.adapters.llm.redacting import RedactingClient, RedactionUnavailable
+from receivables.adapters.llm.schemas import LLMCallFailed
 from receivables.settings import Settings
 
 EMAIL = "ahmed.k@beta.example"
@@ -168,3 +169,22 @@ def test_planted_values_never_reach_the_client(payload: dict[str, Any]) -> None:
     assert [v for v in (EMAIL, PHONE, IBAN) if v in sent] == []
     assert CUSTOMER.lower() not in sent.lower()
     assert not re.search(r"(?<!\d)\d{15}(?!\d)", sent)
+
+
+def test_unreadable_customer_names_send_nothing_and_fail_as_an_llm_call() -> None:
+    def broken() -> tuple[str, ...]:
+        raise RuntimeError("database is locked")
+
+    capture = CapturingClient()
+    client = RedactingClient(
+        capture, redact_before_send=True, pseudonymize_customer_names=True, customer_names=broken
+    )
+    for call in (
+        lambda: client.classify("text", None),
+        lambda: client.plan({}),
+        lambda: client.draft({}),
+    ):
+        with pytest.raises(RedactionUnavailable) as error:
+            call()
+        assert isinstance(error.value, LLMCallFailed)  # callers take the specified fallback
+    assert capture.captured() == ""

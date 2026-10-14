@@ -5,7 +5,7 @@ handler in place that renders every record (the app's, uvicorn's) as a JSON line
 structlog, after ``Scrubber`` has cleaned it:
 
 - a field whose name says it holds content (a message body, subject, prompt, response, quote,
-  address, ...) is replaced with ``[REDACTED]`` whatever it holds;
+  email, customer name, address, ...) is replaced with ``[REDACTED]`` whatever it holds;
 - every other string value, the message itself included, goes through ``redact`` and
   ``pseudonymize`` (§7.5), whatever the LLM config switches say;
 - if the customer names cannot be read, every string is replaced (fail closed).
@@ -14,6 +14,7 @@ structlog, after ``Scrubber`` has cleaned it:
 to every log line of that request and returns it as ``X-Request-ID``.
 """
 
+import contextlib
 import json
 import logging
 import sys
@@ -65,11 +66,13 @@ CONTENT_FIELDS = frozenset(
         "iban",
         "customer_name",
         "contact_name",
+        "address",
     }
 )
-# Added by the pipeline itself; safe as they are (the underscored ones are structlog internals,
-# removed before rendering).
-_META = frozenset({"level", "logger", "timestamp", "request_id", "_record", "_from_structlog"})
+# Set by the pipeline itself, after any ``extra`` of the same name has been dropped, so they are
+# safe as they are (the underscored ones are structlog internals, removed before rendering).
+_RESERVED = frozenset({"level", "logger", "timestamp", "request_id"})
+_META = _RESERVED | {"_record", "_from_structlog"}
 _HANDLER_FLAG = "receivables_json_handler"
 
 
@@ -115,6 +118,13 @@ class Scrubber:
         return pseudonymize(redact(str(value)), names)
 
 
+def _drop_reserved(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
+    """An ``extra`` may not pose as a pipeline field and so skip the scrubber."""
+    for key in _RESERVED:
+        event_dict.pop(key, None)
+    return event_dict
+
+
 def _drop_noise(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
     for key in ("message", "color_message"):  # duplicates of the event text (logging, uvicorn)
         event_dict.pop(key, None)
@@ -138,6 +148,12 @@ class _SafeFormatter(structlog.stdlib.ProcessorFormatter):
             )  # fmt: skip
 
 
+def _report_dropped(record: logging.LogRecord) -> None:
+    """Replaces ``Handler.handleError``, which would print the raw record and its arguments."""
+    with contextlib.suppress(Exception):  # nowhere left to report to
+        sys.stderr.write(f"log record dropped: writing failed (logger {record.name})\n")
+
+
 class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     """Writes to the current ``sys.stderr`` (which test capture may swap), never a stale one."""
 
@@ -155,10 +171,11 @@ def configure_logging(
     """Install the JSON, scrubbing root handler (replacing an earlier one) and return it."""
     scrubber = Scrubber(customer_names)
     chain: list[Processor] = [
-        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.ExtraAdder(),
+        _drop_reserved,
+        structlog.contextvars.merge_contextvars,  # only RequestIdMiddleware binds (request_id)
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.ExtraAdder(),
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.format_exc_info,
         _drop_noise,
@@ -173,15 +190,17 @@ def configure_logging(
     )
     handler = handler if handler is not None else _StderrHandler()
     handler.setFormatter(formatter)
+    handler.handleError = _report_dropped  # type: ignore[method-assign]
     setattr(handler, _HANDLER_FLAG, True)
     root = logging.getLogger()
-    for old in [h for h in root.handlers if getattr(h, _HANDLER_FLAG, False)]:
-        root.removeHandler(old)
-    root.addHandler(handler)
+    root.handlers[:] = [handler]  # any other root handler would write unscrubbed lines
     root.setLevel(level)
-    # SQLAlchemy logs SQL with bound values at INFO; uvicorn brings its own handlers.
-    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    logging.captureWarnings(True)  # warnings become records, so they are scrubbed too
+    # SQLAlchemy logs SQL with bound values at INFO; the anthropic SDK logs request bodies at
+    # DEBUG (ANTHROPIC_LOG); uvicorn and the SDK may bring their own handlers.
+    for name in ("sqlalchemy", "anthropic"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "anthropic", "httpx"):
         logging.getLogger(name).handlers.clear()
         logging.getLogger(name).propagate = True
     return handler
