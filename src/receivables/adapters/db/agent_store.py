@@ -2,10 +2,10 @@
 
 All writes happen on the caller's connection, inside one transaction per tick; each case runs
 in a savepoint so a failing case is rolled back alone. Timestamps come from the injected clock.
-Run starts and finishes, case state changes and plan rejections are audited here; per-step
-audit rows are S2.08.
+Run starts and finishes, every step, case state changes and plan rejections are audited here.
 """
 
+import dataclasses
 import json
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -17,6 +17,7 @@ from sqlalchemy import Connection, Engine, insert, select, update
 
 from receivables.adapters.clock import Clock, utc_timestamp
 from receivables.adapters.config import Config
+from receivables.adapters.db.controls import kill_switch_on
 from receivables.adapters.db.models import (
     AgentRun,
     AgentStep,
@@ -232,6 +233,25 @@ class DbAgentStore:
                 result_json=None if step.result is None else _json(step.result),
             )
         )
+        # Every step is audited, executed or not (§18.5); arguments and outputs stay in the trace.
+        write_audit(
+            self.conn,
+            self.clock,
+            actor=ACTOR,
+            action="agent.step",
+            entity_type="agent_step",
+            entity_id=step.step_id,
+            before={"case_state": step.state_before},
+            after={
+                "run_id": step.run_id,
+                "invoice_number": step.invoice_number,
+                "tool": step.tool,
+                "status": step.status,
+                "policy_allowed": step.policy_allowed,
+                "policy_reasons": list(step.policy_reasons),
+                "case_state": step.state_after,
+            },
+        )
 
     # --- drafts, tasks, approvals, sandbox outbox ----------------------------------------------
 
@@ -344,16 +364,19 @@ def run_agent_tick(
     autonomy_level: int | None = None,
     planner: PlanSource | None = None,
 ) -> RunSummary:
-    """One tick in one transaction; ``now_local`` and the default ``as_of`` from the clock."""
+    """One tick in one transaction; ``now_local`` and the default ``as_of`` from the clock.
+
+    The effective kill switch (config or runtime, D-025) is read inside the tick's transaction.
+    """
     now_local = clock.now()
+    level = config.agent.autonomy_level if autonomy_level is None else autonomy_level
     with engine.begin() as conn:
+        l2 = dataclasses.replace(config.agent.l2, kill_switch=kill_switch_on(conn, config))
         return run_tick(
             DbAgentStore(conn, clock),
             as_of=as_of or clock.today(),
             now_local=now_local,
-            autonomy_level=config.agent.autonomy_level
-            if autonomy_level is None
-            else autonomy_level,
-            config=tick_config(config),
+            autonomy_level=level,
+            config=dataclasses.replace(tick_config(config), l2=l2),
             planner=planner,
         )
