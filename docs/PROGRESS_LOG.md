@@ -148,3 +148,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.6 rule planner and plan schema / T-AGT-08 (tool sequences for all 9 golden queue items); every rule row and label, precedence, age boundaries, playbook gap; property: agrees with the §6.5 next action and tone
 - Deviations or decisions (link docs/DECISIONS.md): D-023 (task owners and due dates, labelled drafts, measured playbook gap, plan consistency checks)
 - Next step: S2.07 Orchestrator tick and trace
+
+## 2026-10-14 — [S2.07] Orchestrator tick and trace
+- PR: see branch | Branch: s2-07-orchestrator-tick-trace | Commit: see PR head
+- Tests: `uv run pytest -q` → 1262 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99% (orchestrator 100%, plans 100%), adapters 100%
+- Spec / test IDs covered: §18.6 (with §18.2–§18.5, §18.8) / T-AGT-01 (unknown tool rejected, rule planner used), T-AGT-02 (denied L2 send converted to approval, outbox empty), T-AGT-04 (run and steps traced, audit rows, no PII in logs or planner observation; latency deferred to S3.08), T-AGT-05 (identical steps on fresh databases), T-AGT-07 (top 20 cases, 6-step plan rejected); L0/L1/L2 behaviour, sandbox outbox, case transitions, per-case and per-step rollback
+- Deviations or decisions (link docs/DECISIONS.md): D-024 (latency deferred; minimal sandbox outbox; rejected-plan audit; events applied once; no-reply escalation deferred to S4.04/S4.06)
+- Next step: S2.08 Policy audit and kill switch
