@@ -268,9 +268,16 @@ def test_recent_contact_uses_the_local_calendar_date(facts: AgentFacts) -> None:
     other = dataclasses.replace(
         message, message_id="M-OTHER", invoice_number="INV-012", sent_at="2026-10-31T06:00:00Z"
     )
-    facts = dataclasses.replace(facts, messages=(message, inbound, other))
+    account_level = dataclasses.replace(
+        message,
+        message_id="M-ACCOUNT",
+        invoice_number=None,
+        customer_id="CUST-A",
+        sent_at="2026-10-01T06:00:00Z",
+    )
+    facts = dataclasses.replace(facts, messages=(account_level, message, inbound, other))
     case = send_facts_from(facts, ["INV-003"], sends_today=0)
-    assert case.outbound_dates == (date(2026, 10, 27),)
+    assert case.outbound_dates == (date(2026, 10, 1), date(2026, 10, 27))
     decision = evaluate_send(
         case, draft_for(facts, "INV-003"), NOW, limits(allowlisted_customers=("CUST-A",))
     )
