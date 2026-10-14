@@ -67,21 +67,21 @@ def test_golden_plan_arguments(facts: AgentFacts) -> None:
         },
     ]
     escalate = plan_case(facts, "INV-011")
-    assert [s.args for s in escalate.steps] == [
+    assert [s.json_args() for s in escalate.steps] == [
         {"invoice_numbers": ["INV-011"], "tone": 3},
         {"invoice_number": "INV-011", "to_role": "finance"},
         {"invoice_number": "INV-011", "days": 3},
     ]
-    assert [s.args for s in plan_case(facts, "INV-005").steps] == [
+    assert [s.json_args() for s in plan_case(facts, "INV-005").steps] == [
         {"invoice_numbers": ["INV-005"], "tone": 2},
         {"invoice_number": "INV-005", "days": 5},
     ]
     promise = plan_case(facts, "INV-008")  # 42 days overdue, broken promise
-    assert [s.args for s in promise.steps] == [
+    assert [s.json_args() for s in promise.steps] == [
         {"invoice_numbers": ["INV-008"], "tone": 2},
         {"invoice_number": "INV-008", "days": 3},
     ]
-    assert [s.args for s in plan_case(facts, "INV-003").steps] == [
+    assert [s.json_args() for s in plan_case(facts, "INV-003").steps] == [
         {"invoice_numbers": ["INV-003"], "tone": 1},
         {"draft_ref": "step:1"},
         {"invoice_number": "INV-003", "days": 7},
@@ -114,7 +114,11 @@ def test_document_disputes(make_agent_facts: MakeFacts, label: str, doc: tuple[s
     plan = plan_case(facts, "INV-003")
     assert plan.tools == ("request_internal_document", "draft_message", "schedule_followup")
     assert (plan.steps[0].args["doc_type"], plan.steps[0].args["owner_role"]) == doc
-    assert plan.steps[1].args == {"invoice_numbers": ["INV-003"], "tone": 1, "dispute_label": label}
+    assert plan.steps[1].json_args() == {
+        "invoice_numbers": ["INV-003"],
+        "tone": 1,
+        "dispute_label": label,
+    }
     assert plan.steps[2].args["days"] == 3
 
 
@@ -142,7 +146,11 @@ def test_task_disputes(make_agent_facts: MakeFacts, label: str, owner: str) -> N
     task = plan.steps[0].args
     assert (task["owner_role"], task["due_date"]) == (owner, "2026-11-03")
     assert "INV-011" in task["text"]
-    assert plan.steps[1].args == {"invoice_numbers": ["INV-011"], "tone": 3, "dispute_label": label}
+    assert plan.steps[1].json_args() == {
+        "invoice_numbers": ["INV-011"],
+        "tone": 3,
+        "dispute_label": label,
+    }
 
 
 def test_dispute_beats_broken_promise(make_agent_facts: MakeFacts) -> None:
@@ -330,3 +338,63 @@ def test_planner_agrees_with_the_queue_next_action(
     draft = next(step for step in plan.steps if step.tool == "draft_message")
     assert draft.args["tone"] == draft_tone(scored.days_overdue)  # §6.5 tone by age, every rule
     assert plan == plan_case(facts, invoice)  # deterministic
+
+
+def _draft(*numbers: str) -> PlanStep:
+    return PlanStep("draft_message", {"invoice_numbers": list(numbers), "tone": 1}, "draft")
+
+
+@pytest.mark.parametrize(
+    ("steps", "message"),
+    [
+        ((PlanStep("send_email", {"draft_ref": "step:1"}, "send"),), "earlier draft step"),
+        ((_draft("INV-003"), PlanStep("send_email", {"draft_ref": "step:2"}, "s")), "earlier"),
+        ((_draft("INV-003"), PlanStep("send_email", {"draft_ref": "step:3"}, "s")), "earlier"),
+        (
+            (
+                PlanStep("get_case", {"invoice_number": "INV-003"}, "look"),
+                PlanStep("send_email", {"draft_ref": "step:1"}, "send"),
+            ),
+            "earlier draft step",
+        ),
+        ((PlanStep("get_case", {"invoice_number": "INV-004"}, "look"),), "another invoice"),
+        ((_draft("INV-013"),), "plan's invoice"),
+    ],
+)
+def test_plan_consistency_is_enforced(steps: tuple[PlanStep, ...], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        Plan("INV-003", steps)
+
+
+def test_valid_draft_ref_and_shared_draft_pass() -> None:
+    Plan(
+        "INV-003",
+        (
+            _draft("INV-003", "INV-013"),
+            PlanStep("send_email", {"draft_ref": "step:1"}, "send"),
+            PlanStep("send_email", {"draft_id": "D-1"}, "existing draft"),
+        ),
+    )
+
+
+def test_step_arguments_are_frozen(facts: AgentFacts) -> None:
+    plan = plan_case(facts, "INV-003")
+    with pytest.raises(TypeError):
+        plan.steps[0].args["tone"] = 3  # type: ignore[index]
+    exported = plan.to_json()
+    exported["steps"][0]["args"]["invoice_numbers"].append("INV-999")
+    exported["steps"][0]["args"]["tone"] = 3
+    assert plan.steps[0].json_args() == {"invoice_numbers": ["INV-003"], "tone": 1}
+
+
+def test_step_arguments_are_copied_on_construction() -> None:
+    args = {"invoice_numbers": ["INV-003"], "tone": 1}
+    step = PlanStep("draft_message", args, "draft")
+    args["invoice_numbers"].append("INV-999")
+    assert step.json_args() == {"invoice_numbers": ["INV-003"], "tone": 1}
+
+
+def test_a_dispute_without_a_label_is_refused(make_agent_facts: MakeFacts) -> None:
+    facts = _with_dispute(make_agent_facts, "INV-003", "")
+    with pytest.raises(ValueError, match="no rule for dispute label"):
+        plan_case(facts, "INV-003")

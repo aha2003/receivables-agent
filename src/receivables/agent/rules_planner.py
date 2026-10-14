@@ -5,8 +5,11 @@ are validated by the tool's own argument model (§18.3), so a rule plan is alway
 registry accepts. Pure: no clock, database or LLM.
 """
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from types import MappingProxyType
 from typing import Any
 
 from receivables.agent.facts import AgentFacts
@@ -34,24 +37,70 @@ _TASK_TEXT = {
 }
 
 
+def _freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({k: _freeze(v) for k, v in value.items()})
+    if isinstance(value, list | tuple):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {k: _thaw(v) for k, v in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(v) for v in value]
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class PlanStep:
+    """One validated step; ``args`` is frozen after validation so it cannot drift."""
+
     tool: str
-    args: dict[str, Any]
+    args: Mapping[str, Any]
     reason: str
 
     def __post_init__(self) -> None:
-        TOOL_REGISTRY[self.tool].args_model.model_validate(self.args)  # KeyError or ValidationError
+        raw = _thaw(self.args)  # a fresh copy; the caller keeps no handle on it
+        TOOL_REGISTRY[self.tool].args_model.model_validate(raw)  # KeyError or ValidationError
+        object.__setattr__(self, "args", _freeze(raw))
+
+    def json_args(self) -> dict[str, Any]:
+        return _thaw(self.args)
+
+
+_STEP_REF = re.compile(r"step:([0-9]+)")
 
 
 @dataclass(frozen=True, slots=True)
 class Plan:
+    """A §18.6 plan for one invoice.
+
+    Checks beyond the per-tool argument models: 1 to 5 steps; every ``invoice_number``
+    argument is the plan's invoice and every ``invoice_numbers`` includes it; a
+    ``send_email`` ``draft_ref`` names an earlier ``draft_message`` step (§18.3).
+    """
+
     invoice_number: str
     steps: tuple[PlanStep, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.steps) <= MAX_PLAN_STEPS:
             raise ValueError(f"a plan has 1 to {MAX_PLAN_STEPS} steps")
+        for position, step in enumerate(self.steps, start=1):
+            number = step.args.get("invoice_number")
+            if number is not None and number != self.invoice_number:
+                raise ValueError(f"step {position} targets another invoice")
+            numbers = step.args.get("invoice_numbers")
+            if numbers is not None and self.invoice_number not in numbers:
+                raise ValueError(f"step {position} does not include the plan's invoice")
+            ref = step.args.get("draft_ref")
+            if ref is not None:
+                match = _STEP_REF.fullmatch(ref)
+                target = int(match.group(1)) if match else 0
+                if not 1 <= target < position or self.steps[target - 1].tool != "draft_message":
+                    raise ValueError(f"step {position} draft_ref must name an earlier draft step")
 
     @property
     def tools(self) -> tuple[str, ...]:
@@ -61,7 +110,9 @@ class Plan:
         """The §18.6 plan schema."""
         return {
             "invoice_number": self.invoice_number,
-            "steps": [{"tool": s.tool, "args": s.args, "reason": s.reason} for s in self.steps],
+            "steps": [
+                {"tool": s.tool, "args": s.json_args(), "reason": s.reason} for s in self.steps
+            ],
         }
 
 
@@ -114,7 +165,7 @@ def plan_case(facts: AgentFacts, invoice_number: str) -> Plan:
         )
     elif label in TASK_DISPUTES:
         owner = TASK_DISPUTES[label]
-        gap = _followup(facts, row.customer_id, 3)
+        gap = _followup(facts, row.customer_id, 3)  # the task is due when the follow-up is
         steps = (
             PlanStep(
                 "create_task",
@@ -126,7 +177,11 @@ def plan_case(facts: AgentFacts, invoice_number: str) -> Plan:
                 f"active dispute {label}: {owner} to act",
             ),
             draft(draft_tone(days), f"{age}, active dispute {label}", with_label=True),
-            followup(3),
+            PlanStep(
+                "schedule_followup",
+                {"invoice_number": n, "days": gap},
+                f"check again in {gap} days",
+            ),
         )
     elif label is not None:
         raise ValueError(f"no rule for dispute label {label!r}")
@@ -135,7 +190,11 @@ def plan_case(facts: AgentFacts, invoice_number: str) -> Plan:
     elif days > 60:
         steps = (
             draft(3, f"{age}, formal reminder"),
-            PlanStep("escalate", {"invoice_number": n, "to_role": "finance"}, f"{age}"),
+            PlanStep(
+                "escalate",
+                {"invoice_number": n, "to_role": "finance"},
+                f"{age}: more than 60 days, escalate to finance",
+            ),
             followup(3),
         )
     elif days > 30:
