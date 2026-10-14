@@ -37,7 +37,7 @@ Stop the app, then `uv run receivables reset`.
 
 ## Slice 2: the visible agent loop (no LLM)
 
-Shows gate D1 (SPEC §12.1): the agent inspects the queue, plans with the deterministic rule planner, calls tools, is denied by policy, reaches waiting states and shows a complete trace. No LLM is involved. The expected output below is checked automatically by `tests/test_slice2_exit.py` (clock fixed at Saturday 2026-10-31 09:00 Dubai) and was observed by hand on 2026-10-14; the policy reasons depend on the time you run it (see step 4).
+Shows gate D1 (SPEC §12.1): the agent inspects the queue, plans with the deterministic rule planner, calls tools, is denied by policy, reaches waiting states (a dispute or escalation waiting on a person, or an assessed case waiting for its follow-up date) and shows a complete trace. No LLM is involved. Each step below is asserted by `tests/test_slice2_exit.py` (clock fixed at Saturday 2026-10-31 09:00 Dubai) and was also run by hand on 2026-10-14. The policy reasons depend on the time you run it (see step 4). 2026-10-31 is the golden date of the synthetic data, not today: at L1 a run may use another date (D-026). Running the agent again re-plans every case, so repeated runs add new drafts, approvals and document tasks; reset between rehearsals.
 
 ### Setup
 

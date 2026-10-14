@@ -120,12 +120,21 @@ def test_d1_sends_are_denied_by_policy_with_reason_codes(demo: Demo) -> None:
 
 
 def test_d1_every_case_reaches_a_waiting_state(demo: Demo) -> None:
+    """Waiting (D-028): a dispute or escalation waiting on a person, or an assessed case
+    waiting for its scheduled follow-up date (and, for INV-003/INV-012, an approval)."""
     demo.run_agent()
     cases = {r["invoice_number"]: r for r in demo.rows("SELECT * FROM cases")}
     assert len(cases) == 9
-    assert all(c["next_followup"] for c in cases.values())  # each waits for a follow-up date
-    escalated = {n for n, c in cases.items() if c["state"] == "ESCALATED"}
-    assert escalated == {"INV-009", "INV-011", "INV-014"}
+    assert all(c["next_followup"] for c in cases.values())  # each has its follow-up date
+    by_state: dict[str, set[str]] = {}
+    for n, c in cases.items():
+        by_state.setdefault(c["state"], set()).add(n)
+    assert by_state == {
+        "DISPUTE_OPEN": {"INV-004"},
+        "ESCALATED": {"INV-009", "INV-011", "INV-014"},
+        "ASSESSED": {"INV-003", "INV-005", "INV-008", "INV-012", "INV-013"},
+    }
+    escalated = by_state["ESCALATED"]
     tasks = {r["invoice_number"] for r in demo.rows("SELECT invoice_number FROM tasks")}
     assert escalated <= tasks  # every escalation created its human task
     assert cases["INV-004"]["state"] == "DISPUTE_OPEN"
@@ -149,7 +158,51 @@ def test_d1_the_plan_and_trace_are_visible(demo: Demo) -> None:
     ):
         assert fragment in case
     approvals = demo.page("/approvals")
-    assert "Payment reminder: invoice INV-003" in approvals
+    for invoice in ("INV-003", "INV-012"):  # DEMO step 5
+        assert f"Payment reminder: invoice {invoice}" in approvals
+    assert approvals.count("This customer is not on the autopilot allowlist.") == 2
+
+
+def test_demo_steps_2_3_and_6_show_what_docs_demo_says(demo: Demo) -> None:
+    demo.run_agent()
+    inv4 = demo.page("/invoices/INV-004?as_of=2026-10-31")  # step 2
+    for fragment in (
+        "Open dispute: po amount mismatch.",
+        "dispute open",
+        "2026-11-03",
+        '"doc_type": "po_copy"',
+        '"owner_role": "finance"',
+        '"dispute_label": "PO_AMOUNT_MISMATCH"',
+        '"tone": 3',
+        "Payment reminder: invoice INV-004",
+    ):
+        assert fragment in inv4
+    inv11 = demo.page("/invoices/INV-011?as_of=2026-10-31")  # step 3
+    assert "escalated" in inv11 and "<code>escalate</code>" in inv11
+    assert '"to_role": "finance"' in inv11 and '"task_id": "RUN-' in inv11
+    data = {"csrf_token": demo.csrf(), "as_of": "2026-10-31", "dry_run": "on"}  # step 6
+    dry = demo.client.post("/agent/run", data=data)
+    assert dry.status_code == 200
+    text_ = html.unescape(dry.text)
+    assert "Nothing was saved." in text_
+    assert "9 cases, 22 steps would execute, 2 denied by policy" in text_
+    assert len(demo.rows("SELECT run_id FROM agent_runs")) == 1
+
+
+def test_d1_the_run_is_audited(demo: Demo) -> None:
+    run_id = demo.run_agent()
+    requested = demo.rows(
+        "SELECT actor, after_json FROM audit_log WHERE action = 'agent.run_requested'"
+    )
+    assert len(requested) == 1 and requested[0]["actor"] == USER
+    assert json.loads(requested[0]["after_json"])["request"]["as_of"] == "2026-10-31"
+    steps = demo.rows("SELECT COUNT(*) AS n FROM agent_steps WHERE run_id = :r", r=run_id)
+    step_audits = demo.rows("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'agent.step'")
+    assert step_audits == steps  # every step, executed or denied, is audited
+    transitions = demo.rows("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'case.transition'")
+    assert transitions[0]["n"] >= 9 * 2  # each case created and assessed, at least
+    run_page = demo.page(f"/runs/{run_id}")
+    assert "agent.run_requested" in run_page and "case.transition" in run_page
 
 
 def test_d1_the_kill_switch_stops_the_next_tick(demo: Demo) -> None:
@@ -168,4 +221,5 @@ def test_d1_the_kill_switch_stops_the_next_tick(demo: Demo) -> None:
     }
     assert statuses == {"denied"}
     assert "KILL SWITCH ON" in demo.page("/")
+    assert "The kill switch is on: nothing is sent." in demo.page(f"/runs/{run_id}")
     assert demo.rows("SELECT COUNT(*) AS n FROM cases") == [{"n": 0}]  # nothing changed
