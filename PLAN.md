@@ -96,7 +96,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.10
   - Tests: T-DB-01 extended
   - Done when: All agent tables exist with their constraints; foreign keys enforced.
-- [ ] **S2.02** Case state machine
+- [x] **S2.02** Case state machine
   - Goal: States and deterministic transitions per 18.2.
   - Spec: §18.2
   - Tests: T-CASE-01
