@@ -141,7 +141,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §10, §18
   - Tests: T-UI-04
   - Done when: An evaluator can follow plan, tool, policy decision and result for one case.
-- [ ] **S2.11** Slice 2 close-out
+- [x] **S2.11** Slice 2 close-out
   - Goal: Demonstrate gate D1 without any LLM; tag `slice-2-complete`.
   - Spec: §12.1, §16
   - Tests: D1 (no LLM)

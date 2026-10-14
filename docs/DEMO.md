@@ -1,6 +1,6 @@
 # Demo script
 
-All data is the fictional company in `fixtures/` (SPEC §6.8). Never demo with real company data. The dashboard totals, aging, exposure and queue order in steps 2 to 4 are the golden results of `fixtures/expected/golden_results.json` and are checked automatically by `tests/test_slice1_exit.py`. The rest of the expected output was observed when the walkthrough was run by hand on 2026-10-13; re-check it before a demo.
+All data is the fictional company in `fixtures/` (SPEC §6.8). Never demo with real company data. For Slice 1, the dashboard totals, aging, exposure and queue order in steps 2 to 4 are the golden results of `fixtures/expected/golden_results.json` and are checked automatically by `tests/test_slice1_exit.py`. The rest of the expected output was observed when the walkthrough was run by hand on 2026-10-13; re-check it before a demo.
 
 ## Slice 1: deterministic core and first screen
 
@@ -34,3 +34,28 @@ No agent run, plan, tools, policy, drafts, inbox, approvals or outbox; these arr
 ### Reset after the demo
 
 Stop the app, then `uv run receivables reset`.
+
+## Slice 2: the visible agent loop (no LLM)
+
+Shows gate D1 (SPEC §12.1): the agent inspects the queue, plans with the deterministic rule planner, calls tools, is denied by policy, reaches waiting states (a dispute or escalation waiting on a person, or an assessed case waiting for its follow-up date) and shows a complete trace. No LLM is involved. Each step below is asserted by `tests/test_slice2_exit.py` (clock fixed at Saturday 2026-10-31 09:00 Dubai) and was also run by hand on 2026-10-14. The policy reasons depend on the time you run it (see step 4). 2026-10-31 is the golden date of the synthetic data, not today: at L1 a run may use another date (D-026). Running the agent again re-plans every case, so repeated runs add new drafts, approvals and document tasks; reset between rehearsals.
+
+### Setup
+
+As for Slice 1: `uv run receivables reset` (stop the app first), sign in as `demo.user`. The configured autonomy level is L1 (assist): nothing is sent by the system.
+
+### Walkthrough
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | On the dashboard, enter **As of** 2026-10-31 in the "Run agent" form and press **Run agent now (level L1)**. | The run page: planner `rules`, 9 cases, each with its steps. |
+| 2 | On the run page, open **INV-004**. | Flags: "Open dispute: po amount mismatch." Case: dispute open, next follow-up 2026-11-03. Trace: `request_internal_document` (po_copy from finance), `draft_message` (tone 3 with the dispute label), `schedule_followup` (3 days), each "done". Draft panel: "Review before sending. Nothing is sent automatically." and the template text. |
+| 3 | Open **INV-011** from the run page. | Case escalated; trace `draft_message` (tone 3), `escalate` (to finance, with the task it created), `schedule_followup`. |
+| 4 | Open **INV-003**. | Trace: `draft_message`, `send_email`, `schedule_followup`. The send shows "denied" and "waiting for human approval" with its reasons in plain words: "This customer is not on the autopilot allowlist." and, outside Monday to Friday 09:00 to 17:00 Dubai, "Outside business hours". |
+| 5 | Open **Approvals** in the nav. | Two pending items, INV-003 and INV-012, each with the draft subject and the reasons. Approve and Reject are shown but arrive with Slice 3. |
+| 6 | Back on the dashboard, tick **Dry run** and run again. | A "Dry run" page: "Nothing was saved." with the counts (9 cases, 22 steps would execute, 2 denied by policy); no new run appears in Approvals or the runs. |
+
+Kill switch: an admin turns it on with `POST /api/reauth` (password re-entry) and `POST /api/agent/kill-switch {"on": true}`; every page then shows "KILL SWITCH ON" and the next run records every step as denied with "The kill switch is on: nothing is sent." There is no button for it yet; the automated test exercises it.
+
+### What Slice 2 does not show
+
+No LLM planner, classification, LLM drafts, inbox, human approval, or sending from the sandbox outbox (Slice 3); no simulator or learning (Slice 4). At L1 nothing is ever sent by the system.

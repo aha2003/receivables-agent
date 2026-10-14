@@ -4,33 +4,34 @@ Competition prototype (Dubai Chamber of Digital Economy AI Agents Championship).
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 24/64 steps (38%)** ████████░░░░░░░░░░░░
+**Overall: 25/64 steps (39%)** ████████░░░░░░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
-| Slice 2 — Visible agent loop | 10 | 11 | ██████████████████░░ 91% |
+| Slice 2 — Visible agent loop | 11 | 11 | ████████████████████ 100% |
 | Slice 3 — Claude integration + human approval | 0 | 13 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Checkpoint C1 — January 2027 submission pack | 0 | 7 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** S2.11 Slice 2 close-out
+**Next up:** S3.01 LLM port with Fake and Replay clients
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · log: `docs/PROGRESS_LOG.md` · demo: `docs/DEMO.md`
 
-## What works today (Slice 1)
+## What works today (Slices 1 and 2)
 
-Slice 1 is the deterministic core and the first screen. There is **no agent and no LLM yet**.
+Slice 1 is the deterministic core and the first screen; Slice 2 is a visible agent loop that needs **no LLM**. Claude arrives in Slice 3.
 
-- **Deterministic core** (`src/receivables/core/`, pure Python, no I/O): money in integer fils, ledger and open amounts, aging buckets, payment history, heuristic risk score, priority queue, KPIs (total open, overdue, estimated DSO on a 90-day sales proxy, unallocated cash, exposure by band). Every number matches the golden fixtures in `fixtures/expected/golden_results.json` (SPEC §6.9).
-- **Data**: SQLite schema with Alembic migrations; fixed-schema CSV import for customers, invoices, payments and events (all-or-nothing per file, duplicates detected, every import audited); seeded reset from the golden synthetic company.
-- **Web app**: session login (Argon2id, rate limited, CSRF, strict security headers); dashboard, priority queue (band and customer filters), invoice page, CSV upload page; JSON API `/api/dashboard`, `/api/queue`, `POST /api/imports/{kind}`. Every page shows the `SYNTHETIC DEMO DATA` banner, the `as_of` date of its numbers, and labels scores as heuristic.
-- **Time travel**: the dashboard, queue and invoice pages and `/api/dashboard` and `/api/queue` accept `?as_of=YYYY-MM-DD` and rebuild the facts known on that date.
-- **Quality gates**: ruff, pyright, pytest with an 85% coverage floor on the core, pip-audit, gitleaks and a progress check in CI.
+- **Deterministic core** (`src/receivables/core/`, pure Python, no I/O): money in integer fils, ledger and open amounts, aging buckets, payment history, heuristic risk score, priority queue, KPIs (total open, overdue, estimated DSO on a 90-day sales proxy, unallocated cash, exposure by band); the draft fact block, the deterministic draft templates and the draft validator. Every number matches the golden fixtures in `fixtures/expected/golden_results.json` (SPEC §6.9).
+- **Agent** (`src/receivables/agent/`): case state machine; a closed registry of 11 tools (none can change amounts or choose recipients); a deterministic rule planner; a policy engine that checks every rule and returns reason codes; an orchestrator that runs a tick at L0 (shadow), L1 (assist, default) or L2 (policy-gated autopilot, sandbox outbox only), turns denied or L1 sends into approvals and records every run and step; an admin-only, audited kill switch.
+- **Data**: SQLite schema with two Alembic migrations (ledger and agent tables); fixed-schema CSV import (all-or-nothing per file, duplicates detected, audited); seeded reset from the golden synthetic company. Every state change and policy decision is in the append-only audit log.
+- **Web app**: session login (Argon2id, rate limited, CSRF, strict security headers); dashboard, queue, case page (facts, flags in plain language, case state, drafts, the agent trace with each tool call and policy decision), approvals, run pages, upload; a "Run agent" form; a kill-switch banner. JSON API: dashboard, queue, invoice detail, imports, agent run, trace, approvals, kill switch and password re-entry. Every page shows the `SYNTHETIC DEMO DATA` banner and the `as_of` date of its numbers.
+- **Time travel**: the dashboard, queue and case pages and `/api/dashboard`, `/api/queue` and `/api/invoices/{n}` accept `?as_of=YYYY-MM-DD`; agent runs may use another date only below L2 or as a dry run.
+- **Quality gates**: ruff, pyright, pytest with an 85% coverage floor on the core and the agent, pip-audit, gitleaks and a progress check in CI.
 
-**Not built yet:** the agent loop, policy engine and trace (Slice 2); Claude, drafts, inbox, approvals and the sandbox outbox (Slice 3); the simulator (Slice 4); one-command start and hardening (Slice 5).
+**Not built yet:** Claude (planner, classification, drafts), redaction, the inbox, human approve/reject and the full sandbox mail gateway (Slice 3); the simulator, outcome inference and playbook (Slice 4); one-command start and hardening (Slice 5).
 
 ## Quickstart
 
