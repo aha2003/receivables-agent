@@ -19,6 +19,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | pyyaml | 6.0.3 | MIT | config.yaml loader (BaseLoader, strings only) | S1.13 |
 | python-multipart | 0.0.32 | Apache-2.0 | Login form parsing | S1.11 |
 | sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
+| structlog | 26.1.0 | MIT OR Apache-2.0 | JSON logs with a PII-scrubbing processor (§3.1, NFR-07) | S3.03 |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | S1.11 |
 
 ## Runtime dependencies (transitive)
