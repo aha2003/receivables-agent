@@ -155,3 +155,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.6 (with §18.2–§18.5, §18.8) / T-AGT-01 (unknown tool rejected, rule planner used), T-AGT-02 (denied L2 send converted to approval, outbox empty), T-AGT-04 (run and steps traced, audit rows, no PII in logs or planner observation; latency deferred to S3.08), T-AGT-05 (identical steps on fresh databases), T-AGT-07 (top 20 cases, 6-step plan rejected); L0/L1/L2 behaviour, sandbox outbox, case transitions, per-case and per-step rollback
 - Deviations or decisions (link docs/DECISIONS.md): D-024 (latency deferred; minimal sandbox outbox; rejected-plan audit; events applied once; no-reply escalation deferred to S4.04/S4.06)
 - Next step: S2.08 Policy audit and kill switch
+
+## 2026-10-14 — [S2.08] Policy audit and kill switch
+- PR: see branch | Branch: s2-08-policy-audit-kill-switch | Commit: see PR head
+- Tests: `uv run pytest -q` → 1285 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%, adapters 100%
+- Spec / test IDs covered: §18.5, §3.3 / T-POL-09 end to end (config switch, admin switch, on/off, beats L0; nothing executes or changes, no planner call), T-AUD-01 for kill-switch changes and every agent step (actor, entity, before and after JSON); admin rule (role, re-entry within 5 minutes, refusals audited); reset keeps an engaged switch
+- Deviations or decisions (link docs/DECISIONS.md): D-025 (runtime switch in the append-only audit log; HTTP routes in S2.09; known limit: takes effect from the next tick)
+- Next step: S2.09 Agent API
