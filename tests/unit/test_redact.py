@@ -55,7 +55,12 @@ def test_trn(text: str, expected: str) -> None:
         ("iban ae070331234567890123456", "iban [IBAN]"),
         ("AE07033123456789012345", "AE07033123456789012345"),  # 20 digits
         ("AE0703312345678901234567", "AE0703312345678901234567"),  # 22 digits
-        ("XAE070331234567890123456", "XAE070331234567890123456"),  # not a word start
+        ("IBANAE070331234567890123456", "IBAN[IBAN]"),  # glued to a word
+        ("AE07-0331-2345-6789-0123-456", "[IBAN]"),
+        ("AE07\u00a00331\u00a02345\u00a06789\u00a00123\u00a0456", "[IBAN]"),
+        ("AE07  0331 2345 6789 0123 456", "[IBAN]"),  # double space
+        ("AE07   0331 2345 6789 0123 456", "[IBAN]"),
+        ("IBAN AE07\n0331 2345 6789 0123 456", "IBAN [IBAN]"),  # wrapped across lines
         ("GB070331234567890123456", "GB070331234567890123456"),  # other countries: limit
     ],
 )
@@ -85,6 +90,8 @@ def test_iban_digits_are_never_taken_for_a_trn() -> None:
         ("<accounts_team@gamma-trading.example>", "<[EMAIL]>"),
         ("a@b", "a@b"),  # no domain dot: not an address
         ("@beta.example", "@beta.example"),
+        ("o'brien@beta.example", "[EMAIL]"),
+        ("first.last+tag@sub.beta.example", "[EMAIL]"),
     ],
 )
 def test_email(text: str, expected: str) -> None:
@@ -110,6 +117,16 @@ def test_email(text: str, expected: str) -> None:
         ("050 123 4567/04 765 4321", "[PHONE]/[PHONE]"),
         ("(050) 123 4567", "(050) 123 4567"),  # a bracketed prefix is not matched: limit
         ("Tel.0501234567", "Tel.[PHONE]"),
+        ("+971 (0)50 123 4567", "[PHONE]"),
+        ("+971 (0) 4 123 4567", "[PHONE]"),
+        ("00 971 50 123 4567", "[PHONE]"),
+        ("+ 971 50 123 4567", "[PHONE]"),
+        ("050\u2009123\u20094567", "[PHONE]"),  # thin spaces
+        ("\u06450501234567", "\u0645[PHONE]"),  # joined to an Arabic letter
+        ("\u06480501234567", "\u0648[PHONE]"),  # "and" (waw) written joined
+        ("Mob-0501234567", "Mob-0501234567"),  # after a hyphen: treated as a reference (limit)
+        ("INV0501234567", "INV0501234567"),
+        ("050.123.4567", "050.123.4567"),  # dots: not matched, dates stay intact (limit)
         ("0123 4567", "0123 4567"),  # 7 digits after the 0: too short for a UAE number
         ("05012345678", "05012345678"),  # 10 digits after the 0: too long
         ("+971 50 123 45678", "+971 50 123 45678"),
@@ -133,6 +150,7 @@ def test_phone(text: str, expected: str) -> None:
         "Invoice INV-0001234567 is disputed.",
         "The total is 1,050,000.00 AED.",
         "Due 2026-07-01; 122 days overdue.",
+        "Due 05.10.2026 10:30 as agreed.",
         "سندفع الفاتورة INV-003 الأسبوع القادم",
     ],
 )
@@ -198,7 +216,8 @@ def test_prepare_for_llm_follows_the_switches(
     [
         # §7.5 order: an IBAN's 21 digits hold no 15-digit run, but a TRN inside an address is
         # masked before the address, and a 15-digit run is a TRN before it is a phone.
-        ("100000000100003@beta.example", "[TRN]@beta.example"),
+        ("100000000100003@beta.example", "[EMAIL]"),  # TRN first, then the whole address
+        ("AE070331234567890123456@bank.example", "[EMAIL]"),  # IBAN first, likewise
         ("0501234567@beta.example", "[EMAIL]"),
         ("009715012345678", "[TRN]"),
         ("AE070331 234567890123456", "AE070331 [TRN]"),  # TRN before IBAN
@@ -206,6 +225,16 @@ def test_prepare_for_llm_follows_the_switches(
 )
 def test_the_rules_run_in_spec_order(text: str, expected: str) -> None:
     assert redact(text) == expected
+
+
+def test_pseudonymisation_keeps_redaction_tokens_whole() -> None:
+    text = redact("IBAN AE070331234567890123456, TRN 100000000100003, ahmed.k@beta.example")
+    assert (
+        pseudonymize(text, ["Iban", "TRN", "email"])
+        == "[CUSTOMER] [IBAN], [CUSTOMER] [TRN], [EMAIL]"
+    )
+    assert pseudonymize("[CUSTOMER] and Beta", ["customer", "Beta"]) == "[CUSTOMER] and [CUSTOMER]"
+    assert pseudonymize("[iban]", ["iban"]) == "[[CUSTOMER]]"  # only the exact tokens are kept
 
 
 def test_redaction_runs_before_pseudonymisation() -> None:
@@ -275,7 +304,8 @@ def test_no_customer_name_survives(names: list[str], text: str, data: st.DataObj
     for name in names:
         variant = data.draw(st.sampled_from([name, name.upper(), name.lower()]))
         planted = f"{planted} {variant} "
-    pieces = pseudonymize(planted, names).split("[CUSTOMER]")  # what is left between tokens
+    tokens = r"\[(?:TRN|IBAN|EMAIL|PHONE|CUSTOMER)\]"
+    pieces = re.split(tokens, pseudonymize(planted, names))  # what is left between tokens
     for name in names:
         pattern = re.compile(re.escape(name.strip()), re.IGNORECASE)
         assert not [piece for piece in pieces if pattern.search(piece)], name
