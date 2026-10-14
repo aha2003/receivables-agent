@@ -263,3 +263,15 @@ def test_old_messages_show_in_the_timeline(user: TestClient, seeded: Engine) -> 
 
 def test_the_timeline_note(user: TestClient) -> None:
     assert "Outcomes are added to this page in a later step." in page(user, "/invoices/INV-004")
+
+
+def test_each_flag_is_shown_once(user: TestClient, seeded: Engine) -> None:
+    with seeded.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO payments (payment_id, customer_id, payment_date, amount_fils)"
+                " VALUES ('P-005', 'CUST-C', '2026-10-28', 1200000)"
+            )
+        )
+    body = page(user, "/invoices/INV-012?as_of=2026-10-31")
+    assert body.count("of unallocated cash. Check whether it belongs to this invoice") == 1

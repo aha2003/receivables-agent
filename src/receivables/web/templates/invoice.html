@@ -22,8 +22,7 @@
   <dl class="facts">
     <dt>Risk score</dt><dd>{{ scored.risk_score }} ({{ scored.band }})</dd>
     <dt>Priority value</dt><dd>{{ scored.priority_value }}</dd>
-    {% if item %}<dt>Next action</dt><dd>{{ item.action }}</dd>
-    {% for f in item.flags %}<dt>Flag</dt><dd class="flag">{{ f.amount|unallocated_message }}</dd>{% endfor %}{% endif %}
+    {% if item %}<dt>Next action</dt><dd>{{ item.action }}</dd>{% endif %}
   </dl>
 </section>
 {% endif %}
