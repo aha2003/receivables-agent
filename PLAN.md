@@ -131,7 +131,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.5, §3.3
   - Tests: T-POL-09, T-AUD-01
   - Done when: With the kill switch on nothing executes; every decision is auditable.
-- [ ] **S2.09** Agent API
+- [x] **S2.09** Agent API
   - Goal: Agent run, trace, approvals list, kill-switch and invoice detail endpoints.
   - Spec: §18.11, §9
   - Tests: T-API-04

@@ -112,6 +112,7 @@ async def login(
 def logout(request: Request) -> Response:
     user: SessionUser = request.state.user
     request.session.clear()
+    request.app.state.reauth.forget(user.user_id)  # a logout cancels any password re-entry
     _audit(
         request,
         actor=user.username,

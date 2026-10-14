@@ -1,5 +1,6 @@
 """Passwords, login rate limiting and session validity (SPEC §3.3)."""
 
+import secrets
 import threading
 from collections import deque
 from collections.abc import Mapping
@@ -15,6 +16,7 @@ from receivables.adapters.clock import Clock
 __all__ = [
     "SESSION_TTL",
     "LoginRateLimiter",
+    "ReauthRegistry",
     "SessionUser",
     "hash_password",
     "session_payload",
@@ -143,3 +145,34 @@ def session_user(
     if age < timedelta(0) or age > ttl:
         return None
     return user
+
+
+class ReauthRegistry:
+    """Password re-entries for admin actions, held on the server (§3.3; D-025, D-026).
+
+    The session cookie carries only a random nonce; the time lives here, keyed by user id. A
+    failed re-entry or a logout forgets the user's entry, so replaying an older cookie gives
+    nothing. A restart forgets every entry (an admin simply re-enters their password).
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[int, tuple[str, datetime]] = {}
+        self._lock = threading.Lock()
+
+    def record(self, user_id: int, at: datetime) -> str:
+        nonce = secrets.token_urlsafe(24)
+        with self._lock:
+            self._entries[user_id] = (nonce, at)
+        return nonce
+
+    def forget(self, user_id: int) -> None:
+        with self._lock:
+            self._entries.pop(user_id, None)
+
+    def reauthenticated_at(self, user_id: int, nonce: object) -> datetime | None:
+        with self._lock:
+            entry = self._entries.get(user_id)
+        if entry is None or not isinstance(nonce, str):
+            return None
+        stored_nonce, at = entry
+        return at if secrets.compare_digest(stored_nonce, nonce) else None

@@ -12,7 +12,7 @@ from receivables.api.security import SessionUser, session_user
 __all__ = ["PUBLIC_PATHS", "PUBLIC_PREFIXES", "auth_gate", "error_response"]
 
 PUBLIC_PATHS = frozenset({"/healthz", "/login"})
-AUTH_SESSION_FIELDS = ("uid", "username", "role", "iat")
+AUTH_SESSION_FIELDS = ("uid", "username", "role", "iat", "reauth")
 PUBLIC_PREFIXES = ("/static/",)  # self-hosted CSS/JS; the login page needs it before sign-in
 
 

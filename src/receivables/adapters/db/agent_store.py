@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, Engine, insert, select, update
 
-from receivables.adapters.clock import Clock, utc_timestamp
+from receivables.adapters.clock import DUBAI, Clock, utc_timestamp
 from receivables.adapters.config import Config
 from receivables.adapters.db.controls import kill_switch_on
 from receivables.adapters.db.models import (
@@ -363,20 +363,47 @@ def run_agent_tick(
     as_of: date | None = None,
     autonomy_level: int | None = None,
     planner: PlanSource | None = None,
+    now_local: datetime | None = None,
+    dry_run: bool = False,
+    requested_by: str | None = None,
+    request: Mapping[str, Any] | None = None,
 ) -> RunSummary:
-    """One tick in one transaction; ``now_local`` and the default ``as_of`` from the clock.
+    """One tick in one transaction; ``dry_run`` rolls the whole tick back, trace included.
 
-    The effective kill switch (config or runtime, D-025) is read inside the tick's transaction.
+    ``now_local`` defaults to the clock (callers decide when another time is allowed, D-026);
+    ``as_of`` defaults to that time's date in Dubai. The effective kill switch (config or
+    runtime, D-025) is read inside the tick's transaction.
     """
-    now_local = clock.now()
+    now = now_local or clock.now()
     level = config.agent.autonomy_level if autonomy_level is None else autonomy_level
-    with engine.begin() as conn:
-        l2 = dataclasses.replace(config.agent.l2, kill_switch=kill_switch_on(conn, config))
-        return run_tick(
-            DbAgentStore(conn, clock),
-            as_of=as_of or clock.today(),
-            now_local=now_local,
-            autonomy_level=level,
-            config=dataclasses.replace(tick_config(config), l2=l2),
-            planner=planner,
-        )
+    with engine.connect() as conn:
+        transaction = conn.begin()
+        try:
+            l2 = dataclasses.replace(config.agent.l2, kill_switch=kill_switch_on(conn, config))
+            summary = run_tick(
+                DbAgentStore(conn, clock),
+                as_of=as_of or now.astimezone(DUBAI).date(),
+                now_local=now,
+                autonomy_level=level,
+                config=dataclasses.replace(tick_config(config), l2=l2),
+                planner=planner,
+            )
+            if requested_by is not None:  # who started the run, with the values they chose
+                write_audit(
+                    conn,
+                    clock,
+                    actor=requested_by,
+                    action="agent.run_requested",
+                    entity_type="agent_run",
+                    entity_id=summary.run_id,
+                    before=None,
+                    after={"run_id": summary.run_id, "request": dict(request or {})},
+                )
+        except BaseException:
+            transaction.rollback()
+            raise
+        if dry_run:
+            transaction.rollback()
+        else:
+            transaction.commit()
+        return summary

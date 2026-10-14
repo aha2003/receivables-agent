@@ -1,12 +1,13 @@
-"""JSON API: dashboard, queue and imports (SPEC §9)."""
+"""JSON API: dashboard, queue, invoice detail and imports (SPEC §9)."""
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from receivables.api.imports import ImportRefusal, run_import
+from receivables.api.invoice_detail import invoice_detail
 from receivables.api.params import parse_as_of, parse_limit
 from receivables.api.snapshot import dashboard_json, queue_json, take_snapshot
 
@@ -30,6 +31,15 @@ async def queue(
     count = parse_limit(limit, state.config.engine.queue_size)
     snap = await run_in_threadpool(take_snapshot, state.engine, day, state.config.engine)
     return queue_json(snap, count)
+
+
+@router.get("/api/invoices/{invoice_number}")
+async def invoice(request: Request, invoice_number: str, as_of: str | None = None) -> Any:
+    day = parse_as_of(request, as_of)
+    detail = await run_in_threadpool(invoice_detail, request.app.state, invoice_number, day)
+    if detail is None:
+        raise HTTPException(404, "No invoice with that number as of that date.")
+    return detail
 
 
 @router.post("/api/imports/{kind}")
