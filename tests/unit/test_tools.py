@@ -137,8 +137,9 @@ class TestAgt03:
             else:
                 assert spec.writes, spec.name
 
-    def test_tools_module_has_no_database_or_network_access(self) -> None:
-        source = (ROOT / "src/receivables/agent/tools.py").read_text(encoding="utf-8")
+    @pytest.mark.parametrize("module", ["tools.py", "facts.py"])
+    def test_tools_have_no_database_or_network_access(self, module: str) -> None:
+        source = (ROOT / "src/receivables/agent" / module).read_text(encoding="utf-8")
         for forbidden in ("sqlalchemy", "receivables.adapters", "INSERT", "UPDATE ", "DELETE"):
             assert forbidden not in source
 
@@ -181,6 +182,10 @@ def test_every_tool_has_valid_example_args() -> None:
         ("get_case", {"invoice_number": ""}),
         ("get_case", {"invoice_number": " INV-003"}),
         ("get_case", {"invoice_number": "INV-003\n"}),
+        ("get_case", {"invoice_number": "INV\u0085003"}),  # C1 next line
+        ("get_case", {"invoice_number": "INV\u2028003"}),  # line separator
+        ("get_case", {"invoice_number": "INV\u202e003"}),  # bidi override
+        ("get_case", {"invoice_number": "INV\u200b003"}),  # zero-width space
         ("get_case", {"invoice_number": "X" * 65}),
         ("get_case", {"invoice_number": 3}),
         ("get_case", {"invoice_number": "INV-003", "amount": "1.00"}),
@@ -205,6 +210,9 @@ def test_every_tool_has_valid_example_args() -> None:
         ("create_task", {**VALID_ARGS["create_task"], "text": ""}),
         ("create_task", {**VALID_ARGS["create_task"], "text": "x" * 501}),
         ("create_task", {**VALID_ARGS["create_task"], "text": "bell\x07"}),
+        ("create_task", {**VALID_ARGS["create_task"], "text": "a\u2029b"}),
+        ("create_task", {**VALID_ARGS["create_task"], "text": "a\u202eb"}),
+        ("create_task", {**VALID_ARGS["create_task"], "text": "   \n "}),
         ("create_task", {**VALID_ARGS["create_task"], "due_date": "2026-13-01"}),
         ("create_task", {**VALID_ARGS["create_task"], "due_date": "05/11/2026"}),
         ("create_task", {**VALID_ARGS["create_task"], "due_date": 1_790_000_000}),
@@ -300,6 +308,23 @@ def test_get_case_respects_as_of(
     assert inv5 is not None and inv5["open_amount"] == "30000.00"
 
 
+def test_events_after_as_of_are_left_out(
+    golden_ledger_inputs: tuple[list[InvoiceRecord], list[PaymentRecord]],
+    golden_events: list[EventRecord],
+) -> None:
+    resolved_later = EventRecord(
+        event_id="E-LATER",
+        invoice_number="INV-004",
+        event_type="DISPUTE_RESOLVED",
+        event_date=date(2026, 11, 5),
+    )
+    facts = facts_for(golden_ledger_inputs, [*golden_events, resolved_later])
+    data = run("get_case", {"invoice_number": "INV-004"}, facts).data
+    assert data is not None
+    assert [e["event_id"] for e in data["events"]] == ["E-001"]
+    assert data["flags"]["active_dispute_label"] == "PO_AMOUNT_MISMATCH"
+
+
 def test_get_case_unknown_invoice(facts: AgentFacts) -> None:
     assert run("get_case", {"invoice_number": "INV-999"}, facts) == ToolResult(
         ok=False, error="UNKNOWN_INVOICE"
@@ -336,6 +361,37 @@ def test_get_case_shows_only_the_last_five_message_headers(
     assert data is not None
     assert [m["message_id"] for m in data["messages"]] == [f"M-0{i}" for i in range(3, 8)]
     assert set(data["messages"][0]) == {"message_id", "direction", "sent_at", "language"}
+
+
+def _header(message_id: str, sent_at: str) -> MessageHeader:
+    return MessageHeader(
+        message_id=message_id,
+        invoice_number="INV-003",
+        customer_id="CUST-A",
+        direction="outbound",
+        sent_at=sent_at,
+        language="en",
+    )
+
+
+def test_messages_are_dated_in_dubai_time_and_ordered_by_instant(
+    golden_ledger_inputs: tuple[list[InvoiceRecord], list[PaymentRecord]],
+    golden_events: list[EventRecord],
+) -> None:
+    messages = (
+        _header("M-NEXT-DAY", "2026-10-31T22:00:00Z"),  # 02:00 on 1 Nov in Dubai
+        _header("M-LATE", "2026-10-31T19:59:59Z"),  # 23:59:59 on 31 Oct in Dubai
+        _header("M-Z", "2026-10-31T06:00:00Z"),
+        _header("M-OFFSET", "2026-10-31T09:30:00+04:00"),  # 05:30Z: earlier, sorts later as text
+        _header("M-BAD", "31/10/2026 09:00"),
+        _header("M-NAIVE", "2026-10-31T09:00:00"),
+    )
+    facts = facts_for(golden_ledger_inputs, golden_events, messages=messages)
+    assert [m.message_id for m in facts.messages] == ["M-OFFSET", "M-Z", "M-LATE"]
+    assert facts.invalid_message_ids == ("M-BAD", "M-NAIVE")
+    data = run("get_case", {"invoice_number": "INV-003"}, facts).data
+    assert data is not None
+    assert [m["message_id"] for m in data["messages"]] == ["M-OFFSET", "M-Z", "M-LATE"]
 
 
 def test_get_customer_profile(facts: AgentFacts) -> None:
@@ -419,6 +475,19 @@ def test_get_unallocated_cash(
         }
     ]
     assert data["total"] == "12000.00"
+    credit = PaymentRecord(
+        payment_id="P-007",
+        invoice_number=None,
+        customer_id="CUST-C",
+        payment_date=date(2026, 10, 29),
+        amount=to_fils("300.00"),
+        payment_type="credit_note",
+    )
+    with_credit = facts_for(golden_ledger_inputs, golden_events, extra_payments=(p5, credit))
+    credited = run("get_unallocated_cash", {"customer_id": "CUST-C"}, with_credit).data
+    assert credited is not None
+    assert [p["payment_id"] for p in credited["payments"]] == ["P-005", "P-007"]
+    assert credited["total"] == "12300.00"
     case = run("get_case", {"invoice_number": "INV-012"}, with_cash).data
     assert case is not None and case["flags"]["unallocated_cash_on_account"] == "12000.00"
     assert run("get_unallocated_cash", {"customer_id": "CUST-Z"}, facts).error == "UNKNOWN_CUSTOMER"

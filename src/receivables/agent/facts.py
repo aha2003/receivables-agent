@@ -7,7 +7,8 @@ reads the clock, the database or the network.
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, tzinfo
+from zoneinfo import ZoneInfo
 
 from receivables.core.config import EngineConfig
 from receivables.core.history import HistoryResult, customer_history
@@ -18,6 +19,7 @@ from receivables.core.scoring import EventRecord, ScoredInvoice, score_overdue_i
 from receivables.core.validation import CustomerRow
 
 __all__ = [
+    "BUSINESS_TZ",
     "DEFAULT_FOLLOWUP_GAP_DAYS",
     "AgentFacts",
     "MessageHeader",
@@ -26,6 +28,7 @@ __all__ = [
 ]
 
 DEFAULT_FOLLOWUP_GAP_DAYS = 7  # §18.7 and the customer_playbook DDL default
+BUSINESS_TZ = ZoneInfo("Asia/Dubai")  # §3.1 clock; message timestamps are dated locally
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -67,6 +70,16 @@ class AgentFacts:
     unallocated_by_customer: Mapping[str, int]
     playbooks: Mapping[str, PlaybookRecord]
     messages: tuple[MessageHeader, ...]
+    # Messages left out because ``sent_at`` is not an ISO timestamp with an offset.
+    invalid_message_ids: tuple[str, ...] = ()
+
+
+def _sent_at(value: str) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 def build_agent_facts(
@@ -79,6 +92,7 @@ def build_agent_facts(
     messages: Iterable[MessageHeader],
     as_of: date,
     config: EngineConfig,
+    timezone: tzinfo = BUSINESS_TZ,
 ) -> AgentFacts:
     """Facts as known on ``as_of``: later invoices, payments, events and messages are left out."""
     payment_list = list(payments)
@@ -105,12 +119,15 @@ def build_agent_facts(
             key=lambda p: (p.payment_date, p.payment_id),
         )
     )
-    kept_messages = tuple(
-        sorted(
-            (m for m in messages if date.fromisoformat(m.sent_at[:10]) <= as_of),
-            key=lambda m: (m.sent_at, m.message_id),
-        )
-    )
+    timed: list[tuple[datetime, MessageHeader]] = []
+    invalid: list[str] = []
+    for m in messages:
+        moment = _sent_at(m.sent_at)
+        if moment is None:
+            invalid.append(m.message_id)
+        elif moment.astimezone(timezone).date() <= as_of:  # dated in local business time
+            timed.append((moment, m))
+    timed.sort(key=lambda t: (t[0], t[1].message_id))  # by instant, whatever the offset
     return AgentFacts(
         as_of=as_of,
         config=config,
@@ -123,5 +140,6 @@ def build_agent_facts(
         unallocated_payments=unallocated,
         unallocated_by_customer=cash.by_customer,
         playbooks={p.customer_id: p for p in playbooks},
-        messages=kept_messages,
+        messages=tuple(m for _, m in timed),
+        invalid_message_ids=tuple(sorted(invalid)),
     )

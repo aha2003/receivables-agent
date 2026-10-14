@@ -13,6 +13,7 @@ Read tool outputs never contain customer names, emails, TRNs or licence numbers.
 """
 
 import re
+import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -42,12 +43,17 @@ ROLES = ("finance", "sales", "operations", "management")
 LEDGER_TABLES = frozenset({"invoices", "payments", "customers", "events"})
 MESSAGES_IN_CASE = 5
 
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# Control, format (e.g. bidi overrides) and line/paragraph separator characters.
+_HIDDEN_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp"})
+
+
+def _has_hidden(value: str) -> bool:
+    return any(unicodedata.category(ch) in _HIDDEN_CATEGORIES for ch in value)
 
 
 def _identifier(value: Any) -> Any:
     if isinstance(value, str) and (
-        _CONTROL.search(value) or value != value.strip() or not 1 <= len(value) <= 64
+        _has_hidden(value) or value != value.strip() or not 1 <= len(value) <= 64
     ):
         raise ValueError("identifiers are 1 to 64 characters without control characters")
     return value
@@ -62,8 +68,11 @@ def _iso_date(value: Any) -> Any:
 
 
 def _task_text(value: Any) -> Any:
-    if isinstance(value, str) and _CONTROL.search(value.replace("\n", "")):
-        raise ValueError("task text may not contain control characters other than newlines")
+    if isinstance(value, str):
+        if _has_hidden(value.replace("\n", "")):
+            raise ValueError("task text may not contain control characters other than newlines")
+        if not value.strip():
+            raise ValueError("task text may not be blank")
     return value
 
 
@@ -350,7 +359,8 @@ _SPECS = (
         "external",
         2,
         SendEmailArgs,
-        frozenset({"mail_outbox", "drafts"}),
+        # A denied or L1 send becomes an approval item instead (§18.6 step 5).
+        frozenset({"mail_outbox", "drafts", "approvals"}),
         policy_gated=True,
     ),
 )
