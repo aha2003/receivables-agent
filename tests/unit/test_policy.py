@@ -25,7 +25,7 @@ from receivables.agent.policy import (
     evaluate_send,
     send_facts_from,
 )
-from receivables.core.draft_validator import check_draft
+from receivables.core.draft_validator import DEFAULT_INVOICE_REGEX, check_draft
 from receivables.core.drafts import build_fact_block, render_template
 from receivables.core.ledger import PaymentRecord
 from receivables.core.money import to_fils
@@ -175,9 +175,14 @@ def test_t_pol_10_through_the_draft_validator(facts: AgentFacts) -> None:
         rows, customer_name="Alpha Trading LLC", sender_name="AR", as_of=facts.as_of, tone=1
     )
     subject, body = render_template(fact_block)
-    assert check_draft(subject, body, fact_block, max_words=140) == ()
+    assert (
+        check_draft(subject, body, fact_block, max_words=140, invoice_regex=DEFAULT_INVOICE_REGEX)
+        == ()
+    )
     tampered = body.replace("(AED 15,000.00)", "(AED 15,500.00)")
-    violations = check_draft(subject, tampered, fact_block, max_words=140)
+    violations = check_draft(
+        subject, tampered, fact_block, max_words=140, invoice_regex=DEFAULT_INVOICE_REGEX
+    )
     assert violations == ("UNKNOWN_AMOUNT",)
     decision = decide(facts, "INV-003", allow=("CUST-A",), draft_changes={"violations": violations})
     assert decision.reasons == ("POLICY_VALIDATION_FAILED",)

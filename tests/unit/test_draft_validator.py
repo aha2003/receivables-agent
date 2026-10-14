@@ -7,15 +7,19 @@ import pytest
 
 from receivables.core.draft_validator import (
     BODY_TOO_LONG,
+    DEFAULT_INVOICE_REGEX,
     FORBIDDEN_PHRASE,
     UNKNOWN_AMOUNT,
     UNKNOWN_DATE,
     UNKNOWN_INVOICE,
     check_draft,
+    mentions,
     validate_draft,
 )
 from receivables.core.drafts import FactBlock, FactInvoice
 from receivables.core.money import to_fils
+
+RX = DEFAULT_INVOICE_REGEX
 
 # T-DRF-01/02 facts: invoices [INV-004], amounts [50000.00], dates [2026-07-01, 2026-10-31].
 FACTS = FactBlock(
@@ -41,7 +45,7 @@ def test_t_drf_01_valid_text_has_no_violations() -> None:
         "Dear Ahmed, invoice INV-004 (AED 50,000.00) was due on 2026-07-01 and remains unpaid "
         "as of 31 October 2026. Please send remittance details if payment has been made."
     )
-    assert validate_draft(text, FACTS) == ()
+    assert validate_draft(text, FACTS, RX) == ()
 
 
 def test_t_drf_02_exactly_the_four_violations() -> None:
@@ -49,13 +53,13 @@ def test_t_drf_02_exactly_the_four_violations() -> None:
         "Invoice INV-005 for AED 51,000 due 2026-07-02 is unpaid; "
         "we will take legal action and go to court."
     )
-    assert set(validate_draft(text, FACTS)) == {
+    assert set(validate_draft(text, FACTS, RX)) == {
         UNKNOWN_INVOICE,
         UNKNOWN_AMOUNT,
         UNKNOWN_DATE,
         FORBIDDEN_PHRASE,
     }
-    assert validate_draft(text, FACTS) == tuple(sorted(validate_draft(text, FACTS)))
+    assert validate_draft(text, FACTS, RX) == tuple(sorted(validate_draft(text, FACTS, RX)))
 
 
 # --- invoices -------------------------------------------------------------------------------
@@ -73,7 +77,7 @@ def test_t_drf_02_exactly_the_four_violations() -> None:
     ],
 )
 def test_invoice_tokens(text: str, violations: tuple[str, ...]) -> None:
-    assert validate_draft(text, FACTS) == violations
+    assert validate_draft(text, FACTS, RX) == violations
 
 
 def _invoice(number: str, amount: str = "50000.00", open_amount: str = "50000.00") -> FactInvoice:
@@ -111,10 +115,21 @@ def test_custom_invoice_regex_with_groups_checks_the_whole_token() -> None:
         ("AED 5,0000", (UNKNOWN_AMOUNT,)),  # unreadable grouping
         ("AED 50,000.00 and AED 1", (UNKNOWN_AMOUNT,)),
         ("a fee of 51,000 dirhams", ()),  # amounts are detected only after AED (§8.2)
+        (
+            "AED \u0665\u0660\u066c\u0660\u0660\u0660\u066b\u0660\u0660",
+            (),
+        ),  # Arabic-Indic 50,000.00
+        ("AED \u0665\u0661\u0660\u0660\u0660", (UNKNOWN_AMOUNT,)),  # Arabic-Indic 51000
+        ("AED \uff15\uff11,\uff10\uff10\uff10", (UNKNOWN_AMOUNT,)),  # full-width 51,000
+        ("A\u200bED 51,000", (UNKNOWN_AMOUNT,)),  # zero-width space inside the currency
+        ("AED  51,000", (UNKNOWN_AMOUNT,)),  # two spaces
+        ("AED\n51,000", (UNKNOWN_AMOUNT,)),
+        ("XAED 51,000", (UNKNOWN_AMOUNT,)),
+        ("AED ,51,000", (UNKNOWN_AMOUNT,)),
     ],
 )
 def test_amounts(text: str, violations: tuple[str, ...]) -> None:
-    assert validate_draft(text, FACTS) == violations
+    assert validate_draft(text, FACTS, RX) == violations
 
 
 def test_invoice_amount_and_amount_difference_are_allowed() -> None:
@@ -124,8 +139,8 @@ def test_invoice_amount_and_amount_difference_are_allowed() -> None:
         amount_difference=to_fils("3000.00"),
     )
     text = "Invoice INV-005 was AED 30,000.00; AED 20,000.00 is open; the difference is AED 3,000."
-    assert validate_draft(text, facts) == ()
-    assert validate_draft("AED 3,000.01", facts) == (UNKNOWN_AMOUNT,)
+    assert validate_draft(text, facts, RX) == ()
+    assert validate_draft("AED 3,000.01", facts, RX) == (UNKNOWN_AMOUNT,)
 
 
 # --- dates ----------------------------------------------------------------------------------
@@ -147,10 +162,22 @@ def test_invoice_amount_and_amount_difference_are_allowed() -> None:
         ("due 2026-13-01", (UNKNOWN_DATE,)),
         ("due 31 February 2026", (UNKNOWN_DATE,)),
         ("due 32/07/2026", (UNKNOWN_DATE,)),
+        ("due 2026-07-01T00:00", ()),
+        ("due 2026-08-01T00:00", (UNKNOWN_DATE,)),  # touching other characters
+        ("on2026-08-01", (UNKNOWN_DATE,)),
+        ("due 2026/08/01", (UNKNOWN_DATE,)),
+        ("due 1-8-2026", (UNKNOWN_DATE,)),
+        ("due 1.8.2026", (UNKNOWN_DATE,)),
+        ("due the 1st of August 2026", (UNKNOWN_DATE,)),
+        ("due the 1st of July 2026", ()),
+        ("due \u0661 August \u0662\u0660\u0662\u0666", (UNKNOWN_DATE,)),  # Arabic-Indic digits
+        ("due 2026-08-0\u0661", (UNKNOWN_DATE,)),
+        ("within 5 working days", ()),
+        ("122 days overdue", ()),
     ],
 )
 def test_dates(text: str, violations: tuple[str, ...]) -> None:
-    assert validate_draft(text, FACTS) == violations
+    assert validate_draft(text, FACTS, RX) == violations
 
 
 # --- forbidden phrases -----------------------------------------------------------------------
@@ -169,29 +196,70 @@ def test_dates(text: str, violations: tuple[str, ...]) -> None:
         "a criminal matter",
         "arrest",
         "you will be blacklisted",
+        "We may take legal actions.",
+        "criminally liable",
+        "criminals",
+        "the courthouse",
+        "a courtroom",
+        "policemen",
+        "policing",
+        "lawsuits",
+        "suing",
+        "LEGAL\u200b ACTION",
     ],
 )
 def test_forbidden_phrases(text: str) -> None:
-    assert validate_draft(text, FACTS) == (FORBIDDEN_PHRASE,)
+    assert validate_draft(text, FACTS, RX) == (FORBIDDEN_PHRASE,)
 
 
 @pytest.mark.parametrize(
-    "text", ["the issue you raised", "we pursue payment", "with courtesy", "Sue from accounts"]
+    "text",
+    [
+        "the issue you raised",
+        "we pursue payment",
+        "with courtesy",
+        "our policy",
+        "Sue from accounts",
+    ],
 )
 def test_forbidden_phrases_match_whole_words(text: str) -> None:
     expected = (FORBIDDEN_PHRASE,) if "Sue" in text else ()
-    assert validate_draft(text, FACTS) == expected
+    assert validate_draft(text, FACTS, RX) == expected
 
 
 # --- length -----------------------------------------------------------------------------------
 
 
 def test_body_word_limit() -> None:
-    assert check_draft("Reminder: INV-004", " ".join(["word"] * 140), FACTS, max_words=140) == ()
-    assert check_draft("Reminder", " ".join(["word"] * 141), FACTS, max_words=140) == (
-        BODY_TOO_LONG,
+    assert (
+        check_draft(
+            "Reminder: INV-004", " ".join(["word"] * 140), FACTS, max_words=140, invoice_regex=RX
+        )
+        == ()
     )
+    assert check_draft(
+        "Reminder", " ".join(["word"] * 141), FACTS, max_words=140, invoice_regex=RX
+    ) == (BODY_TOO_LONG,)
 
 
 def test_check_draft_reads_the_subject_too() -> None:
-    assert check_draft("Invoice INV-005", "Body.", FACTS, max_words=140) == (UNKNOWN_INVOICE,)
+    assert check_draft("Invoice INV-005", "Body.", FACTS, max_words=140, invoice_regex=RX) == (
+        UNKNOWN_INVOICE,
+    )
+
+
+# --- mentions (fixed text such as the sender name) ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "codes"),
+    [
+        ("Accounts Receivable Team", ()),
+        ("Court Services", (FORBIDDEN_PHRASE,)),
+        ("AR-2026 Team", (UNKNOWN_INVOICE,)),
+        ("AED 1 Ltd", (UNKNOWN_AMOUNT,)),
+        ("Team 1 July 2026", (UNKNOWN_DATE,)),
+    ],
+)
+def test_mentions_flags_any_fact_like_content(text: str, codes: tuple[str, ...]) -> None:
+    assert mentions(text, RX) == codes

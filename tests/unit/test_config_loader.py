@@ -190,6 +190,9 @@ def test_agent_overrides(tmp_path: Path) -> None:
         "drafts:\n  sender_name: ' AR'\n",
         'drafts:\n  sender_name: "AR\\nTeam"\n',
         'drafts:\n  sender_name: "AR\\u202eTeam"\n',
+        "drafts:\n  sender_name: Court Services\n",
+        "drafts:\n  sender_name: AR-2026 Team\n",
+        "drafts:\n  sender_name: a b c d e f g h i\n",
         "mail:\n  gateway: smtp\n  enabled: true\n",  # sandbox outbox only (CLAUDE.md; S5.09)
         "agent:\n  l2:\n    max_total_open_amount: \uff12\uff15\uff10\uff10\uff10\n",
         "agent:\n  l2:\n    business_hours: ['\uff10\uff19:00', '17:00']\n",

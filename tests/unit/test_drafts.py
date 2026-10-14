@@ -10,7 +10,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from receivables.agent.facts import AgentFacts
-from receivables.core.draft_validator import check_draft
+from receivables.core.draft_validator import DEFAULT_INVOICE_REGEX, check_draft
 from receivables.core.drafts import (
     DISPUTE_SENTENCES,
     FactBlock,
@@ -170,8 +170,9 @@ def test_fact_block_keeps_invoice_and_open_amounts(facts: AgentFacts) -> None:
         ((), {}, "at least one"),
         (("INV-003", "INV-003"), {}, "distinct"),
         (("INV-003", "INV-004"), {}, "one customer"),
-        (("INV-001",), {}, "not open"),  # settled
-        (("INV-010",), {}, None),  # open and due on as_of: allowed
+        (("INV-001",), {}, "not overdue"),  # settled
+        (("INV-010",), {}, "not overdue"),  # open but due on as_of: not overdue (§2)
+        (("INV-012",), {}, None),  # 16 days overdue
         (("INV-003",), {"tone": 4}, "tone"),
         (("INV-003",), {"dispute_label": "UNCLEAR"}, "dispute label"),
         (("INV-003",), {"amount_difference": 0}, "above zero"),
@@ -214,11 +215,14 @@ def test_every_template_passes_the_validator(
     label = data.draw(st.sampled_from([None, *sorted(DISPUTE_EVENT_LABELS)]))
     fb = block(facts, first, *extra, tone=tone, label=label)
     subject, body = render_template(fb)
-    assert check_draft(subject, body, fb, max_words=140) == ()
+    assert check_draft(subject, body, fb, max_words=140, invoice_regex=DEFAULT_INVOICE_REGEX) == ()
 
 
 def test_templates_respect_the_as_of_date(make_agent_facts: MakeFacts) -> None:
     facts = make_agent_facts(as_of=date(2026, 9, 30))
     fb = block(facts, "INV-005", tone=1)
     subject, body = render_template(fb)
-    assert "AED 30,000.00" in body and check_draft(subject, body, fb, max_words=140) == ()
+    assert (
+        "AED 30,000.00" in body
+        and check_draft(subject, body, fb, max_words=140, invoice_regex=DEFAULT_INVOICE_REGEX) == ()
+    )

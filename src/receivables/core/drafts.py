@@ -104,7 +104,10 @@ def build_fact_block(
     dispute_label: str | None = None,
     amount_difference: int | None = None,
 ) -> FactBlock:
-    """Facts for one message about open invoices of exactly one customer, in the given order."""
+    """Facts for one message about overdue invoices of exactly one customer, in order.
+
+    Overdue per §2: open and more than 0 days past due (an invoice due on ``as_of`` is not).
+    """
     if not rows:
         raise ValueError("a draft needs at least one invoice")
     numbers = [r.invoice_number for r in rows]
@@ -120,8 +123,8 @@ def build_fact_block(
         raise ValueError("amount_difference must be above zero")
     invoices: list[FactInvoice] = []
     for r in rows:
-        if r.open_amount <= 0 or r.days_overdue is None:
-            raise ValueError(f"{r.invoice_number} is not open")
+        if r.open_amount <= 0 or r.days_overdue is None or r.days_overdue <= 0:
+            raise ValueError(f"{r.invoice_number} is not overdue")
         invoices.append(
             FactInvoice(
                 invoice_number=r.invoice_number,
