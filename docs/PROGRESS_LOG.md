@@ -162,3 +162,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.5, §3.3 / T-POL-09 end to end (config switch, admin switch, on/off, beats L0; nothing executes or changes, no planner call), T-AUD-01 for kill-switch changes and every agent step (actor, entity, before and after JSON); admin rule (role, re-entry within 5 minutes, refusals audited); reset keeps an engaged switch
 - Deviations or decisions (link docs/DECISIONS.md): D-025 (runtime switch in the append-only audit log; HTTP routes in S2.09; known limit: takes effect from the next tick)
 - Next step: S2.09 Agent API
+
+## 2026-10-14 — [S2.09] Agent API
+- PR: see branch | Branch: s2-09-agent-api | Commit: see PR head
+- Tests: `uv run pytest -q` → 1341 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%, api 99% (new modules 100%)
+- Spec / test IDs covered: §18.11, §9, §3.3 / T-API-04 (INV-004 dispute event, PO-B-004, empty payments, audit rows); run (summary, dry run, autonomy cap, now/as_of rules), trace, approvals, kill switch (admin, server-side re-entry within 5 minutes, refusals), re-auth (rate limit, audit, cancellation, replay), session and CSRF on every route
+- Deviations or decisions (link docs/DECISIONS.md): D-026 (now/as_of only for dry runs or below L2; autonomy only lowered; audit[] scope; server-side re-auth; approve/reject in S3.09, playbook in S4.05)
+- Next step: S2.10 Case detail and trace UI
