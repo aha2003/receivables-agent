@@ -183,3 +183,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §12.1 gate D1 without an LLM, §16 Slice 2 exit (`tests/test_slice2_exit.py`: from an empty database via the real CLI and the web form, the agent inspects the queue, plans with the rule planner, uses 5 tools, is denied by policy with reason codes, every case reaches a waiting state, the plan, trace and audit are visible, the kill switch stops the next tick); docs/DEMO.md Slice 2 walkthrough asserted and run by hand
 - Deviations or decisions (link docs/DECISIONS.md): D-028 (form `as_of` under D-026; meaning of waiting state; no follow-up gate yet)
 - Next step: S3.01 LLM port with Fake and Replay clients (tag `slice-2-complete` on the merge commit after merge)
+
+## 2026-10-14 — [S3.01] LLM port with Fake and Replay clients
+- PR: see branch | Branch: s3-01-llm-port | Commit: see PR head
+- Tests: `uv run pytest -q` → 1539 passed, 1 skipped (the swallowed-attempt probe, run only in a subprocess); ruff check and format clean; pyright 0 errors; coverage 99% overall, `adapters/llm/` and `settings.py` 100%
+- Spec / test IDs covered: §3.5, §7.2 / T-LLM-04 (a cassette replays byte-identically, an unrecorded request raises `CassetteMiss` without echoing content, no network is touched); `LLMClient` port and strict classify, plan and draft models; checked cassette format; FakeClient; `LLM_MODE` (default `fake`) with `LLM_REPLAY` synonym and `llm.replay` cross-check; key and model ids never shown; network blocked for the whole suite; only `adapters/llm/anthropic_client.py` may import `anthropic`/`httpx`
+- Deviations or decisions (link docs/DECISIONS.md): D-029 (single mode switch; enforcement that tests never call the live API; `live` refused until S3.04; review fixes). Run command now `uv run --env-file .env uvicorn ...`
+- Next step: S3.02 Redaction and pseudonymisation (pure)
