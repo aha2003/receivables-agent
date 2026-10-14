@@ -176,3 +176,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §10, §18 / T-UI-04 (UNMATCHED_INVOICE, LEDGER_STILL_OPEN and UNALLOCATED_CASH_ON_ACCOUNT in plain language: automated with synthetic classification rows and checked by hand in the browser); case page trace (plan, tool, arguments, reason, policy decision in plain words, status, result), L0/L1 draft notice and L2 decision, approvals and run pages, run form (CSRF, dry run), kill switch banner, escaping
 - Deviations or decisions (link docs/DECISIONS.md): D-027 (case page layout; approvals and run pages and run form beyond §10; flag wording and shape; ledger amounts at as_of)
 - Next step: S2.11 Slice 2 close-out
+
+## 2026-10-14 — [S2.11] Slice 2 close-out
+- PR: see branch | Branch: s2-11-slice-2-closeout | Commit: see PR head
+- Tests: `uv run pytest -q` → 1394 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%
+- Spec / test IDs covered: §12.1 gate D1 without an LLM, §16 Slice 2 exit (`tests/test_slice2_exit.py`: from an empty database via the real CLI and the web form, the agent inspects the queue, plans with the rule planner, uses 5 tools, is denied by policy with reason codes, every case reaches a waiting state, the plan, trace and audit are visible, the kill switch stops the next tick); docs/DEMO.md Slice 2 walkthrough asserted and run by hand
+- Deviations or decisions (link docs/DECISIONS.md): D-028 (form `as_of` under D-026; meaning of waiting state; no follow-up gate yet)
+- Next step: S3.01 LLM port with Fake and Replay clients (tag `slice-2-complete` on the merge commit after merge)
