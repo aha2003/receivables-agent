@@ -22,6 +22,7 @@ __all__ = [
     "Classification",
     "DateMentioned",
     "DraftResponse",
+    "LLMCallFailed",
     "LLMResponseInvalid",
     "PlanResponse",
     "PlanStepResponse",
@@ -33,7 +34,15 @@ MAX_SUMMARY_WORDS = 40  # §7.2
 _DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]{1,2})?")  # a plain amount as the model read it
 
 
-class LLMResponseInvalid(ValueError):
+class LLMCallFailed(Exception):
+    """A call produced no usable response; callers take the specified fallback (§7.2, §8.3).
+
+    Raised as ``LLMResponseInvalid`` (invalid output), ``CassetteMiss`` (nothing recorded) or
+    ``FakeScriptExhausted`` (nothing scripted). Never carries request or response content.
+    """
+
+
+class LLMResponseInvalid(LLMCallFailed, ValueError):
     """The model's output is not valid JSON for the expected schema (no content is echoed)."""
 
     def __init__(self, kind: str, reason: str) -> None:

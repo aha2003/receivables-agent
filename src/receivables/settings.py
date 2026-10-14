@@ -22,7 +22,11 @@ LlmMode = Literal["fake", "replay", "live"]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore", frozen=True)
+    # hide_input_in_errors: a validation error never echoes the environment (no secret or model
+    # id in a traceback).
+    model_config = SettingsConfigDict(
+        env_file=None, extra="ignore", frozen=True, hide_input_in_errors=True
+    )
 
     database_url: str = DEFAULT_DATABASE_URL
     fixtures_dir: str = "fixtures"

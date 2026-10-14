@@ -217,3 +217,20 @@ def test_starting_the_app_logs_neither_key_nor_model_ids(
     seen = caplog.text + out.out + out.err
     assert FAKE_KEY not in seen
     assert not [m for m in FAKE_MODELS.values() if m in seen]
+
+
+@pytest.mark.usefixtures("llm_env")
+@pytest.mark.parametrize(("mode", "replay"), [("replay", "false"), ("fake", "true")])
+def test_a_refused_mode_does_not_echo_any_secret(
+    monkeypatch: pytest.MonkeyPatch, mode: str, replay: str
+) -> None:
+    # The cross-field check sees every setting; its error must not show their values.
+    monkeypatch.setenv("SESSION_SECRET", SECRET)
+    monkeypatch.setenv("LLM_MODE", mode)
+    monkeypatch.setenv("LLM_REPLAY", replay)
+    with pytest.raises(ValidationError, match="contradicts") as error:
+        Settings()
+    shown = str(error.value) + repr(error.value)
+    assert "input_value" not in shown
+    for value in (FAKE_KEY, SECRET, *FAKE_MODELS.values()):
+        assert value[:5] not in shown  # pydantic cuts an echoed value to its first characters

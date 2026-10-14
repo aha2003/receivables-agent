@@ -10,14 +10,14 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from receivables.adapters.llm.base import RawLLMClient
-from receivables.adapters.llm.schemas import KINDS
+from receivables.adapters.llm.schemas import KINDS, LLMCallFailed
 
 __all__ = ["FakeClient", "FakeScriptExhausted"]
 
 Script = Iterable[str | Mapping[str, Any]] | Callable[[Mapping[str, Any]], str | Mapping[str, Any]]
 
 
-class FakeScriptExhausted(LookupError):
+class FakeScriptExhausted(LLMCallFailed, LookupError):
     """The test asked for more responses of a kind than it scripted."""
 
 

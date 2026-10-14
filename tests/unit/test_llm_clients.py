@@ -5,6 +5,8 @@ Synthetic data only. No test here, or anywhere in the suite, calls the live Anth
 
 import json
 import socket
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +22,7 @@ from receivables.adapters.llm.replay import (
     interaction,
     load_cassettes,
 )
-from receivables.adapters.llm.schemas import LLMResponseInvalid
+from receivables.adapters.llm.schemas import LLMCallFailed, LLMResponseInvalid
 
 ROOT = Path(__file__).resolve().parents[2]
 CASSETTES = ROOT / "tests" / "cassettes"
@@ -234,3 +236,40 @@ def test_fake_output_is_validated_like_any_other() -> None:
 def test_fake_refuses_unknown_kinds() -> None:
     with pytest.raises(ValueError, match="unknown call kinds"):
         FakeClient(summarise=[])
+
+
+# --- one request format and one failure type for every client -----------------------------
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [{"as_of": date(2026, 10, 31)}, {"amount": Decimal("47000.00")}, {"x": float("nan")}],
+)
+def test_every_client_refuses_a_request_that_is_not_plain_json(
+    tmp_path: Path, facts: dict[str, Any]
+) -> None:
+    fake = FakeClient(draft=[{"subject": "s", "body": "b"}])
+    replay = ReplayClient(CASSETTES)
+    for client in (fake, replay):
+        with pytest.raises(TypeError, match="draft request is not plain JSON"):
+            client.draft(facts)
+    assert fake.calls == []  # refused before the client is asked
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LLMResponseInvalid("draft", "not JSON"),
+        CassetteMiss("draft", "0" * 64),
+        FakeScriptExhausted("no scripted draft response left"),
+    ],
+)
+def test_every_failed_call_is_an_llm_call_failure(error: Exception) -> None:
+    assert isinstance(error, LLMCallFailed)
+
+
+def test_failed_calls_can_be_caught_in_one_place() -> None:
+    clients = [FakeClient(), FakeClient(draft=["{not json"]), ReplayClient(CASSETTES)]
+    for client in clients:
+        with pytest.raises(LLMCallFailed):
+            client.draft({"unrecorded": True})

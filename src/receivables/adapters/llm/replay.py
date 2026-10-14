@@ -26,6 +26,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from receivables.adapters.llm.base import PROMPT_VERSIONS, RawLLMClient, request_key
+from receivables.adapters.llm.schemas import LLMCallFailed
 
 __all__ = ["CASSETTE_FORMAT", "CassetteError", "CassetteMiss", "ReplayClient", "load_cassettes"]
 
@@ -36,7 +37,7 @@ class CassetteError(ValueError):
     """A cassette file is missing, malformed or inconsistent."""
 
 
-class CassetteMiss(LookupError):
+class CassetteMiss(LLMCallFailed, LookupError):
     """No recorded response for this request (the request content is never echoed)."""
 
     def __init__(self, kind: str, key: str) -> None:

@@ -1,10 +1,10 @@
 """Network guard for the whole test suite (SPEC §3.5 "Tests never call the real API"; D-029).
 
 Installed by ``tests/conftest.py`` at session start, before any test module is imported, and
-removed at session end. Every TCP/UDP connection and every DNS lookup raises ``NetworkBlocked``;
-Unix-domain sockets stay allowed (local IPC, not the network). Each refused attempt is counted,
-so an attempt that some library catches and swallows still fails the run, unless a test
-deliberately expects it inside ``expected_block()``.
+removed at session end. Every TCP/UDP connection or datagram and every forward or reverse DNS
+lookup raises ``NetworkBlocked``; Unix-domain sockets stay allowed (local IPC, not the network).
+Each refused attempt is counted, so an attempt that some library catches and swallows still
+fails the run, unless a test deliberately expects it inside ``expected_block()``.
 """
 
 import socket
@@ -34,10 +34,23 @@ def _is_unix(sock: socket.socket) -> bool:
     return getattr(socket, "AF_UNIX", None) is not None and sock.family == socket.AF_UNIX
 
 
-def _connect(original: Callable[..., Any]) -> Callable[..., Any]:
-    def guarded(self: socket.socket, address: Any, *args: Any) -> Any:
+# Socket methods that reach a remote address (sendto/sendmsg: UDP needs no connect first).
+_METHODS = ("connect", "connect_ex", "sendto", "sendmsg")
+# Module functions that connect or resolve names (forward and reverse DNS).
+_FUNCTIONS = (
+    "create_connection",
+    "getaddrinfo",
+    "gethostbyname",
+    "gethostbyname_ex",
+    "gethostbyaddr",
+    "getnameinfo",
+)
+
+
+def _method(original: Callable[..., Any]) -> Callable[..., Any]:
+    def guarded(self: socket.socket, *args: Any) -> Any:
         if _is_unix(self):
-            return original(self, address, *args)
+            return original(self, *args)
         _refuse(f"{original.__name__} {self.family.name}")
         return None  # pragma: no cover - _refuse always raises
 
@@ -53,45 +66,33 @@ def _function(name: str) -> Callable[..., Any]:
     return guarded
 
 
+def _targets() -> list[tuple[Any, str]]:
+    targets: list[tuple[Any, str]] = [
+        (socket.socket, name) for name in _METHODS if hasattr(socket.socket, name)
+    ]
+    return targets + [(socket, name) for name in _FUNCTIONS]
+
+
 def install() -> None:
     if installed():
         return
-    _ORIGINAL.update(
-        connect=socket.socket.connect,
-        connect_ex=socket.socket.connect_ex,
-        create_connection=socket.create_connection,
-        getaddrinfo=socket.getaddrinfo,
-        gethostbyname=socket.gethostbyname,
-    )
-    socket.socket.connect = _connect(_ORIGINAL["connect"])  # type: ignore[method-assign]
-    socket.socket.connect_ex = _connect(_ORIGINAL["connect_ex"])  # type: ignore[method-assign]
-    socket.create_connection = _function("create_connection")  # type: ignore[assignment]
-    socket.getaddrinfo = _function("getaddrinfo")  # type: ignore[assignment]
-    socket.gethostbyname = _function("gethostbyname")  # type: ignore[assignment]
+    for owner, name in _targets():
+        original = getattr(owner, name)
+        _ORIGINAL[name] = original
+        guarded = _method(original) if owner is socket.socket else _function(name)
+        setattr(owner, name, guarded)
 
 
 def uninstall() -> None:
     if not installed():
         return
-    socket.socket.connect = _ORIGINAL["connect"]  # type: ignore[method-assign]
-    socket.socket.connect_ex = _ORIGINAL["connect_ex"]  # type: ignore[method-assign]
-    socket.create_connection = _ORIGINAL["create_connection"]
-    socket.getaddrinfo = _ORIGINAL["getaddrinfo"]
-    socket.gethostbyname = _ORIGINAL["gethostbyname"]
+    for owner, name in _targets():
+        setattr(owner, name, _ORIGINAL[name])
     _ORIGINAL.clear()
 
 
 def installed() -> bool:
-    return all(
-        getattr(target, "network_guard", False)
-        for target in (
-            socket.socket.connect,
-            socket.socket.connect_ex,
-            socket.create_connection,
-            socket.getaddrinfo,
-            socket.gethostbyname,
-        )
-    )
+    return all(getattr(getattr(owner, name), "network_guard", False) for owner, name in _targets())
 
 
 def unexpected() -> list[str]:

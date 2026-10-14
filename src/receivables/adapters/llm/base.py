@@ -43,7 +43,13 @@ class LLMClient(Protocol):
 def canonical_request(kind: str, payload: Mapping[str, Any]) -> str:
     """The request as stable JSON: kind, prompt version and the call's inputs."""
     document = {"kind": kind, "prompt_version": PROMPT_VERSIONS[kind], "request": payload}
-    return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    try:
+        return json.dumps(
+            document, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+        )
+    except (TypeError, ValueError):
+        # A date, Decimal or NaN must be turned into a string by the caller first.
+        raise TypeError(f"the {kind} request is not plain JSON") from None
 
 
 def request_key(kind: str, payload: Mapping[str, Any]) -> str:
@@ -52,20 +58,28 @@ def request_key(kind: str, payload: Mapping[str, Any]) -> str:
 
 
 class RawLLMClient(ABC):
-    """Shared request building and validation; subclasses only supply raw response text."""
+    """Shared request building and validation; subclasses only supply raw response text.
+
+    Every request is checked to be plain JSON before any client sees it, so a payload that
+    replay could not key is refused by FakeClient too.
+    """
+
+    def _complete(self, kind: str, payload: Mapping[str, Any]) -> str:
+        canonical_request(kind, payload)
+        return self.complete(kind, payload)
 
     @abstractmethod
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
         """The raw text the model returned for this request."""
 
     def classify(self, text: str, language_hint: str | None) -> Classification:
-        raw = self.complete("classify", {"text": text, "language_hint": language_hint})
+        raw = self._complete("classify", {"text": text, "language_hint": language_hint})
         return parse_response("classify", raw, Classification)
 
     def plan(self, observation: Mapping[str, Any]) -> PlanResponse:
-        raw = self.complete("plan", {"observation": observation})
+        raw = self._complete("plan", {"observation": observation})
         return parse_response("plan", raw, PlanResponse)
 
     def draft(self, facts: Mapping[str, Any]) -> DraftResponse:
-        raw = self.complete("draft", {"facts": facts})
+        raw = self._complete("draft", {"facts": facts})
         return parse_response("draft", raw, DraftResponse)
