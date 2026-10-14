@@ -134,3 +134,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.4, §18.5 (FR-32) / T-POL-01 to T-POL-11 (T-POL-10 with a supplied violation until S2.05; kill switch from config, toggle in S2.08); rule boundaries; Hypothesis property: reasons are exactly the failing rules, sorted (no short-circuit)
 - Deviations or decisions (link docs/DECISIONS.md): D-021 (SendFacts/SendDraft/L2Limits; local calendar dates; exact recipient; fail closed on draft invoices outside the facts)
 - Next step: S2.05 Template drafts and draft validator (pure)
+
+## 2026-10-14 — [S2.05] Template drafts and draft validator (pure)
+- PR: see branch | Branch: s2-05-template-drafts-validator | Commit: see PR head
+- Tests: `uv run pytest -q` → 1156 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%
+- Spec / test IDs covered: §8.1, §8.2, §8.4 (FR-09, FR-14 in part, NFR-01) / T-DRF-01, T-DRF-02, T-DRF-04; T-POL-10 through the real validator; template text checked against the spec; every template passes the validator (Hypothesis over the golden queue, tones and labels)
+- Deviations or decisions (link docs/DECISIONS.md): D-022 (drafts.sender_name config key; contact_name constant; BODY_TOO_LONG; normalised superset detection; overdue-only fact block)
+- Next step: S2.06 Rule planner

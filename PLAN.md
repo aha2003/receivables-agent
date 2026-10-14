@@ -111,7 +111,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.4, §18.5
   - Tests: T-POL-01 to T-POL-11 (except the kill-switch wiring in S2.08)
   - Done when: Reason lists match the spec tables exactly.
-- [ ] **S2.05** Template drafts and draft validator (pure)
+- [x] **S2.05** Template drafts and draft validator (pure)
   - Goal: Fact block, deterministic templates, validator (unknown invoice, amount, date, forbidden phrases), tone mapping.
   - Spec: §8.1, §8.2, §8.4
   - Tests: T-DRF-01, T-DRF-02, T-DRF-04

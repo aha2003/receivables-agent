@@ -404,6 +404,7 @@ drafts:
   max_regenerations: 2
   max_words: 140
   invoice_number_regex: '\b[A-Z]{2,6}-\d{2,}\b'   # override per customer if their invoice numbers differ
+  sender_name: Accounts Receivable Team   # sign-off of drafts and templates (8.1, 8.4)
 app:
   data_dir: data
   base_currency: AED

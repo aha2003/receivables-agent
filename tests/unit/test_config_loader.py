@@ -23,6 +23,7 @@ def test_repository_config_matches_the_spec_defaults() -> None:
     assert config.llm.review_confidence_threshold == Fraction(3, 5)
     assert config.drafts.max_words == 140
     assert config.drafts.invoice_number_regex == r"\b[A-Z]{2,6}-\d{2,}\b"
+    assert config.drafts.sender_name == "Accounts Receivable Team"
 
 
 def test_spec_section_5_yaml_block_loads_identically(tmp_path: Path) -> None:
@@ -185,6 +186,13 @@ def test_agent_overrides(tmp_path: Path) -> None:
         "agent:\n  l2:\n    timezone: ../../etc/passwd\n",
         "agent:\n  l2:\n    kill_switch: maybe\n",
         "mail:\n  gateway: sendgrid\n",
+        "drafts:\n  sender_name: ''\n",
+        "drafts:\n  sender_name: ' AR'\n",
+        'drafts:\n  sender_name: "AR\\nTeam"\n',
+        'drafts:\n  sender_name: "AR\\u202eTeam"\n',
+        "drafts:\n  sender_name: Court Services\n",
+        "drafts:\n  sender_name: AR-2026 Team\n",
+        "drafts:\n  sender_name: a b c d e f g h i\n",
         "mail:\n  gateway: smtp\n  enabled: true\n",  # sandbox outbox only (CLAUDE.md; S5.09)
         "agent:\n  l2:\n    max_total_open_amount: \uff12\uff15\uff10\uff10\uff10\n",
         "agent:\n  l2:\n    business_hours: ['\uff10\uff19:00', '17:00']\n",
