@@ -113,3 +113,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.10 (DDL and config keys), §18.8 (sandbox-only gateway setting) / T-DB-01 extended (seven agent tables STRICT; every CHECK, NOT NULL and foreign key; defaults; 0001↔0002 round-trip with rows present)
 - Deviations or decisions (link docs/DECISIONS.md): D-018 (date CHECKs added to §18.10 DDL; agent/mail config keys with strict loader; enabled SMTP refused until S5.09)
 - Next step: S2.02 Case state machine
+
+## 2026-10-14 — [S2.02] Case state machine
+- PR: see branch | Branch: s2-02-case-state-machine | Commit: see PR head
+- Tests: `uv run pytest -q` → 899 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99% (one unreachable match exit)
+- Spec / test IDs covered: §18.2 (FR-31) / T-CASE-01; every table row, guard boundaries, Hypothesis properties (transitions only from the table, deterministic, RESOLVED final)
+- Deviations or decisions (link docs/DECISIONS.md): D-019 (spec conflict resolved: §18.2 row for the `escalate` tool; unmatched triggers unchanged with applied=False; persistence in S2.07)
+- Next step: S2.03 Closed tool registry

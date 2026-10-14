@@ -980,6 +980,7 @@ A **case** is one overdue open invoice. States: `NEW`, `ASSESSED`, `AWAITING_REP
 | `PROMISE_TO_PAY` event with `promise_date >= as_of` | any except `RESOLVED` | `PROMISE_PENDING` |
 | Promise inferred broken (18.7) | `PROMISE_PENDING` | `ESCALATED` |
 | Two consecutive outbound messages with no inbound reply, and days overdue > 60 | `AWAITING_REPLY` | `ESCALATED` |
+| The `escalate` tool is executed (18.3) | any except `RESOLVED` | `ESCALATED` |
 | Open amount reaches 0 | any | `RESOLVED` |
 
 Entering `ESCALATED` always creates a human task (`escalate` tool).
