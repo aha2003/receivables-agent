@@ -9,7 +9,7 @@ Goal: a Dubai Chamber AI Agents Championship prototype. A working multi-step bus
 - Tests: `uv run pytest -q` (one file: `uv run pytest tests/unit/test_aging.py -q`)
 - Quality: `uv run ruff check . && uv run ruff format --check . && uv run pyright`
 - Progress: `python scripts/progress.py` (regenerates docs/PROGRESS.md and the README block; CI runs `--check`)
-- Run: `uv run uvicorn receivables.api.main:app --reload --no-proxy-headers` (no trusted proxies until S5.03, D-015); migrations: `uv run alembic upgrade head`
+- Run: `uv run --env-file .env uvicorn receivables.api.main:app --reload --no-proxy-headers` (uv loads `.env` into the app process only; the app never reads `.env` itself; no trusted proxies until S5.03, D-015); migrations: `uv run alembic upgrade head`
 
 ## Non-negotiable rules
 - Synthetic fictional data only. Never read, create, request, log or send real customer data, ledgers, correspondence, secrets or API keys.

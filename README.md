@@ -49,14 +49,12 @@ uv run receivables reset
 uv run receivables create-user demo.user
 ```
 
-`reset` builds (or replaces) `data/demo.db` (migrations plus the golden synthetic data); run it with the app stopped. `create-user` prompts twice for a password of at least 12 characters. Then set a session secret of at least 32 characters in your shell (never commit it) and start the app:
+`reset` builds (or replaces) `data/demo.db` (migrations plus the golden synthetic data); run it with the app stopped. `create-user` prompts twice for a password of at least 12 characters.
+
+Settings and secrets come from a local `.env` file (git-ignored; start from `.env.example`). Set `SESSION_SECRET` there to at least 32 random characters, for example the output of `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`. Never commit it. Then start the app; uv loads `.env` into the app process only:
 
 ```bash
-export SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-```
-
-```bash
-uv run uvicorn receivables.api.main:app --reload --no-proxy-headers
+uv run --env-file .env uvicorn receivables.api.main:app --reload --no-proxy-headers
 ```
 
 Open <http://localhost:8000/?as_of=2026-10-31> and sign in. The golden numbers are defined for 2026-10-31; without `as_of` the dashboard uses today's date. The session cookie is `Secure`; Chromium accepts it on `localhost` (other browsers not yet checked). The full walkthrough is in `docs/DEMO.md`.

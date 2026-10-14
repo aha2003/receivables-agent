@@ -11,7 +11,7 @@ Shows: seeded synthetic data, golden numbers, a heuristic priority queue, time t
 1. `uv sync --frozen`
 2. Stop any running app, then `uv run receivables reset`. Expect `SYNTHETIC DEMO DATA`, `customers=3 invoices=14 payments=4 events=2` and a summary line for today.
 3. `uv run receivables create-user demo.user` (first time only; password at least 12 characters).
-4. In the shell: `export SESSION_SECRET=...` (at least 32 random characters, never committed), then `uv run uvicorn receivables.api.main:app --reload --no-proxy-headers`.
+4. Make sure `.env` (git-ignored) sets `SESSION_SECRET` to at least 32 random characters, then `uv run --env-file .env uvicorn receivables.api.main:app --reload --no-proxy-headers`.
 
 ### Walkthrough
 
