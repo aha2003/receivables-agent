@@ -158,6 +158,14 @@ class _Drafts(_Strict):
     max_regenerations: PlainInt = Field(default=2, ge=0, le=10)
     max_words: PlainInt = Field(default=140, ge=1)
     invoice_number_regex: str = r"\b[A-Z]{2,6}-\d{2,}\b"
+    sender_name: str = Field(default="Accounts Receivable Team", min_length=1, max_length=100)
+
+    @field_validator("sender_name")
+    @classmethod
+    def _plain_name(cls, value: str) -> str:
+        if value != value.strip() or any(not ch.isprintable() for ch in value):
+            raise ValueError("sender_name must be printable text without outer whitespace")
+        return value
 
     @field_validator("invoice_number_regex")
     @classmethod
@@ -289,6 +297,7 @@ class DraftsSection:
     max_regenerations: int
     max_words: int
     invoice_number_regex: str
+    sender_name: str
 
 
 @dataclass(frozen=True, slots=True)
