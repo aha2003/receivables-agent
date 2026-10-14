@@ -190,3 +190,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.5, §7.2 / T-LLM-04 (a cassette replays byte-identically, an unrecorded request raises `CassetteMiss` without echoing content, no network is touched); `LLMClient` port and strict classify, plan and draft models; checked cassette format; FakeClient; `LLM_MODE` (default `fake`) with `LLM_REPLAY` synonym and `llm.replay` cross-check; key and model ids never shown; network blocked for the whole suite; only `adapters/llm/anthropic_client.py` may import `anthropic`/`httpx`
 - Deviations or decisions (link docs/DECISIONS.md): D-029 (single mode switch; enforcement that tests never call the live API; `live` refused until S3.04; review fixes). Run command now `uv run --env-file .env uvicorn ...`
 - Next step: S3.02 Redaction and pseudonymisation (pure)
+
+## 2026-10-14 — [S3.02] Redaction and pseudonymisation (pure)
+- PR: see branch | Branch: s3-02-redaction | Commit: see PR head
+- Tests: `uv run pytest -q` → 1630 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; `core/redact.py` 100% coverage; 29 mutations of the patterns, order and name matching all killed
+- Spec / test IDs covered: §7.5 / T-RED-01 (output matches the spec string exactly); TRN, IBAN (incl. printed groups, option a), email and UAE phone patterns with Arabic-Indic digits; §7.5 order; case-insensitive customer-name pseudonymisation, longest first; config switches; invoice and PO references, amounts and dates survive; Hypothesis properties (planted values never survive, idempotent, no name survives)
+- Deviations or decisions (link docs/DECISIONS.md): D-030 (exact patterns, IBAN option a, accepted over-redaction of space-separated leading-0 numbers, known limits; review fixes)
+- Next step: S3.03 Prompt-capture harness and PII-free logging (wires redaction into LLM calls; T-SEC-01)
