@@ -136,7 +136,7 @@ Planning window Nov–Dec 2026 [A]. Priority P0. Exit: the agent inspects the qu
   - Spec: §18.11, §9
   - Tests: T-API-04
   - Done when: Endpoints return the documented shapes and require a session and CSRF.
-- [ ] **S2.10** Case detail and trace UI
+- [x] **S2.10** Case detail and trace UI
   - Goal: Case page showing facts, flags, plan, tool calls, policy reasons and results; approvals view.
   - Spec: §10, §18
   - Tests: T-UI-04

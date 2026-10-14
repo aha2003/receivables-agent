@@ -1,0 +1,24 @@
+{# One case's steps in a run: tool, arguments, reason, policy decision in plain language, result. #}
+{% macro steps_table(steps) %}
+<table class="steps">
+  <thead><tr><th>#</th><th>Tool</th><th>Arguments</th><th>Reason</th><th>Policy</th><th>Status</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for s in steps %}
+  <tr>
+    <td class="num">{{ s.seq }}</td>
+    <td><code>{{ s.tool }}</code></td>
+    <td><code class="args">{{ s.args|tojson }}</code></td>
+    <td>{{ s.reason }}</td>
+    <td>
+      {% if s.policy_allowed is none %}<span class="note">not a send</span>
+      {% elif s.policy_allowed %}<span class="ok">allowed</span>
+      {% else %}<span class="flag">denied</span>{% endif %}
+      {% if s.policy_reasons %}<ul class="reasons">{% for code in s.policy_reasons %}<li><code>{{ code }}</code>: {{ code|policy_text }}</li>{% endfor %}</ul>{% endif %}
+    </td>
+    <td>{{ s.status|status_text }}</td>
+    <td>{% if s.result %}<code class="args">{{ s.result|tojson }}</code>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}

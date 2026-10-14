@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_steps.html" import steps_table %}
+{% block title %}Agent run{% endblock %}
+{% block content %}
+{% if summary %}
+<h1>Dry run</h1>
+<p>Nothing was saved. As of {{ summary.as_of.isoformat() }}, level L{{ summary.autonomy_level }}, planner {{ summary.planner }}:
+{{ summary.cases_considered }} cases, {{ summary.steps_executed }} steps would execute, {{ summary.steps_denied }} denied by policy, {{ summary.case_errors }} case errors.</p>
+{% else %}
+{% set r = trace.run %}
+<h1>Agent run {{ r.run_id }}</h1>
+<dl class="facts">
+  <dt>As of</dt><dd>{{ r.as_of }}</dd>
+  <dt>Time</dt><dd>{{ r.now }} (UTC)</dd>
+  <dt>Autonomy level</dt><dd>L{{ r.autonomy_level }}</dd>
+  <dt>Planner</dt><dd>{{ r.planner }}{% if r.model %} ({{ r.model }}){% endif %}{% if r.fallback %}, fell back to the rule planner{% endif %}</dd>
+  <dt>Cases</dt><dd>{{ r.cases_considered }}</dd>
+  <dt>Steps executed</dt><dd>{{ r.steps_executed }}</dd>
+  <dt>Steps denied by policy</dt><dd>{{ r.steps_denied }}</dd>
+</dl>
+{% for case in trace.cases %}
+<section>
+  <h2><a href="/invoices/{{ case.invoice_number|urlencode }}?as_of={{ r.as_of }}">{{ case.invoice_number }}</a></h2>
+  {{ steps_table(case.steps) }}
+</section>
+{% endfor %}
+{% if trace.events %}
+<section>
+  <h2>Run events</h2>
+  <ul>{% for e in trace.events %}<li>{{ e.ts }} <code>{{ e.action }}</code> {{ e.entity_type }} {{ e.entity_id }}{% if e.detail %} <code class="args">{{ e.detail|tojson }}</code>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

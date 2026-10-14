@@ -5,7 +5,6 @@ a password for admin actions. Every route needs a session; state-changing ones n
 Approve/reject (S3.09) and the playbook route (S4.05) come with the features they expose.
 """
 
-import json
 import re
 from datetime import date, datetime
 from typing import Any
@@ -13,7 +12,6 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from receivables.adapters.db.agent_store import run_agent_tick
@@ -26,6 +24,7 @@ from receivables.adapters.db.controls import (
 )
 from receivables.adapters.db.repo import get_user, write_audit
 from receivables.agent.orchestrator import RunSummary
+from receivables.api.agent_views import pending_approvals, run_trace
 from receivables.api.auth import error_response
 from receivables.api.security import SessionUser, verify_password
 
@@ -131,132 +130,17 @@ async def agent_run(request: Request) -> dict[str, Any]:
     return summary_json(summary, dry_run=body.dry_run)
 
 
-def _loads(value: str | None) -> Any:
-    return None if value is None else json.loads(value)
-
-
-def _trace(request: Request, run_id: str) -> dict[str, Any] | None:
-    with request.app.state.engine.connect() as conn:
-        run = (
-            conn.execute(text("SELECT * FROM agent_runs WHERE run_id = :r"), {"r": run_id})
-            .mappings()
-            .first()
-        )
-        if run is None:
-            return None
-        steps = (
-            conn.execute(
-                text("SELECT * FROM agent_steps WHERE run_id = :r ORDER BY seq"), {"r": run_id}
-            )
-            .mappings()
-            .all()
-        )
-        events = (
-            conn.execute(
-                text(
-                    "SELECT audit_id, ts, actor, action, entity_type, entity_id, after_json"
-                    " FROM audit_log WHERE action <> 'agent.step'"
-                    " AND (json_extract(after_json, '$.run_id') = :r"
-                    "      OR (entity_type = 'agent_run' AND entity_id = :r))"
-                    " ORDER BY audit_id"
-                ),
-                {"r": run_id},
-            )
-            .mappings()
-            .all()
-        )
-    cases: dict[str, list[dict[str, Any]]] = {}
-    for s in steps:
-        cases.setdefault(s["invoice_number"], []).append(
-            {
-                "step_id": s["step_id"],
-                "seq": s["seq"],
-                "tool": s["tool"],
-                "args": _loads(s["args_json"]),
-                "reason": s["reason"],
-                "policy_allowed": None
-                if s["policy_allowed"] is None
-                else bool(s["policy_allowed"]),
-                "policy_reasons": _loads(s["policy_reasons_json"]),
-                "status": s["status"],
-                "result": _loads(s["result_json"]),
-            }
-        )
-    return {
-        "run": {
-            "run_id": run["run_id"],
-            "as_of": run["as_of"],
-            "now": run["now_ts"],
-            "autonomy_level": run["autonomy_level"],
-            "planner": run["planner"],
-            "fallback": bool(run["fallback"]),
-            "model": run["model"],
-            "cases_considered": run["cases_considered"],
-            "steps_executed": run["steps_executed"],
-            "steps_denied": run["steps_denied"],
-            "started_at": run["started_at"],
-            "finished_at": run["finished_at"],
-        },
-        "cases": [{"invoice_number": n, "steps": steps} for n, steps in cases.items()],
-        "events": [
-            {
-                "audit_id": e["audit_id"],
-                "ts": e["ts"],
-                "action": e["action"],
-                "entity_type": e["entity_type"],
-                "entity_id": e["entity_id"],
-                "detail": _loads(e["after_json"]),
-            }
-            for e in events
-        ],
-    }
-
-
 @router.get("/api/agent/runs/{run_id}")
 async def agent_trace(request: Request, run_id: str) -> dict[str, Any]:
-    trace = await run_in_threadpool(_trace, request, run_id)
+    trace = await run_in_threadpool(run_trace, request.app.state.engine, run_id)
     if trace is None:
         raise HTTPException(404, "No agent run with that id.")
     return trace
 
 
-def _approvals(request: Request) -> list[dict[str, Any]]:
-    with request.app.state.engine.connect() as conn:
-        rows = (
-            conn.execute(
-                text(
-                    "SELECT a.approval_id, a.kind, a.step_id, a.payload_json, a.status,"
-                    " s.run_id, s.invoice_number"
-                    " FROM approvals a JOIN agent_steps s ON s.step_id = a.step_id"
-                    " WHERE a.status = 'pending' ORDER BY a.approval_id"
-                )
-            )
-            .mappings()
-            .all()
-        )
-    items = []
-    for r in rows:
-        payload = json.loads(r["payload_json"])
-        items.append(
-            {
-                "approval_id": r["approval_id"],
-                "kind": r["kind"],
-                "status": r["status"],
-                "run_id": r["run_id"],
-                "step_id": r["step_id"],
-                "invoice_number": r["invoice_number"],
-                "draft_id": payload.get("draft_id"),
-                "payment_id": payload.get("payment_id"),
-                "policy_allowed": payload.get("policy_allowed"),
-                "reasons": payload.get("reasons", []),
-            }
-        )
-    return items
-
-
 @router.get("/api/agent/approvals")
 async def agent_approvals(request: Request) -> dict[str, Any]:
-    return {"items": await run_in_threadpool(_approvals, request)}
+    return {"items": await run_in_threadpool(pending_approvals, request.app.state.engine)}
 
 
 def _switch_state(request: Request) -> dict[str, bool]:

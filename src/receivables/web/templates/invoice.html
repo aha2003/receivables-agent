@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_steps.html" import steps_table %}
 {% block title %}Invoice {{ row.invoice_number }}{% endblock %}
 {% block content %}
 <p><a href="/queue?as_of={{ snap.as_of.isoformat() }}">Back to the queue</a></p>
@@ -21,11 +22,61 @@
   <dl class="facts">
     <dt>Risk score</dt><dd>{{ scored.risk_score }} ({{ scored.band }})</dd>
     <dt>Priority value</dt><dd>{{ scored.priority_value }}</dd>
-    {% if item %}<dt>Next action</dt><dd>{{ item.action }}</dd>
-    {% for f in item.flags %}<dt>Flag</dt><dd class="flag">{{ f.amount|unallocated_message }}</dd>{% endfor %}{% endif %}
+    {% if item %}<dt>Next action</dt><dd>{{ item.action }}</dd>{% endif %}
   </dl>
 </section>
 {% endif %}
+{% if flags or (scored and (scored.dispute_label or scored.broken_promise)) %}
+<section>
+  <h2>Flags</h2>
+  <ul class="flags">
+    {% if scored and scored.dispute_label %}<li class="flag">Open dispute: {{ scored.dispute_label|replace("_", " ")|lower }}.</li>{% endif %}
+    {% if scored and scored.broken_promise %}<li class="flag">The customer's promise to pay has passed and the invoice is still open.</li>{% endif %}
+    {% for f in flags %}<li class="flag">{{ f }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+<section>
+  <h2>Case</h2>
+  <p class="note">The case, drafts and agent trace show the current state, whatever the date above.</p>
+  {% if detail and detail.case %}
+  <dl class="facts">
+    <dt>State</dt><dd>{{ detail.case.state|replace("_", " ")|lower }}</dd>
+    <dt>Next follow-up</dt><dd>{{ detail.case.next_followup or "None" }}</dd>
+  </dl>
+  {% else %}<p>No case yet: the agent has not worked on this invoice.</p>{% endif %}
+  {% include "_run_form.html" %}
+</section>
+<section>
+  <h2>Drafts</h2>
+  {% if autonomy_level < 2 %}<p class="notice">Review before sending. Nothing is sent automatically.</p>{% endif %}
+  {% for d in (detail.drafts if detail else []) %}
+  <article class="draft">
+    <h3>{{ d.subject }}</h3>
+    <pre class="body">{{ d.body }}</pre>
+    <p class="note">Generator: {{ d.generator }}. Status: {{ d.status }}. Created {{ d.created_at }}.
+    {% if d.violations %}Violations: {% for v in d.violations %}<code>{{ v }}</code> {% endfor %}{% else %}Validated against the facts.{% endif %}</p>
+    {% set decision = decisions.get(d.draft_id) %}
+    {% if autonomy_level == 2 or (decision and decision.autonomy_level == 2) %}
+      {% if decision %}
+      <p>Policy decision: {% if decision.policy_allowed %}<span class="ok">allowed</span>{% else %}<span class="flag">denied</span>{% endif %}, {{ decision.status|status_text }}.</p>
+      {% if decision.policy_reasons %}<ul class="reasons">{% for code in decision.policy_reasons %}<li><code>{{ code }}</code>: {{ code|policy_text }}</li>{% endfor %}</ul>{% endif %}
+      {% else %}<p class="note">No send has been attempted for this draft.</p>{% endif %}
+    {% endif %}
+    <p><button type="button" disabled title="Arrives with S3.09">Approve</button> <button type="button" disabled title="Arrives with S3.09">Reject</button> <button type="button" disabled title="Arrives with S3.09">Copy</button> <button type="button" disabled title="Arrives with S3.09">Mark sent</button></p>
+  </article>
+  {% else %}<p>No drafts yet.</p>{% endfor %}
+</section>
+<section>
+  <h2>Agent trace</h2>
+  {% for run in runs %}
+  <article class="run">
+    <h3><a href="/runs/{{ run.run_id|urlencode }}">{{ run.run_id }}</a></h3>
+    <p class="note">As of {{ run.as_of }}, level L{{ run.autonomy_level }}, planner {{ run.planner }}{% if run.model %} ({{ run.model }}){% endif %}{% if run.fallback %}, fell back to the rule planner{% endif %}, started {{ run.started_at }}.</p>
+    {{ steps_table(run.steps) }}
+  </article>
+  {% else %}<p>The agent has not planned this invoice yet.</p>{% endfor %}
+</section>
 <section>
   <h2>Timeline</h2>
   {% if payments or events %}
@@ -34,6 +85,10 @@
     {% for e in events %}<li>{{ e.event_date.isoformat() }}: {{ e.event_type|replace("_", " ")|lower }}{% if e.label %} ({{ e.label }}){% endif %}{% if e.promise_date %}, promised for {{ e.promise_date.isoformat() }}{% endif %}</li>{% endfor %}
   </ul>
   {% else %}<p>No payments or events as of {{ snap.as_of.isoformat() }}.</p>{% endif %}
-  <p class="note">Messages, classifications, drafts and outcomes are added to this page in later steps.</p>
+  {% if detail and detail.messages %}
+  <h3>Messages</h3>
+  <ul class="timeline">{% for m in detail.messages %}<li>{{ m.sent_at }}: {{ m.direction }}{% if m.subject %}, "{{ m.subject }}"{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+  <p class="note">Outcomes are added to this page in a later step.</p>
 </section>
 {% endblock %}

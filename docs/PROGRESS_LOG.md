@@ -169,3 +169,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §18.11, §9, §3.3 / T-API-04 (INV-004 dispute event, PO-B-004, empty payments, audit rows); run (summary, dry run, autonomy cap, now/as_of rules), trace, approvals, kill switch (admin, server-side re-entry within 5 minutes, refusals), re-auth (rate limit, audit, cancellation, replay), session and CSRF on every route
 - Deviations or decisions (link docs/DECISIONS.md): D-026 (now/as_of only for dry runs or below L2; autonomy only lowered; audit[] scope; server-side re-auth; approve/reject in S3.09, playbook in S4.05)
 - Next step: S2.10 Case detail and trace UI
+
+## 2026-10-14 — [S2.10] Case detail and trace UI
+- PR: see branch | Branch: s2-10-case-detail-trace-ui | Commit: see PR head
+- Tests: `uv run pytest -q` → 1385 passed; ruff check and format clean; pyright 0 errors; coverage core 100%, agent 99%, api and web 100% for the new code
+- Spec / test IDs covered: §10, §18 / T-UI-04 (UNMATCHED_INVOICE, LEDGER_STILL_OPEN and UNALLOCATED_CASH_ON_ACCOUNT in plain language: automated with synthetic classification rows and checked by hand in the browser); case page trace (plan, tool, arguments, reason, policy decision in plain words, status, result), L0/L1 draft notice and L2 decision, approvals and run pages, run form (CSRF, dry run), kill switch banner, escaping
+- Deviations or decisions (link docs/DECISIONS.md): D-027 (case page layout; approvals and run pages and run form beyond §10; flag wording and shape; ledger amounts at as_of)
+- Next step: S2.11 Slice 2 close-out

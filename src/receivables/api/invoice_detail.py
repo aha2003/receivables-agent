@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import Connection, text
 
-from receivables.api.snapshot import money, take_snapshot
+from receivables.api.snapshot import Snapshot, money, take_snapshot
 
 __all__ = ["invoice_detail"]
 
@@ -62,8 +62,12 @@ def _audit(conn: Connection, invoice: str, kinds: list[str]) -> list[dict[str, A
     ]
 
 
-def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, Any] | None:
-    snap = take_snapshot(state.engine, as_of, state.config.engine)
+def invoice_detail(
+    state: Any, invoice_number: str, as_of: date, snap: Snapshot | None = None
+) -> dict[str, Any] | None:
+    """The §9 invoice detail; pass ``snap`` to reuse a snapshot taken for the same ``as_of``."""
+    if snap is None:
+        snap = take_snapshot(state.engine, as_of, state.config.engine)
     row = next((r for r in snap.rows if r.invoice_number == invoice_number), None)
     if row is None:
         return None
@@ -89,7 +93,8 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
         classifications = (
             conn.execute(
                 text(
-                    "SELECT c.message_id, c.label, c.confidence, c.needs_review, c.status"
+                    "SELECT c.message_id, c.label, c.confidence, c.needs_review, c.status,"
+                    " c.flags_json"
                     " FROM classifications c JOIN correspondence m ON m.message_id = c.message_id"
                     " WHERE m.invoice_number = :n ORDER BY c.message_id"
                 ),
@@ -164,7 +169,14 @@ def invoice_detail(state: Any, invoice_number: str, as_of: date) -> dict[str, An
         ],
         "messages": [dict(m) for m in messages],
         "classifications": [
-            {**dict(c), "confidence": None if c["confidence"] is None else str(c["confidence"])}
+            {
+                "message_id": c["message_id"],
+                "label": c["label"],
+                "confidence": None if c["confidence"] is None else str(c["confidence"]),
+                "needs_review": bool(c["needs_review"]),
+                "status": c["status"],
+                "flags": json.loads(c["flags_json"]),
+            }
             for c in classifications
         ],
         "drafts": [
