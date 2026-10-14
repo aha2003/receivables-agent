@@ -161,7 +161,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §7.5
   - Tests: T-RED-01
   - Done when: Output matches the spec string exactly.
-- [ ] **S3.03** Prompt-capture harness and PII-free logging
+- [x] **S3.03** Prompt-capture harness and PII-free logging
   - Goal: structlog scrubbing processor and a test harness capturing prompts sent to the client.
   - Spec: §3.1, §13
   - Tests: T-SEC-01, T-SEC-04

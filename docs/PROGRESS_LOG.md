@@ -197,3 +197,10 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §7.5 / T-RED-01 (output matches the spec string exactly); TRN, IBAN (incl. printed groups, option a), email and UAE phone patterns with Arabic-Indic digits; §7.5 order; case-insensitive customer-name pseudonymisation, longest first; config switches; invoice and PO references, amounts and dates survive; Hypothesis properties (planted values never survive, idempotent, no name survives)
 - Deviations or decisions (link docs/DECISIONS.md): D-030 (exact patterns, IBAN option a, accepted over-redaction of space-separated leading-0 numbers, known limits; review fixes)
 - Next step: S3.03 Prompt-capture harness and PII-free logging (wires redaction into LLM calls; T-SEC-01)
+
+## 2026-10-14 — [S3.03] Prompt-capture harness and PII-free logging
+- PR: see branch | Branch: s3-03-prompt-capture-logging | Commit: see PR head
+- Tests: `uv run pytest -q` → 1666 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; every mutation of the redacting client, the scrubber, the formatter, the handler set-up and the request ids killed (one equivalent: SQLAlchemy already defaults to WARNING)
+- Spec / test IDs covered: §3.1, §13 NFR-04, NFR-07 / T-SEC-01 (M-01 with an email, phone, TRN, IBAN and customer name injected: none reaches the client for classify, plan or draft; switches; names read at each call; Hypothesis on nested payloads), T-SEC-04 (M-01 through the client, an agent tick and web requests with the server's logging: no body or personal data in the logs; `llm.call` with model, latency, tokens and prompt hash only; request ids); structlog JSON pipeline with scrubber, fail-closed paths and server entry point
+- Deviations or decisions (link docs/DECISIONS.md): D-031 (option a: draft facts pseudonymised, S3.07 restores the name; log pipeline and its limits; review fixes). New dependency: structlog 26.1.0 (PROVENANCE.md)
+- Next step: S3.04 Anthropic client
