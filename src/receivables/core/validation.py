@@ -71,6 +71,7 @@ _AMOUNT = re.compile(r"-?[0-9]+(?:\.[0-9]{1,2})?")  # at most 2 written decimals
 _INTEGER = re.compile(r"[0-9]{1,3}")
 _TRN = re.compile(r"[0-9]{15}")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_MESSAGE_ID = re.compile(r"[A-Za-z0-9._-]+")
 
 # Columns per kind: (required in the header, optional in the header).
 _COLUMNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -407,8 +408,8 @@ def _parse_timestamp(value: str, name: str) -> datetime:
 def _message(line: int, row: Mapping[str, str], ctx: _Context) -> MessageRecord:
     _require(row, "message_id", "direction", "sent_at")
     ctx.unique(row["message_id"], "message_id")
-    if len(row["message_id"]) > MAX_ID_CHARS:
-        raise _RowError("E_BAD_ENUM", "message_id")
+    if len(row["message_id"]) > MAX_ID_CHARS or not _MESSAGE_ID.fullmatch(row["message_id"]):
+        raise _RowError("E_BAD_ENUM", "message_id")  # ids appear in URLs: no "/" or spaces
     sent_at = _parse_timestamp(row["sent_at"], "sent_at")
     if row["direction"] not in DIRECTIONS:
         raise _RowError("E_BAD_ENUM", "direction")

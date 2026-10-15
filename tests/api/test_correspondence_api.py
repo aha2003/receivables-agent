@@ -112,3 +112,29 @@ def test_it_needs_a_session_and_a_csrf_token(client: TestClient) -> None:
     assert login(client) == 303
     no_token = client.post("/api/correspondence", json={"messages": [MESSAGE]})
     assert no_token.status_code == 403
+
+
+def test_fractions_of_a_second_survive_so_a_repeat_is_not_a_change(
+    user: TestClient, engine: Engine
+) -> None:
+    row = {**MESSAGE, "sent_at": "2026-10-29T10:00:00.5+04:00"}
+    post_json(user, {"messages": [row]})
+    assert rows(engine, "SELECT sent_at FROM correspondence") == [
+        {"sent_at": "2026-10-29T06:00:00.500000Z"}
+    ]
+    with engine.begin() as c:  # classified, so its text is locked (D-034)
+        c.execute(
+            text(
+                "INSERT INTO classifications (message_id, label, extraction_json, needs_review,"
+                " created_at) VALUES ('M-90', 'UNCLEAR', '{}', 1, '2026-10-29T06:00:00Z')"
+            )
+        )
+    again = post_json(user, {"messages": [row, {**MESSAGE, "message_id": "M-92"}]})
+    assert again.status_code == 200 and again.json()["inserted"] == 2
+
+
+@pytest.mark.parametrize("message_id", ["A/B", "M 1", "M-1?x", "../x"])
+def test_message_ids_are_safe_in_urls(user: TestClient, message_id: str) -> None:
+    response = post_json(user, {"messages": [{**MESSAGE, "message_id": message_id}]})
+    assert response.status_code == 422
+    assert response.json()["errors"] == [{"line": 2, "code": "E_BAD_ENUM", "field": "message_id"}]

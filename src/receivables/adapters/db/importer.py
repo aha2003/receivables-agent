@@ -238,6 +238,12 @@ def _references(conn: Connection) -> References:
     )
 
 
+def _utc_text(moment: datetime) -> str:
+    """UTC with a ``Z``, sortable (§9); fractions of a second are kept, never dropped."""
+    spec = "microseconds" if moment.microsecond else "seconds"
+    return moment.astimezone(UTC).replace(tzinfo=None).isoformat(timespec=spec) + "Z"
+
+
 def _stored_time(value: str) -> datetime:
     """A stored ``sent_at`` in UTC; one that cannot be read never equals an imported row."""
     try:
@@ -298,7 +304,7 @@ def _row(record: object) -> dict[str, Any]:
             "invoice_number": record.invoice_number,
             "customer_id": record.customer_id,
             "direction": record.direction,
-            "sent_at": record.sent_at.strftime("%Y-%m-%dT%H:%M:%SZ"),  # UTC, sortable (§9)
+            "sent_at": _utc_text(record.sent_at),
             "language": record.language,
             "subject": record.subject,
             "body": record.body,

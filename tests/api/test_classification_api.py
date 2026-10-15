@@ -455,10 +455,11 @@ def test_the_known_customer_can_come_from_the_messages_invoice(
     assert {"code": "CUSTOMER_INVOICE_MISMATCH", "invoice_number": "INV-004"} in flags
 
 
-def test_the_event_goes_to_the_invoice_the_message_is_about(
+def test_the_event_goes_to_the_messages_own_invoice(
     user: TestClient, app_with_messages: FastAPI, engine: Engine
 ) -> None:
-    # Filed under INV-009, but the text (and the verified extraction) is about INV-011.
+    # Filed under INV-009 (CUST-C); the text names INV-011, which belongs to CUST-B. The model's
+    # reading never moves an event onto another customer's invoice (spec review, D-034).
     _insert(engine, "M-61", "INV-009", "CUST-C", "INV-011 has no PO number.")
     use_llm(
         app_with_messages,
@@ -466,9 +467,105 @@ def test_the_event_goes_to_the_invoice_the_message_is_about(
         lambda _: answer(label="MISSING_PO", invoice_numbers=["INV-011"],
                          evidence_quote="INV-011 has no PO number."),
     )  # fmt: skip
-    post(user, "/api/correspondence/M-61/classify")
+    body = post(user, "/api/correspondence/M-61/classify").json()
+    assert {"code": "CUSTOMER_INVOICE_MISMATCH", "invoice_number": "INV-011"} in body["flags"]
     event = post(user, "/api/classifications/M-61/accept").json()["event"]
-    assert event["invoice_number"] == "INV-011"
+    assert event["invoice_number"] == "INV-009"
+
+
+def test_without_its_own_invoice_a_clean_single_match_carries_the_event(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    _insert(engine, "M-63", None, "CUST-B", "INV-011 has no PO number.")
+    use_llm(
+        app_with_messages,
+        engine,
+        lambda _: answer(label="MISSING_PO", invoice_numbers=["INV-011"],
+                         evidence_quote="INV-011 has no PO number."),
+    )  # fmt: skip
+    post(user, "/api/correspondence/M-63/classify")
+    assert post(user, "/api/classifications/M-63/accept").json()["event"]["invoice_number"] == (
+        "INV-011"
+    )
+
+
+@pytest.mark.parametrize(
+    ("customer", "body", "extracted"),
+    [
+        ("CUST-C", "INV-011 has no PO number.", "INV-011"),  # another customer's invoice
+        ("CUST-B", "Our invoice has no PO number.", "INV-011"),  # not in the text
+        ("CUST-B", "INV-011 and INV-777 have no PO.", "INV-011"),  # a doubtful reference too
+    ],
+)
+def test_a_doubtful_match_never_carries_an_event(
+    user: TestClient,
+    app_with_messages: FastAPI,
+    engine: Engine,
+    customer: str,
+    body: str,
+    extracted: str,
+) -> None:
+    _insert(engine, "M-64", None, customer, body)
+    invoices = [extracted, "INV-777"] if "INV-777" in body else [extracted]
+    use_llm(
+        app_with_messages,
+        engine,
+        lambda _: answer(label="MISSING_PO", invoice_numbers=invoices, evidence_quote=body),
+    )
+    post(user, "/api/correspondence/M-64/classify")
+    assert post(user, "/api/classifications/M-64/accept").status_code == 409
+    assert rows(engine, "SELECT 1 FROM events WHERE source = 'classification'") == []
+
+
+def test_an_unreadable_promise_date_needs_review(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    _insert(engine, "M-65", "INV-008", "CUST-C", "We will pay INV-008 next Tuesday.")
+    use_llm(
+        app_with_messages,
+        engine,
+        lambda _: answer(label="PAYMENT_PROMISED", invoice_numbers=["INV-008"],
+                         promised_payment_date="next Tuesday",
+                         evidence_quote="We will pay INV-008 next Tuesday."),
+    )  # fmt: skip
+    body = post(user, "/api/correspondence/M-65/classify").json()
+    assert body["flags"] == [] and body["promised_payment_date"] is None
+    assert body["needs_review"] is True
+
+
+def test_a_message_changed_during_the_model_call_is_not_classified(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    def edit_meanwhile(_: Mapping[str, Any]) -> Mapping[str, Any]:
+        with engine.begin() as c:
+            c.execute(text("UPDATE correspondence SET body = 'Edited' WHERE message_id = 'M-01'"))
+        return M01
+
+    use_llm(app_with_messages, engine, edit_meanwhile)
+    assert post(user, "/api/correspondence/M-01/classify").status_code == 409
+    assert rows(engine, "SELECT 1 FROM classifications") == []
+
+
+def test_unreadable_customer_names_fall_back_cleanly(
+    user: TestClient, app_with_messages: FastAPI
+) -> None:
+    def broken() -> tuple[str, ...]:
+        raise RuntimeError("database is locked")
+
+    app_with_messages.state.llm = RedactingClient(
+        FakeClient(classify=lambda _: M01),
+        redact_before_send=True,
+        pseudonymize_customer_names=True,
+        customer_names=broken,
+    )
+    response = post(user, "/api/correspondence/M-01/classify")
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["label"], body["needs_review"], body["error"]) == (
+        "UNCLEAR",
+        True,
+        "RedactionUnavailable",
+    )
 
 
 @pytest.mark.parametrize(("language", "hint"), [("auto", None), ("ar", "ar"), (None, None)])

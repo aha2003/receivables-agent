@@ -26,6 +26,7 @@ from receivables.adapters.db.models import Classification, Correspondence, Event
 from receivables.adapters.db.repo import load_invoices, load_payments, write_audit
 from receivables.adapters.llm.classification import classify_message, to_extraction
 from receivables.adapters.llm.redacting import RedactingClient
+from receivables.adapters.llm.schemas import LLMCallFailed
 from receivables.core.dates import resolve_message_date
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
@@ -128,10 +129,14 @@ def classify_stored(
     outcome = classify_message(client, message.body, language)
     result = outcome.classification
     sent_on = _sent_on(message.sent_at)
+    try:
+        sent_text: str | None = client.prepared_text(message.body)
+    except LLMCallFailed:  # names unreadable: classify already fell back to UNCLEAR
+        sent_text = None
     verification = verify_extraction(
         to_extraction(result),
         message=message.body,
-        sent_text=client.prepared_text(message.body),
+        sent_text=sent_text,
         ledger=ledger,
         message_customer_id=customer,
         review_threshold=review_threshold,
@@ -141,9 +146,20 @@ def classify_stored(
         if result.promised_payment_date
         else None
     )
+    # The model's invoice may carry an event only when the message has none of its own, it is
+    # the single match, and code raised no doubt about any invoice reference (D-034).
+    doubtful = any(
+        f.code in {"UNMATCHED_INVOICE", "CUSTOMER_INVOICE_MISMATCH"}
+        or (f.code == "UNVERIFIED_EXTRACTION" and f.field == "invoice_numbers")
+        for f in verification.flags
+    )
+    event_invoice = (
+        verification.matched[0] if len(verification.matched) == 1 and not doubtful else None
+    )
     extraction = result.model_dump(mode="json") | {
         "resolved_promised_date": promised.isoformat() if promised else None,
         "matched_invoices": list(verification.matched),
+        "event_invoice": event_invoice,
         "amount_difference_fils": verification.amount_difference,
         "error": outcome.error,
         "attempts": outcome.attempts,
@@ -154,7 +170,12 @@ def classify_stored(
         "confidence": result.confidence,
         "extraction_json": json.dumps(extraction, ensure_ascii=False, sort_keys=True),
         "flags_json": json.dumps([f.as_dict() for f in verification.flags], sort_keys=True),
-        "needs_review": int(verification.needs_review or outcome.needs_review),
+        "needs_review": int(
+            verification.needs_review
+            or outcome.needs_review
+            # §7.4: a promise without a date needs review; a date code cannot read has none.
+            or (result.label == "PAYMENT_PROMISED" and promised is None)
+        ),
         "status": "pending",
         "model": client.model,
         "created_at": utc_timestamp(clock),
@@ -163,6 +184,10 @@ def classify_stored(
         before = _stored(conn, message_id)
         if before is not None and before.status != "pending":  # accepted or rejected meanwhile
             raise ClassificationError(409, "conflict", f"Already {before.status}.")
+        if _message(conn, message_id) != message:  # re-imported during the model call
+            raise ClassificationError(
+                409, "conflict", "The message changed while it was classified; classify again."
+            )
         stmt = sqlite_insert(Classification).values(values)
         conn.execute(
             stmt.on_conflict_do_update(
@@ -265,8 +290,7 @@ def _event_for(
         event_type = "PROMISE_TO_PAY"
     else:
         return None
-    matched = extraction.get("matched_invoices") or []
-    invoice = matched[0] if len(matched) == 1 else message.invoice_number
+    invoice = message.invoice_number or extraction.get("event_invoice")
     if invoice is None:
         raise ClassificationError(
             409, "conflict", "No single invoice to attach the event to; check the references."
