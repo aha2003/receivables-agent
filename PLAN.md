@@ -176,7 +176,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §7.4
   - Tests: T-VER-01, T-VER-02, T-VER-03, T-VER-04, T-VER-05, T-LLM-03
   - Done when: Fabricated invoices, non-verbatim evidence and customer mismatches are flagged and routed to review.
-- [ ] **S3.06** Classification service and inbox
+- [x] **S3.06** Classification service and inbox
   - Goal: Correspondence import, classify endpoint, accept and reject creating events, inbox page.
   - Spec: §7, §9, §10
   - Tests: T-API-05, T-LLM-01 (15-message smoke gate), T-UI-04

@@ -4,18 +4,18 @@ Competition prototype (Dubai Chamber of Digital Economy AI Agents Championship).
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 30/64 steps (47%)** █████████░░░░░░░░░░░
+**Overall: 31/64 steps (48%)** ██████████░░░░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
 | Slice 2 — Visible agent loop | 11 | 11 | ████████████████████ 100% |
-| Slice 3 — Claude integration + human approval | 5 | 13 | ████████░░░░░░░░░░░░ 38% |
+| Slice 3 — Claude integration + human approval | 6 | 13 | █████████░░░░░░░░░░░ 46% |
 | Checkpoint C1 — January 2027 submission pack | 0 | 7 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** S3.06 Classification service and inbox
+**Next up:** S3.07 LLM drafts with validator and template fallback
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · log: `docs/PROGRESS_LOG.md` · demo: `docs/DEMO.md`
