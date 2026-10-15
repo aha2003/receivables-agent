@@ -11,8 +11,8 @@ raw text then goes through the same Pydantic validation as every other client.
   schema retry of §7.2 is ``classify_message``'s job.
 - This SDK has no temperature setting, so none is sent (§3.2 "where supported").
 - Logs carry the model's role (``anthropic:classifier``), never its id.
-- Classify (§7.3) and draft (§8.3) have live prompts. The planner prompt arrives in S3.08;
-  until then plan calls fail as ``LLMCallFailed`` and callers use the rule planner.
+- Classify (§7.3), draft (§8.3) and plan (§18.6, D-037) have live prompts; any call that fails
+  is an ``LLMCallFailed`` and callers take their fallback.
 """
 
 import json
@@ -30,6 +30,8 @@ from receivables.adapters.llm.prompts import (
     CLASSIFIER_SYSTEM,
     DRAFT_SCHEMA,
     DRAFTER_SYSTEM,
+    PLAN_SCHEMA,
+    PLANNER_SYSTEM,
 )
 from receivables.adapters.llm.schemas import LLMCallFailed, LLMResponseInvalid
 
@@ -38,10 +40,11 @@ __all__ = ["API_BASE_URL", "AnthropicClient", "LLMUnavailable", "PromptNotAvaila
 API_BASE_URL = "https://api.anthropic.com"
 MAX_TOKENS = {"classify": 1024, "plan": 2048, "draft": 1024}
 ROLES = {"classify": "classifier", "plan": "planner", "draft": "drafter"}
-# Live prompts per call kind: (system prompt, output schema). The planner's arrives in S3.08.
+# Live prompts per call kind: (system prompt, output schema).
 PROMPTS: dict[str, tuple[str, dict[str, Any]]] = {
     "classify": (CLASSIFIER_SYSTEM, CLASSIFICATION_SCHEMA),
     "draft": (DRAFTER_SYSTEM, DRAFT_SCHEMA),
+    "plan": (PLANNER_SYSTEM, PLAN_SCHEMA),
 }
 
 
@@ -90,9 +93,9 @@ class AnthropicClient(RawLLMClient):
 
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
         self._call.usage = (None, None)
-        self._call.model = f"anthropic:{ROLES[kind]}"
         if kind not in PROMPTS:
-            raise PromptNotAvailable(f"no live {kind} prompt yet")
+            raise PromptNotAvailable(f"no live {kind} prompt")
+        self._call.model = f"anthropic:{ROLES[kind]}"
         system, schema = PROMPTS[kind]
         try:
             message = self._client.messages.create(
@@ -122,6 +125,9 @@ def _user_turn(kind: str, payload: Mapping[str, Any]) -> str:
     """The data as one JSON document, kept apart from the instructions (§7.3, §8.3)."""
     if kind == "draft":
         return "FACTS " + json.dumps(payload.get("facts", {}), ensure_ascii=False, sort_keys=True)
+    if kind == "plan":
+        observation = payload.get("observation", {})
+        return "OBSERVATION " + json.dumps(observation, ensure_ascii=False, sort_keys=True)
     return json.dumps(
         {"language_hint": payload.get("language_hint"), "message": payload.get("text", "")},
         ensure_ascii=False,

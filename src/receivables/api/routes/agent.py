@@ -23,10 +23,10 @@ from receivables.adapters.db.controls import (
     set_kill_switch,
 )
 from receivables.adapters.db.repo import get_user, write_audit
-from receivables.adapters.llm.drafter import make_draft_writer
 from receivables.agent.orchestrator import RunSummary
 from receivables.api.agent_views import pending_approvals, run_trace
 from receivables.api.auth import error_response
+from receivables.api.llm_ports import llm_ports
 from receivables.api.security import SessionUser, verify_password
 
 router = APIRouter()
@@ -126,7 +126,7 @@ async def agent_run(request: Request) -> dict[str, Any]:
         now_local=now,
         dry_run=body.dry_run,
         requested_by=user.username,
-        drafter=make_draft_writer(state.llm),
+        **llm_ports(state),  # none in fake mode (D-037)
         request=body.model_dump(),
     )
     return summary_json(summary, dry_run=body.dry_run)

@@ -68,7 +68,7 @@ class PlannerError(Exception):
 
 
 class PlanSource(Protocol):
-    """A planner model behind a port (the LLM planner is S3.08)."""
+    """A planner model behind a port (the LLM planner: ``adapters.llm.planner``, D-037)."""
 
     @property
     def model(self) -> str | None: ...
@@ -331,6 +331,7 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
     try:
         raw = planner.propose(_observation(tick, invoice))
     except Exception as error:  # any planner failure falls back (§18.6 step 7)
+        _plan_received(tick, invoice, planner, "failed")
         tick.store.audit(
             "agent.planner_failed",
             "invoice",
@@ -339,6 +340,9 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
         )
         return plan_case(tick.facts, invoice), True
     checked = validate_plan(raw, invoice, max_steps=tick.config.max_steps_per_case)
+    _plan_received(
+        tick, invoice, planner, "rejected" if isinstance(checked, PlanRejection) else "used"
+    )
     if isinstance(checked, PlanRejection):
         tick.store.audit(
             "agent.plan_rejected",
@@ -349,6 +353,22 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
         )  # fmt: skip
         return plan_case(tick.facts, invoice), True
     return checked, False
+
+
+def _plan_received(tick: _Tick, invoice: str, planner: PlanSource, use: str) -> None:
+    """§18.6 step 6: model, latency and what became of the plan, one audit row per call.
+
+    The planner reports its own call (``last_call``: model role, prompt version, attempts,
+    latency); ``agent/`` reads no clock (D-037).
+    """
+    call = getattr(planner, "last_call", None)
+    tick.store.audit(
+        "agent.plan_received",
+        "invoice",
+        invoice,
+        {"run_id": tick.run_id, "plan": use, "model": planner.model}
+        | (dict(call) if isinstance(call, Mapping) else {}),
+    )
 
 
 def _run_case(tick: _Tick, invoice: str, planner: PlanSource | None) -> bool:

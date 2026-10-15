@@ -60,6 +60,9 @@ class TestSec04:
                 customer_names=customer_names(engine),
             )
             assert llm.classify(message, "en").label == "PO_AMOUNT_MISMATCH"
+            # A model-backed run (not fake mode): the tick also plans and drafts with it.
+            client.app.state.llm_mode = "replay"  # type: ignore[attr-defined]
+            client.app.state.llm = llm  # type: ignore[attr-defined]
             assert login(client) == 303
             run = client.post(
                 "/api/agent/run",
@@ -78,7 +81,8 @@ class TestSec04:
         calls = [line for line in lines if line["event"] == "llm.call"]
         # Draft calls too (S3.07); those made during a web request also carry its request_id.
         assert calls and all(set(c) - {"request_id"} == LLM_FIELDS for c in calls)
-        assert {c["kind"] for c in calls} == {"classify", "draft"}
+        assert {c["kind"] for c in calls} == {"classify", "plan", "draft"}
+        assert [line for line in lines if line["event"] == "agent.plan_received"] == []  # audit
         (call,) = [c for c in calls if c["kind"] == "classify"]
         assert (call["kind"], call["model"], call["outcome"]) == ("classify", "fake", "ok")
         assert len(call["prompt_sha256"]) == 64

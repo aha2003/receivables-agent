@@ -36,6 +36,8 @@ from receivables.adapters.llm.prompts import (
     DRAFT_SCHEMA,
     DRAFTER_SYSTEM,
     LABEL_DEFINITIONS,
+    PLAN_SCHEMA,
+    PLANNER_SYSTEM,
 )
 from receivables.adapters.llm.schemas import AmountMentioned, Classification, DateMentioned
 from receivables.core.validation import DISPUTE_LABELS
@@ -225,10 +227,30 @@ def test_timeout_and_retries_come_from_the_config() -> None:
     assert (live._client.timeout, live._client.max_retries) == (30.0, 3)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_plan_has_no_live_prompt_yet() -> None:
+def test_the_plan_request_follows_18_6() -> None:
+    plan = {"invoice_number": "INV-003", "steps": [
+        {"tool": "schedule_followup", "args": {"invoice_number": "INV-003", "days": 7},
+         "reason": "check in a week"}]}  # fmt: skip
+    observation = {"case": {"invoice_number": "INV-003", "days_overdue": 30}}
+    server = Server(reply(json.dumps(plan)))
+    result = client(server).plan(observation)
+    assert result.model_dump(mode="json") == plan
+    (body,) = server.bodies()
+    assert body["model"] == MODELS["planner"]
+    assert body["system"] == [
+        {"type": "text", "text": PLANNER_SYSTEM, "cache_control": {"type": "ephemeral"}}
+    ]
+    assert body["output_config"] == {"format": {"type": "json_schema", "schema": PLAN_SCHEMA}}
+    (turn,) = body["messages"]
+    assert turn["content"] == "OBSERVATION " + json.dumps(observation, sort_keys=True)
+    assert "INV-003" not in json.dumps(body["system"])  # the case only in the user turn
+
+
+def test_a_kind_without_a_prompt_is_refused() -> None:
     server = Server(reply(GOOD))
+    live = client(server)
     with pytest.raises(PromptNotAvailable):
-        client(server).plan({})  # the planner prompt arrives in S3.08
+        live.complete("summarise", {})
     assert server.requests == []
 
 
