@@ -171,7 +171,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §3.2, §7.2, §7.3
   - Tests: T-LLM-02
   - Done when: Bad output becomes UNCLEAR with needs_review; CI never calls the network; with a key the smoke script classifies M-01.
-- [ ] **S3.05** Extraction verification
+- [x] **S3.05** Extraction verification
   - Goal: Deterministic verification of every extraction.
   - Spec: §7.4
   - Tests: T-VER-01, T-VER-02, T-VER-03, T-VER-04, T-VER-05, T-LLM-03

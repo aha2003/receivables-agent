@@ -212,3 +212,10 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-032 (no temperature in this SDK; explicit key and base URL; fallback scope; model role logged instead of id; live plan and draft wait for S3.08 and S3.07; review fixes). New dependency: anthropic 1.14.0 with httpx2, httpcore2, jiter, docstring-parser, sniffio, truststore (PROVENANCE.md)
 - Unverified: live behaviour (schema acceptance, caching) until the maintainer runs the smoke script
 - Next step: S3.05 Extraction verification
+
+## 2026-10-15 — [S3.05] Extraction verification
+- PR: see branch | Branch: s3-05-extraction-verification | Commit: see PR head
+- Tests: `uv run pytest -q` → 1794 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; `core/verify.py` 100% lines; every mutation of the normalisation, number parsing, PO role, matching, evidence, ledger, customer and review rules killed
+- Spec / test IDs covered: §7.4 / T-VER-01 (difference 3,000, no flags), T-VER-02 (exactly one `UNMATCHED_INVOICE`), T-VER-03 (`LEDGER_STILL_OPEN` 20,000.00; none for INV-001), T-VER-04 (`E_EVIDENCE_NOT_VERBATIM`, review), T-VER-05 (`UNVERIFIED_EXTRACTION`, `CUSTOMER_INVOICE_MISMATCH`, review), T-LLM-03 (invented INV-777 through FakeClient and `classify_message`: `UNMATCHED_INVOICE`, review); display numbers and ambiguity; Arabic text and digits; Hypothesis properties
+- Deviations or decisions (link docs/DECISIONS.md): D-033 (option 1a: evidence against original or redacted text; option 2a: ambiguous display number as `UNMATCHED_INVOICE` with `ambiguous`; message as the supporting quote; fail-safe PO role rule; added review condition for a PO mismatch without its difference; review fixes)
+- Next step: S3.06 Classification service and inbox

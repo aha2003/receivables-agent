@@ -627,3 +627,8 @@ def test_letters_glued_after_a_number_make_it_a_reference(ledger: list[LedgerRow
     message = "Total 47000AED for INV-004."
     ex = extraction(amounts=(AmountClaim("47000", "AED", "other"),), evidence_quote="Total")
     assert "UNVERIFIED_EXTRACTION" in codes(verify(ex, message, ledger))
+
+
+def test_a_blank_reference_is_not_verified(ledger: list[LedgerRow]) -> None:
+    result = verify(extraction(po_numbers=("   ",), evidence_quote="Please correct."), M01, ledger)
+    assert Flag("UNVERIFIED_EXTRACTION", field="po_numbers") in result.flags
