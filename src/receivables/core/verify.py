@@ -121,9 +121,12 @@ def _spaces(text: str) -> str:
 
 # --- amounts in the message ---------------------------------------------------------------------
 
-# A number that is not part of a reference or a date: no digit, separator, slash or hyphen
-# around it (so INV-004 and 2026-10-28 give no amounts).
-_NUMBER = re.compile(r"(?<![\d.,/-])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![\d/-]|[.,]\d)")
+# A number that is not part of a reference or a date: no Latin letter, digit, separator, slash
+# or hyphen before it, and no digit, letter, slash or hyphen after it (so INV-004, INV004 and
+# 2026-10-28 give no amounts; "AED47,000" fails safe as unverified).
+_NUMBER = re.compile(
+    r"(?<![A-Za-z_\d.,/-])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![A-Za-z_\d/-]|[.,]\d)"
+)
 
 
 def _amounts(text: str) -> list[tuple[Decimal, int]]:
@@ -145,7 +148,7 @@ def _decimal(value: str) -> Decimal | None:
 # --- the PO role --------------------------------------------------------------------------------
 
 _PO = re.compile(r"\bpurchase order|\bpo\b|أمر (?:ال)?شراء")
-_INVOICE = re.compile(r"\binvoices?\b|\binv\b|فاتورة")
+_INVOICE = re.compile(r"\binvoic\w*|\binv\b|\bbill\w*|\bcharg\w*|فاتورة")
 _SENTENCE_END = re.compile(r"[!?؟\n]|\.(?=\s|$)")
 _PO_ABBREVIATION = re.compile(r"\bp\.\s?o\.")
 
@@ -156,12 +159,16 @@ def _role_text(text: str) -> str:
 
 
 def _is_po_context(text: str, position: int) -> bool:
-    """In this sentence, is the nearest mention before ``position`` a purchase order?"""
+    """In this sentence, is the nearest mention before ``position`` a purchase order, with no
+    other amount between them (that amount would be the one the mention is about)?"""
     ends = [m.end() for m in _SENTENCE_END.finditer(text, 0, position)]
     before = text[(ends[-1] if ends else 0) : position]
-    mentions = [(m.start(), "po") for m in _PO.finditer(before)]
-    mentions += [(m.start(), "invoice") for m in _INVOICE.finditer(before)]
-    return bool(mentions) and max(mentions)[1] == "po"
+    mentions = [(m.end(), "po") for m in _PO.finditer(before)]
+    mentions += [(m.end(), "invoice") for m in _INVOICE.finditer(before)]
+    if not mentions:
+        return False
+    nearest, kind = max(mentions)
+    return kind == "po" and not _NUMBER.search(before, nearest)
 
 
 # --- verification -------------------------------------------------------------------------------
@@ -191,8 +198,13 @@ def verify_extraction(
         flags.append(Flag("UNVERIFIED_EXTRACTION", field=name))
 
     def quoted(value: str) -> bool:
+        """``value`` appears as a whole token: INV-001 is not found inside INV-0012."""
         needle = _normal(value)
-        return bool(needle) and needle in text
+        if not needle:
+            return False
+        start = r"(?<![\w-])" if re.match(r"\w", needle) else ""
+        end = r"(?![\w]|-\w)" if re.match(r"\w", needle[-1]) else ""
+        return re.search(start + re.escape(needle) + end, text) is not None
 
     # Invoice references.
     matched: list[LedgerRow] = []
@@ -246,15 +258,23 @@ def verify_extraction(
 
     # The PO amount difference (code-computed, role verified first).
     difference: int | None = None
-    if extraction.label == "PO_AMOUNT_MISMATCH":
+    po_claims = [c for c in extraction.amounts if c.role == "po_amount"]
+    if extraction.label == "PO_AMOUNT_MISMATCH" and po_claims:
         role_text = _role_text(text)
-        for claim in (c for c in extraction.amounts if c.role == "po_amount"):
-            if not any(_is_po_context(role_text, at) for at in positions[claim]):
+        verified: set[Decimal] = set()
+        all_verified = True
+        for claim in po_claims:
+            value = _decimal(claim.value)
+            if value is None or not any(_is_po_context(role_text, at) for at in positions[claim]):
                 unverified("po_amount")
-            elif len(matched) == 1 and difference is None:
-                po_amount = _decimal(claim.value)
-                if po_amount is not None:
-                    difference = matched[0].amount - to_fils(po_amount.quantize(Decimal("0.01")))
+                all_verified = False
+            else:
+                verified.add(value)
+        if len(verified) > 1:  # two different PO amounts: never choose one
+            unverified("po_amount")
+        elif all_verified and len(matched) == 1:
+            (po_amount,) = verified
+            difference = matched[0].amount - to_fils(po_amount.quantize(Decimal("0.01")))
 
     # The ledger.
     if extraction.label == "ALREADY_PAID":
@@ -277,5 +297,7 @@ def verify_extraction(
         or extraction.label == "UNCLEAR"
         or bool(unique)
         or (extraction.label == "PAYMENT_PROMISED" and extraction.promised_payment_date is None)
+        # D-033: a PO mismatch whose difference could not be computed is never auto-accepted.
+        or (extraction.label == "PO_AMOUNT_MISMATCH" and bool(po_claims) and difference is None)
     )
     return Verification(unique, needs_review, difference, tuple(r.invoice_number for r in matched))

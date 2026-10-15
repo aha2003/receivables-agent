@@ -373,7 +373,9 @@ def test_no_difference_without_exactly_one_invoice(
         amounts=(AmountClaim("47000", "AED", "po_amount"),),
         evidence_quote="Please correct.",
     )
-    assert verify(ex, message, ledger).amount_difference is None
+    result = verify(ex, message, ledger)
+    assert result.amount_difference is None
+    assert result.needs_review is True  # a PO mismatch without its difference is never accepted
 
 
 def test_no_difference_for_other_labels(ledger: list[LedgerRow]) -> None:
@@ -542,3 +544,86 @@ def test_flags_serialise_to_the_stored_shape() -> None:
         "code": "UNVERIFIED_EXTRACTION",
         "field": "po_amount",
     }
+
+
+# --- regressions from the spec review ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("message", "fields", "field"),
+    [
+        ("Please check INV-0012, the PO is missing.", {"invoice_numbers": ("INV-001",)},
+         "invoice_numbers"),
+        ("Paid on 2026-10-28 for INV-004.", {"dates": (DateClaim("2026-10-2", "other"),)},
+         "dates_mentioned"),
+        ("Paid for INV-004 under PO-B-004.", {"po_numbers": ("PO-B",)}, "po_numbers"),
+        ("Paid for INV-004 under PO-B-004.", {"po_numbers": ("B-004",)}, "po_numbers"),
+    ],
+)  # fmt: skip
+def test_a_partial_reference_is_not_verified(
+    ledger: list[LedgerRow], message: str, fields: dict[str, Any], field: str
+) -> None:
+    result = verify(extraction(evidence_quote=message, **fields), message, ledger)
+    assert Flag("UNVERIFIED_EXTRACTION", field=field) in result.flags
+    assert result.needs_review is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Our PO says 47,000 but you invoiced 50,000 on INV-004.",
+        "Our PO says 47,000 but you billed 50,000 on INV-004.",
+        "Our PO says 47,000 but you charged 50,000 on INV-004.",
+        "INV-004: PO 47,000 agreed, 50,000 now.",  # another amount between "PO" and 50,000
+    ],
+)
+def test_a_swapped_role_is_caught_in_one_sentence(ledger: list[LedgerRow], message: str) -> None:
+    result = verify(_po((AmountClaim("50000", "AED", "po_amount"),)), message, ledger)
+    assert result.amount_difference is None
+    assert Flag("UNVERIFIED_EXTRACTION", field="po_amount") in result.flags
+    assert result.needs_review is True
+
+
+def test_conflicting_po_amounts_are_never_chosen(ledger: list[LedgerRow]) -> None:
+    message = "INV-004: PO 47,000 per PO-B-004, revised PO 45,000."
+    claims = (AmountClaim("47000", "AED", "po_amount"), AmountClaim("45000", "AED", "po_amount"))
+    result = verify(_po(claims), message, ledger)
+    assert result.amount_difference is None
+    assert Flag("UNVERIFIED_EXTRACTION", field="po_amount") in result.flags
+
+
+def test_the_same_po_amount_twice_still_gives_the_difference(ledger: list[LedgerRow]) -> None:
+    claims = (AmountClaim("47000", "AED", "po_amount"), AmountClaim("47000.00", "AED", "po_amount"))
+    result = verify(_po(claims), M01, ledger)
+    assert result.amount_difference == to_fils("3000.00")
+    assert result.flags == ()
+
+
+@pytest.mark.parametrize(("message", "ok"), [("Ref INV004 total due", False), ("AED47,000", False)])
+def test_digits_glued_to_letters_are_not_amounts(
+    ledger: list[LedgerRow], message: str, ok: bool
+) -> None:
+    value = "4" if "INV004" in message else "47000"
+    ex = extraction(amounts=(AmountClaim(value, "AED", "other"),), evidence_quote=message)
+    assert ("UNVERIFIED_EXTRACTION" not in codes(verify(ex, message, ledger))) is ok
+
+
+@pytest.mark.parametrize("verb", ["invoiced", "billed", "charged", "invoicing"])
+def test_inflected_invoice_words_end_a_po_context(ledger: list[LedgerRow], verb: str) -> None:
+    message = f"Our PO is attached but you {verb} 50,000 for INV-004."  # no amount in between
+    result = verify(_po((AmountClaim("50000", "AED", "po_amount"),)), message, ledger)
+    assert result.amount_difference is None
+
+
+def test_one_unverified_po_claim_blocks_the_difference(ledger: list[LedgerRow]) -> None:
+    # 47,000 is verified as the PO amount; 50,000 is not (it is the invoice amount in M-01).
+    claims = (AmountClaim("47000", "AED", "po_amount"), AmountClaim("50000", "AED", "po_amount"))
+    result = verify(_po(claims), M01, ledger)
+    assert result.amount_difference is None
+    assert result.needs_review is True
+
+
+def test_letters_glued_after_a_number_make_it_a_reference(ledger: list[LedgerRow]) -> None:
+    message = "Total 47000AED for INV-004."
+    ex = extraction(amounts=(AmountClaim("47000", "AED", "other"),), evidence_quote="Total")
+    assert "UNVERIFIED_EXTRACTION" in codes(verify(ex, message, ledger))
