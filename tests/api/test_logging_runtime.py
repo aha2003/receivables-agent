@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from llm_capture import CapturingClient
+from llm_capture import CLASSIFICATION, CapturingClient
 from log_capture import json_logs
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from receivables.adapters.clock import SimulatedClock
 from receivables.adapters.db.repo import customer_names, load_customers
@@ -130,3 +130,43 @@ def test_the_server_entry_point_turns_on_scrubbed_json_logs(tmp_path: Path) -> N
         "timestamp": line["timestamp"],
     }  # fmt: skip
     assert "Beta" not in done.stdout + done.stderr
+
+
+def test_sec_04_the_full_classify_path_logs_no_body_or_personal_data(
+    client: TestClient, engine: Engine, clock: SimulatedClock
+) -> None:
+    # D-031 promised T-SEC-04 again once the classification pipeline exists (S3.06).
+    from receivables.adapters.llm.fake import FakeClient
+
+    seed(engine, FIXTURES, clock)
+    email, phone, trn, iban = INJECTED
+    body = f"{M01} Beta Contracting LLC: {email}, {phone}, TRN {trn}, {iban}"
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO correspondence (message_id, invoice_number, customer_id, direction,"
+                " sent_at, language, body) VALUES ('M-70', 'INV-004', 'CUST-B', 'inbound',"
+                " '2026-10-29T06:00:00Z', 'en', :b)"
+            ),
+            {"b": body},
+        )
+    with json_logs(customer_names(engine)) as logs:
+        client.app.state.llm = RedactingClient(  # type: ignore[attr-defined]
+            FakeClient(classify=lambda _: {**CLASSIFICATION, "evidence_quote": "Please correct."}),
+            redact_before_send=True,
+            pseudonymize_customer_names=True,
+            customer_names=customer_names(engine),
+        )
+        assert login(client) == 303
+        token = csrf(client)
+        classified = client.post(
+            "/api/correspondence/M-70/classify", headers={"X-CSRF-Token": token}
+        )
+        accepted = client.post("/api/classifications/M-70/accept", headers={"X-CSRF-Token": token})
+        assert (classified.status_code, accepted.status_code) == (200, 200)
+    logged = logs.text()
+    assert "We cannot process invoice" not in logged and "Please correct" not in logged
+    assert [v for v in INJECTED if v in logged] == []
+    assert "beta contracting" not in logged.lower()
+    events = [line["event"] for line in logs.lines()]
+    assert "llm.call" in events and "classification.created" in events

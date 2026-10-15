@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Inbox{% endblock %}
+{% block content %}
+<h1>Inbox</h1>
+<p class="note">Inbound customer messages that are not classified yet, or whose classification waits for a decision. Classify asks the model (behind redaction); every result is checked by code against the message and the ledger. Accept applies the rule for the label (a dispute or promise event on the invoice); Reject discards it. Confidence is the model's own score, not a probability: it only decides what needs review.</p>
+<p class="note">A date without a year is read as the occurrence nearest to the day the message was sent.</p>
+{% if error %}<p class="flag" role="alert">{{ error }}</p>{% endif %}
+{% for m in items %}
+{% set c = m.classification %}
+<article class="card" id="msg-{{ m.message_id }}">
+  <h2>{{ m.message_id }}{% if m.invoice_number %} · <a href="/invoices/{{ m.invoice_number|urlencode }}">{{ m.invoice_number }}</a>{% endif %}</h2>
+  <p class="note">{{ m.customer_id or "Unknown customer" }} · sent {{ m.sent_at.strftime("%Y-%m-%d %H:%M") }} (Dubai){% if m.language %} · {{ m.language }}{% endif %}</p>
+  {% if m.subject %}<p><strong>{{ m.subject }}</strong></p>{% endif %}
+  <blockquote dir="auto">{{ m.body or "(no text)" }}</blockquote>
+  {% if c is none %}
+  <form method="post" action="/inbox/{{ m.message_id|urlencode }}/classify">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Classify</button>
+  </form>
+  {% else %}
+  <dl>
+    <dt>Label</dt><dd>{{ c.label|replace("_", " ")|lower }}</dd>
+    <dt>Confidence</dt><dd>{{ "%.2f"|format(c.confidence or 0) }} (model score, uncalibrated)</dd>
+    {% if c.amount_difference_fils is not none %}<dt>Amount difference</dt><dd>{{ c.amount_difference_fils|aed }} (invoice minus PO, computed by code)</dd>{% endif %}
+    {% if c.promised_payment_date %}<dt>Promised date</dt><dd>{{ c.promised_payment_date }}</dd>{% endif %}
+    {% if c.evidence_quote %}<dt>Evidence</dt><dd dir="auto">“{{ c.evidence_quote }}”</dd>{% endif %}
+    {% if c.summary_en %}<dt>Summary</dt><dd>{{ c.summary_en }}</dd>{% endif %}
+    {% if c.error %}<dt>Model call</dt><dd>failed ({{ c.error }}); shown as unclear</dd>{% endif %}
+  </dl>
+  {% if c.needs_review %}<p class="flag">Needs review before accepting.</p>{% endif %}
+  {% if c.flags %}
+  <ul class="flags">{% for f in c.flags %}<li class="flag">{{ f|flag_text }}</li>{% endfor %}</ul>
+  {% endif %}
+  <form method="post" action="/inbox/{{ m.message_id|urlencode }}/accept" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Label
+      <select name="label_override">
+        <option value="">keep {{ c.label|replace("_", " ")|lower }}</option>
+        {% for l in labels %}<option value="{{ l }}">{{ l|replace("_", " ")|lower }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Promised date <input type="date" name="promised_payment_date" value="{{ c.promised_payment_date or '' }}"></label>
+    <button type="submit">Accept</button>
+  </form>
+  <form method="post" action="/inbox/{{ m.message_id|urlencode }}/reject" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Reject</button>
+  </form>
+  <form method="post" action="/inbox/{{ m.message_id|urlencode }}/classify" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Classify again</button>
+  </form>
+  {% endif %}
+</article>
+{% else %}
+<p>No messages to work on. Upload <code>correspondence.csv</code> on the <a href="/upload">Upload</a> page.</p>
+{% endfor %}
+{% endblock %}

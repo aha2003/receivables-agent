@@ -70,6 +70,10 @@ class RedactingClient:
         except Exception:
             raise RedactionUnavailable("customer names could not be read") from None
 
+    def prepared_text(self, text: str) -> str:
+        """The message exactly as ``classify`` sends it (for the evidence check, D-033)."""
+        return self._clean(text, self._names())
+
     def classify(self, text: str, language_hint: str | None) -> Classification:
         return self.inner.classify(self._clean(text, self._names()), language_hint)
 

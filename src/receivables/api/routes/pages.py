@@ -35,7 +35,7 @@ def _kill_switch(request: Request) -> bool:
         return kill_switch_on(conn, state.config)
 
 
-async def _render(
+async def render(
     request: Request, template: str, context: dict[str, Any], status: int = 200
 ) -> Response:
     base = {
@@ -78,7 +78,7 @@ async def dashboard_page(request: Request, as_of: str | None = None) -> Response
         "quality": data_quality(snap),
         "top": snap.kpis.overdue_by_customer[:10],
     }
-    return await _render(request, "dashboard.html", context)
+    return await render(request, "dashboard.html", context)
 
 
 @router.get("/queue", response_class=HTMLResponse)
@@ -95,7 +95,7 @@ async def queue_page(
         and (customer is None or i.scored.customer_id == customer)
     ]
     context = {"snap": snap, "items": items, "bands": BANDS, "band": band, "customer": customer}
-    return await _render(request, "queue.html", context)
+    return await render(request, "queue.html", context)
 
 
 def _flag_list(raw: Any) -> list[Any]:
@@ -133,7 +133,7 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
     snap = await _snapshot(request, as_of)
     row = next((r for r in snap.rows if r.invoice_number == invoice_number), None)
     if row is None:
-        return await _render(
+        return await render(
             request, "not_found.html", {"what": "invoice", "snap": snap}, status=404
         )
     state = request.app.state
@@ -162,21 +162,21 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
         "runs": runs,
         "decisions": decisions,
     }
-    return await _render(request, "invoice.html", context)
+    return await render(request, "invoice.html", context)
 
 
 @router.get("/approvals", response_class=HTMLResponse)
 async def approvals_page(request: Request) -> Response:
     items = await run_in_threadpool(pending_approvals, request.app.state.engine)
-    return await _render(request, "approvals.html", {"items": items})
+    return await render(request, "approvals.html", {"items": items})
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
 async def run_page(request: Request, run_id: str) -> Response:
     trace = await run_in_threadpool(run_trace, request.app.state.engine, run_id)
     if trace is None:
-        return await _render(request, "not_found.html", {"what": "agent run"}, status=404)
-    return await _render(request, "run.html", {"trace": trace, "summary": None})
+        return await render(request, "not_found.html", {"what": "agent run"}, status=404)
+    return await render(request, "run.html", {"trace": trace, "summary": None})
 
 
 @router.post("/agent/run", response_class=HTMLResponse)
@@ -211,15 +211,13 @@ async def run_agent_form(
         },
     )
     if is_dry:  # the trace was rolled back: show the counts only
-        return await _render(request, "run.html", {"trace": None, "summary": summary})
+        return await render(request, "run.html", {"trace": None, "summary": summary})
     return RedirectResponse(f"/runs/{summary.run_id}", status_code=303)
 
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request) -> Response:
-    return await _render(
-        request, "upload.html", {"kinds": FILE_KINDS, "result": None, "kind": None}
-    )
+    return await render(request, "upload.html", {"kinds": FILE_KINDS, "result": None, "kind": None})
 
 
 @router.post("/upload/{kind}", response_class=HTMLResponse)
@@ -235,6 +233,6 @@ async def upload_submit(
     }
     if isinstance(result, ImportRefusal):
         context["refusal"] = result
-        return await _render(request, "upload.html", context, status=result.status)
+        return await render(request, "upload.html", context, status=result.status)
     context["result"] = result
-    return await _render(request, "upload.html", context, status=result.http_status)
+    return await render(request, "upload.html", context, status=result.http_status)

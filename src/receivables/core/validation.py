@@ -13,7 +13,7 @@ import csv
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.money import from_fils, to_fils
@@ -25,13 +25,14 @@ __all__ = [
     "FILE_KINDS",
     "CustomerRow",
     "Issue",
+    "MessageRecord",
     "References",
     "ValidationResult",
     "derive_tin",
     "validate_csv",
 ]
 
-FILE_KINDS = ("customers", "invoices", "payments", "events")
+FILE_KINDS = ("customers", "invoices", "payments", "events", "correspondence")
 
 # SPEC §7.1: the 13 labels; events of type DISPUTE_OPENED must carry one.
 DISPUTE_LABELS = frozenset(
@@ -70,6 +71,7 @@ _AMOUNT = re.compile(r"-?[0-9]+(?:\.[0-9]{1,2})?")  # at most 2 written decimals
 _INTEGER = re.compile(r"[0-9]{1,3}")
 _TRN = re.compile(r"[0-9]{15}")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_MESSAGE_ID = re.compile(r"[A-Za-z0-9._-]+")
 
 # Columns per kind: (required in the header, optional in the header).
 _COLUMNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -89,7 +91,16 @@ _COLUMNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("event_id", "invoice_number", "event_type", "event_date"),
         ("label", "promise_date"),
     ),
+    "correspondence": (  # §4.5
+        ("message_id", "direction", "sent_at"),
+        ("invoice_number", "customer_id", "language", "subject", "body"),
+    ),
 }
+DIRECTIONS = frozenset({"inbound", "outbound"})
+LANGUAGES = frozenset({"en", "ar", "auto"})
+MAX_ID_CHARS = 64
+MAX_SUBJECT_CHARS = 500
+MAX_BODY_CHARS = 20_000  # a longer body is out of range (E_BAD_ENUM, as for long ids)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +122,21 @@ class CustomerRow:
     contact_email: str | None
 
 
-Record = CustomerRow | InvoiceRecord | PaymentRecord | EventRecord
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MessageRecord:
+    """A §4.5 correspondence row; ``sent_at`` is timezone-aware and stored in UTC."""
+
+    message_id: str
+    invoice_number: str | None
+    customer_id: str | None
+    direction: str
+    sent_at: datetime
+    language: str | None
+    subject: str | None
+    body: str | None
+
+
+Record = CustomerRow | InvoiceRecord | PaymentRecord | EventRecord | MessageRecord
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -122,6 +147,8 @@ class References:
     invoice_customers: Mapping[str, str] = field(default_factory=dict)
     invoice_amounts: Mapping[str, int] = field(default_factory=dict)
     existing_payments: Mapping[str, tuple[str | None, int]] = field(default_factory=dict)
+    # Messages that already have a classification, as stored: their text may not change.
+    classified_messages: Mapping[str, "MessageRecord"] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,6 +394,64 @@ def _event(line: int, row: Mapping[str, str], ctx: _Context) -> EventRecord:
     )
 
 
+def _parse_timestamp(value: str, name: str) -> datetime:
+    """ISO 8601 with an explicit offset or ``Z``; a naive time is ambiguous and refused."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise _RowError("E_BAD_DATE", name) from None
+    if parsed.tzinfo is None or not _DATE.match(value):
+        raise _RowError("E_BAD_DATE", name)
+    return parsed.astimezone(UTC)
+
+
+def _message(line: int, row: Mapping[str, str], ctx: _Context) -> MessageRecord:
+    _require(row, "message_id", "direction", "sent_at")
+    ctx.unique(row["message_id"], "message_id")
+    if len(row["message_id"]) > MAX_ID_CHARS or not _MESSAGE_ID.fullmatch(row["message_id"]):
+        raise _RowError("E_BAD_ENUM", "message_id")  # ids appear in URLs: no "/" or spaces
+    sent_at = _parse_timestamp(row["sent_at"], "sent_at")
+    if row["direction"] not in DIRECTIONS:
+        raise _RowError("E_BAD_ENUM", "direction")
+    language = row.get("language") or None
+    if language is not None and language not in LANGUAGES:
+        raise _RowError("E_BAD_ENUM", "language")
+    subject = row.get("subject") or None
+    if subject is not None and len(subject) > MAX_SUBJECT_CHARS:
+        raise _RowError("E_BAD_ENUM", "subject")
+    body = row.get("body") or None
+    if body is not None and len(body) > MAX_BODY_CHARS:
+        raise _RowError("E_BAD_ENUM", "body")
+    invoice_number = row.get("invoice_number") or None
+    customer_id = row.get("customer_id") or None
+    if invoice_number is not None and invoice_number not in ctx.refs.invoice_customers:
+        raise _RowError("E_FK_MISSING", "invoice_number")
+    if customer_id is not None and customer_id not in ctx.refs.customer_ids:
+        raise _RowError("E_FK_MISSING", "customer_id")
+    if (
+        invoice_number is not None
+        and customer_id is not None
+        and ctx.refs.invoice_customers[invoice_number] != customer_id
+    ):
+        raise _RowError("E_CUSTOMER_MISMATCH", "customer_id")
+    record = MessageRecord(
+        message_id=row["message_id"],
+        invoice_number=invoice_number,
+        customer_id=customer_id,
+        direction=row["direction"],
+        sent_at=sent_at,
+        language=language,
+        subject=subject,
+        body=body,
+    )
+    stored = ctx.refs.classified_messages.get(record.message_id)
+    if stored is not None and stored != record:
+        # A classified message keeps the text it was classified on (D-034).
+        raise _RowError("E_DUP_KEY", "message_id")
+    ctx.future(line, "sent_at", sent_at.date())
+    return record
+
+
 def _overpaid_warnings(ctx: _Context) -> list[Issue]:
     """``W_OVERPAID`` on the row where applied payments first exceed the invoice amount.
 
@@ -393,6 +478,7 @@ _PARSERS: dict[str, Callable[[int, Mapping[str, str], _Context], Record]] = {
     "invoices": _invoice,
     "payments": _payment,
     "events": _event,
+    "correspondence": _message,
 }
 
 

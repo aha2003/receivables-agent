@@ -22,6 +22,7 @@ from receivables.adapters.clock import Clock, SystemClock
 from receivables.adapters.config import load_config
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.repo import customer_names
+from receivables.adapters.llm.factory import make_llm_client
 from receivables.adapters.llm.mode import resolve_llm_mode
 from receivables.adapters.log import RequestIdMiddleware, configure_logging
 from receivables.api.auth import auth_gate, error_response
@@ -30,7 +31,9 @@ from receivables.api.headers import SECURITY_HEADERS, SecurityHeadersMiddleware
 from receivables.api.limits import BodySizeLimitMiddleware
 from receivables.api.routes import agent as agent_routes
 from receivables.api.routes import auth as auth_routes
+from receivables.api.routes import correspondence as correspondence_routes
 from receivables.api.routes import data as data_routes
+from receivables.api.routes import inbox as inbox_routes
 from receivables.api.routes import pages as page_routes
 from receivables.api.security import LoginRateLimiter, ReauthRegistry
 from receivables.core.money import from_fils
@@ -79,6 +82,10 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.state.llm_mode = resolve_llm_mode(settings, config)  # refuses a mode conflict (D-029)
     app.state.clock = clock
     app.state.engine = engine if engine is not None else make_engine(settings.database_url)
+    # One LLM client for the app, always behind redaction (D-031); live needs its settings.
+    app.state.llm = make_llm_client(
+        settings, config, customer_names=customer_names(app.state.engine)
+    )
     app.state.session_ttl = timedelta(minutes=config.app.session_ttl_minutes)
     app.state.login_limiter = LoginRateLimiter(clock, limit=config.app.login_rate_limit_per_minute)
     app.state.reauth = ReauthRegistry()
@@ -93,6 +100,8 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.include_router(auth_routes.router)
     app.include_router(data_routes.router)
     app.include_router(agent_routes.router)
+    app.include_router(correspondence_routes.router)
+    app.include_router(inbox_routes.router)
     app.include_router(page_routes.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.

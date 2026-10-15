@@ -275,7 +275,6 @@ def test_import_audit_actor_is_the_signed_in_user(client: TestClient, engine: En
 @pytest.mark.parametrize(
     ("kind", "params", "status", "error"),
     [
-        ("correspondence", {}, 501, "not_implemented"),
         ("ledgers", {}, 404, "not_found"),
         ("customers", {"dry_run": "true"}, 400, "not_supported"),
         ("customers", {"mode": "replace"}, 422, "invalid_request"),

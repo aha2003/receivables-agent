@@ -59,3 +59,25 @@ Kill switch: an admin turns it on with `POST /api/reauth` (password re-entry) an
 ### What Slice 2 does not show
 
 No LLM planner, classification, LLM drafts, inbox, human approval, or sending from the sandbox outbox (Slice 3); no simulator or learning (Slice 4). At L1 nothing is ever sent by the system.
+
+## Slice 3 (in progress): the inbox and classification
+
+Added with S3.06. The classifier runs in the mode set by `LLM_MODE` (default `fake`). In fake mode every **Classify** honestly falls back to "unclear, needs review" (no model is called); the flags and accept rules below were checked by hand on 2026-10-15 with a scripted classifier against a throwaway copy of the golden data. A live run needs `LLM_MODE=live` with the key and model ids in `.env` (D-032); message text is redacted before it is sent (D-031).
+
+### Setup
+
+As for Slice 1 and 2, then on **Upload**, upload `fixtures/correspondence.csv` (15 synthetic messages, §6.10; not part of the seed).
+
+### Walkthrough
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Open **Inbox** in the nav. | 15 cards, unclassified first in the order they were sent, each with the message as written (Arabic ones right-to-left) and a **Classify** button. |
+| 2 | Classify **M-06** ("We paid INV-005 in full on 5 October…"). | With a model that labels it already paid and also names an invoice that does not exist: "Needs review before accepting." and the flags in plain language, among them "Customer says paid but the ledger shows AED 20,000.00 open. Check the bank statement." and "The message mentions invoice INV-777, which is not in the ledger. Check the reference." The same flags appear on the INV-005 invoice page. |
+| 3 | Classify **M-01** (the PO mismatch). | Label "po amount mismatch", "Amount difference AED 3,000.00 (invoice minus PO, computed by code)", no review needed. |
+| 4 | Press **Accept** on M-01. | The card leaves the inbox; the INV-004 timeline gains "2026-10-12: dispute opened (PO_AMOUNT_MISMATCH)", dated on the day the message was sent. |
+| 5 | Classify **M-03** ("…released on 20 October"). | Promised date 2026-10-20, read from "20 October" relative to the day it was sent; **Accept** creates a promise to pay. |
+
+### What this part does not show
+
+The live accuracy gate (T-LLM-01) needs a run the maintainer records with `scripts/eval_classifier.py --record`; LLM drafts, the LLM planner, approvals and the sandbox outbox follow in S3.07 to S3.09.

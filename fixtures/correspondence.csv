@@ -1,0 +1,16 @@
+message_id,invoice_number,customer_id,direction,sent_at,language,subject,body
+M-01,INV-004,CUST-B,inbound,2026-10-12T09:15:00+04:00,en,Re: invoice INV-004,"We cannot process invoice INV-004 because purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000. Please correct."
+M-02,INV-009,CUST-C,inbound,2026-10-13T10:00:00+04:00,en,Re: invoice INV-009,"We have not received the delivery note for INV-009, so we cannot approve it for payment."
+M-03,INV-008,CUST-C,inbound,2026-10-14T11:30:00+04:00,en,Re: invoice INV-008,Payment for INV-008 will be released on 20 October.
+M-04,INV-003,CUST-A,inbound,2026-10-15T08:45:00+04:00,en,Re: invoice INV-003,Please send a statement of account and a copy of INV-003.
+M-05,INV-011,CUST-B,inbound,2026-10-16T09:00:00+04:00,en,Re: invoice INV-011,Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.
+M-06,INV-005,CUST-B,inbound,2026-10-08T14:20:00+04:00,en,Re: invoice INV-005,"We paid INV-005 in full on 5 October by bank transfer, reference TRF-88231."
+M-07,INV-013,CUST-A,inbound,2026-10-19T10:10:00+04:00,en,Re: invoice INV-013,"The delivery against INV-013 was short by 20 units, so we will only pay for what we received."
+M-08,INV-012,CUST-C,inbound,2026-10-20T12:00:00+04:00,en,Re: invoice INV-012,The unit rate on INV-012 is higher than the rate in our agreed contract.
+M-09,INV-003,CUST-A,inbound,2026-10-21T09:30:00+04:00,en,Re: invoice INV-003,"Our finance director is on leave, so approval of INV-003 is pending until next week."
+M-10,INV-011,CUST-B,inbound,2026-10-22T15:00:00+04:00,en,Re: invoice INV-011,We are facing cash flow constraints and would like to pay INV-011 in two instalments.
+M-11,INV-009,CUST-C,inbound,2026-10-23T10:45:00+04:00,ar,Re: invoice INV-009,لم نستلم إشعار التسليم الخاص بالفاتورة INV-009
+M-12,INV-005,CUST-B,inbound,2026-10-24T09:05:00+04:00,ar,Re: invoice INV-005,تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر
+M-13,,,inbound,2026-10-26T08:00:00+04:00,en,Re: your statement,"Thanks, noted."
+M-14,,,inbound,2026-10-27T13:15:00+04:00,en,Re: your statement,Please advise.
+M-15,INV-006,CUST-B,inbound,2026-10-28T11:00:00+04:00,en,Re: invoice INV-006,Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.
