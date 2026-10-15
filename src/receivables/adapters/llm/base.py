@@ -18,6 +18,7 @@ from typing import Any, Protocol
 from receivables.adapters.llm.schemas import (
     Classification,
     DraftResponse,
+    LLMResponseInvalid,
     PlanResponse,
     parse_response,
 )
@@ -98,18 +99,38 @@ class RawLLMClient(ABC):
         """Input and output tokens of the last call, when the client knows them (S3.04)."""
         return None, None
 
+    @staticmethod
+    def _parse[M: Classification | PlanResponse | DraftResponse](
+        kind: str, payload: Mapping[str, Any], raw: str, model: type[M]
+    ) -> M:
+        """Validate the response; a refusal is logged by field path only (D-035)."""
+        try:
+            return parse_response(kind, raw, model)
+        except LLMResponseInvalid as error:
+            # ``llm.call`` says the API answered; this says the answer was refused, and where.
+            log.warning(
+                "llm.response_invalid",
+                extra={
+                    "kind": kind,
+                    "prompt_version": PROMPT_VERSIONS[kind],
+                    "prompt_sha256": request_key(kind, payload),
+                    "reason": error.reason,
+                },
+            )
+            raise
+
     @abstractmethod
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
         """The raw text the model returned for this request."""
 
     def classify(self, text: str, language_hint: str | None) -> Classification:
-        raw = self._complete("classify", {"text": text, "language_hint": language_hint})
-        return parse_response("classify", raw, Classification)
+        payload = {"text": text, "language_hint": language_hint}
+        return self._parse("classify", payload, self._complete("classify", payload), Classification)
 
     def plan(self, observation: Mapping[str, Any]) -> PlanResponse:
-        raw = self._complete("plan", {"observation": observation})
-        return parse_response("plan", raw, PlanResponse)
+        payload = {"observation": observation}
+        return self._parse("plan", payload, self._complete("plan", payload), PlanResponse)
 
     def draft(self, facts: Mapping[str, Any]) -> DraftResponse:
-        raw = self._complete("draft", {"facts": facts})
-        return parse_response("draft", raw, DraftResponse)
+        payload = {"facts": facts}
+        return self._parse("draft", payload, self._complete("draft", payload), DraftResponse)

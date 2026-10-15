@@ -632,3 +632,20 @@ def test_letters_glued_after_a_number_make_it_a_reference(ledger: list[LedgerRow
 def test_a_blank_reference_is_not_verified(ledger: list[LedgerRow]) -> None:
     result = verify(extraction(po_numbers=("   ",), evidence_quote="Please correct."), M01, ledger)
     assert Flag("UNVERIFIED_EXTRACTION", field="po_numbers") in result.flags
+
+
+def test_a_huge_po_amount_is_never_verified_and_never_crashes(ledger: list[LedgerRow]) -> None:
+    big = "9" * 29
+    message = f"Invoice INV-004: purchase order PO-B-004 was issued for AED {big}."
+    result = verify(_po((AmountClaim(big, "AED", "po_amount"),)), message, ledger)
+    assert result.amount_difference is None
+    assert result.needs_review is True
+
+
+def test_a_european_number_in_the_message_is_not_an_amount(ledger: list[LedgerRow]) -> None:
+    # "47.000" could be 47 or 47,000: neither may verify a claim, so it goes to review.
+    message = "Invoice INV-004: purchase order PO-B-004 was issued for AED 47.000, invoice 50,000."
+    for value in ("47", "47.00", "47000"):
+        result = verify(_po((AmountClaim(value, "AED", "po_amount"),)), message, ledger)
+        assert result.amount_difference is None, value
+        assert Flag("UNVERIFIED_EXTRACTION", field="amounts_mentioned") in result.flags

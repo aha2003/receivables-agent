@@ -4,7 +4,8 @@ Every client returns raw text; ``parse_response`` turns it into one of these mod
 ``LLMResponseInvalid``. The models only check shape: whether an extracted value is true is the
 job of deterministic verification (§7.4), and whether a plan may run is ``validate_plan``
 (§18.6, D-024). Models refuse unknown keys and never coerce types, so an amount written as a
-JSON number (a float) is refused.
+JSON number (a float) is refused. Amount values are kept as the message writes them
+(``47,000``); ``parse_written_amount`` decides what counts as an amount (D-035).
 """
 
 import json
@@ -14,6 +15,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 
+from receivables.core.money import parse_written_amount
 from receivables.core.validation import DISPUTE_LABELS
 
 __all__ = [
@@ -31,7 +33,6 @@ __all__ = [
 
 MAX_EVIDENCE_CHARS = 200  # §7.2
 MAX_SUMMARY_WORDS = 40  # §7.2
-_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]{1,2})?")  # a plain amount as the model read it
 
 
 class LLMCallFailed(Exception):
@@ -65,8 +66,9 @@ def _label(value: str) -> str:
 
 
 def _decimal(value: str) -> str:
-    if not _DECIMAL.fullmatch(value):
-        raise ValueError("amount value must be a plain decimal string such as 47000.00")
+    # As written in the message (§7.3): code normalises it when it verifies the amount (D-035).
+    if parse_written_amount(value) is None:
+        raise ValueError("amount value must be a number as written, such as 47,000 or 47000.00")
     return value
 
 

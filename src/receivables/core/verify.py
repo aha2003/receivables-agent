@@ -25,12 +25,12 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from fractions import Fraction
 from typing import Any
 
 from receivables.core.ledger import LedgerRow
-from receivables.core.money import to_fils
+from receivables.core.money import parse_written_amount, to_fils
 
 __all__ = [
     "AmountClaim",
@@ -123,9 +123,10 @@ def _spaces(text: str) -> str:
 
 # A number that is not part of a reference or a date: no Latin letter, digit, separator, slash
 # or hyphen before it, and no digit, letter, slash or hyphen after it (so INV-004, INV004 and
-# 2026-10-28 give no amounts; "AED47,000" fails safe as unverified).
+# 2026-10-28 give no amounts; "AED47,000" fails safe as unverified). At most two decimals: a
+# European "47.000" is not read as 47 (it gives no amount, so a claim of 47 goes to review).
 _NUMBER = re.compile(
-    r"(?<![A-Za-z_\d.,/-])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(?![A-Za-z_\d/-]|[.,]\d)"
+    r"(?<![A-Za-z_\d.,/-])(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,2})?(?![A-Za-z_\d/-]|[.,]\d)"
 )
 
 
@@ -138,11 +139,8 @@ def _amounts(text: str) -> list[tuple[Decimal, int]]:
 
 
 def _decimal(value: str) -> Decimal | None:
-    try:
-        number = Decimal(_digits(value.strip()))
-    except InvalidOperation:
-        return None
-    return number if number.is_finite() else None
+    """The model's amount as written in the message (``47,000``), as an exact ``Decimal``."""
+    return parse_written_amount(value)  # the same rule as the response schema
 
 
 # --- the PO role --------------------------------------------------------------------------------
@@ -274,7 +272,7 @@ def verify_extraction(
             unverified("po_amount")
         elif all_verified and len(matched) == 1:
             (po_amount,) = verified
-            difference = matched[0].amount - to_fils(po_amount.quantize(Decimal("0.01")))
+            difference = matched[0].amount - to_fils(po_amount)  # at most two decimals
 
     # The ledger.
     if extraction.label == "ALREADY_PAID":

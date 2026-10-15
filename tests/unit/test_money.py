@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from receivables.core.money import MAX_FILS_DIGITS, from_fils, to_fils
+from receivables.core.money import MAX_FILS_DIGITS, from_fils, parse_written_amount, to_fils
 
 
 class TestMoney01:
@@ -114,3 +114,50 @@ def test_largest_amount_round_trips() -> None:
 
 def test_trailing_zeros_beyond_two_places_accepted() -> None:
     assert to_fils("10.5000000000000000000000000000000000") == 1050
+
+
+# --- amounts as written (D-035) -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("47000", Decimal("47000")),
+        ("47,000", Decimal("47000")),
+        ("47000.5", Decimal("47000.5")),
+        ("1,050,000.00", Decimal("1050000.00")),
+        ("\u0664\u0667\u066c\u0660\u0660\u0660", Decimal("47000")),  # Arabic-Indic, Arabic comma
+        ("\u0664\u0667\u0660\u0660\u0660\u066b\u0665", Decimal("47000.5")),
+        ("0", Decimal("0")),
+    ],
+)
+def test_written_amounts_parse_exactly(value: str, expected: Decimal) -> None:
+    assert parse_written_amount(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "47,00", "4,7000", ",47000", "47000,", "47.000,50", "47 000", "-47000", "+5", "4.7e4",
+     "1.005", "NaN", "Infinity", "AED 47,000", "47000.", ".5", "1" * 33],
+)  # fmt: skip
+def test_anything_else_is_not_a_written_amount(value: str) -> None:
+    assert parse_written_amount(value) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\uff14\uff17,\uff10\uff10\uff10",  # full-width digits
+        "\u096a\u096d\u0966\u0966\u0966",  # Devanagari
+        "\U0001d7d2\U0001d7d5000",  # mathematical bold
+        "1" * 16,  # more than 15 integer digits
+        "9" * 29,  # would overflow Decimal's default precision downstream
+    ],
+)
+def test_other_digit_forms_and_huge_amounts_are_refused(value: str) -> None:
+    assert parse_written_amount(value) is None
+
+
+def test_the_largest_amount_has_fifteen_integer_digits() -> None:
+    assert parse_written_amount("999,999,999,999,999.99") == Decimal("999999999999999.99")
+    assert parse_written_amount("\u06f4\u06f7\u06f0\u06f0\u06f0") == Decimal("47000")  # Extended

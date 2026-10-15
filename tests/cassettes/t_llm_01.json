@@ -1,0 +1,172 @@
+{
+  "format": 1,
+  "name": "t_llm_01",
+  "synthetic": true,
+  "interactions": [
+    {
+      "kind": "classify",
+      "request_sha256": "e7bc72a8fcd9143160352e0362f284943ff61fbbfff8ad02ad4d44e3dd15d8dd",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "We cannot process invoice INV-004 because purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000. Please correct.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"PO_AMOUNT_MISMATCH\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-004\"],\"po_numbers\":[\"PO-B-004\"],\"amounts_mentioned\":[{\"value\":\"47,000\",\"currency\":\"AED\",\"role\":\"po_amount\"},{\"value\":\"50,000\",\"currency\":\"AED\",\"role\":\"invoice_amount\"}],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000\",\"summary_en\":\"Customer states invoice INV-004 for AED 50,000 does not match purchase order PO-B-004 for AED 47,000 and asks for correction.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "bfb64fb52d9cd40815273acdc983b2748d6baf3525acf8e437894e7aa85916c3",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "We have not received the delivery note for INV-009, so we cannot approve it for payment.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"MISSING_DELIVERY_NOTE\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-009\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We have not received the delivery note for INV-009, so we cannot approve it for payment.\",\"summary_en\":\"Customer has not received the delivery note for invoice INV-009 and cannot approve it for payment until it is provided.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "047c35ddd8ec0955debab069ba6c49c206379071265d7e63cf9d13450efd39b7",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Payment for INV-008 will be released on 20 October.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"PAYMENT_PROMISED\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-008\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 October\",\"role\":\"promised_payment\"}],\"promised_payment_date\":\"20 October\",\"evidence_quote\":\"Payment for INV-008 will be released on 20 October.\",\"summary_en\":\"Customer states payment for invoice INV-008 will be released on 20 October.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "af7c7905a2fbb8efcb4e2133fb783bd5f3b2ad8cecec44fc3e5c8b1fc0523ed8",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Please send a statement of account and a copy of INV-003.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"REQUEST_STATEMENT_OR_COPY\",\"confidence\":0.97,\"invoice_numbers\":[\"INV-003\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please send a statement of account and a copy of INV-003.\",\"summary_en\":\"Customer requests a statement of account and a copy of invoice INV-003.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "201cb4966860729dfbe835deaf234d73f45851ce77cc145f1972df45644761a8",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"MISSING_PO\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.\",\"summary_en\":\"Customer says invoice INV-011 lacks their PO number and asks for it to be reissued with the PO reference.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "6c5b66a73a950fb742dcb1e999db1eca646d9357338e0df9c3fd9c79fc175f3e",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "We paid INV-005 in full on 5 October by bank transfer, reference TRF-88231.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"5 October\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"We paid INV-005 in full on 5 October by bank transfer, reference TRF-88231.\",\"summary_en\":\"Customer states invoice INV-005 was paid in full on 5 October by bank transfer, reference TRF-88231.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "cd88ab5d2b5e4351f94e9ee52f76f2b00dc0222e2507b7817a1fa9d4c72eec93",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "The delivery against INV-013 was short by 20 units, so we will only pay for what we received.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"GOODS_OR_SERVICE_ISSUE\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-013\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"The delivery against INV-013 was short by 20 units, so we will only pay for what we received.\",\"summary_en\":\"The customer reports that the delivery for invoice INV-013 was short by 20 units and will only pay for the quantity received.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "84a8067d4fe1eff2508f6997898ee9cca54060fd6a6ca6fc28acbd525c2e147c",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "The unit rate on INV-012 is higher than the rate in our agreed contract.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"PRICE_OR_RATE_DISPUTE\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-012\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"The unit rate on INV-012 is higher than the rate in our agreed contract.\",\"summary_en\":\"Customer disputes invoice INV-012 because its unit rate is higher than the rate in the agreed contract.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "fb80bfda2ddd1dc007e4122073a36d460f5faa967d03b6eb33746e243f223f9e",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Our finance director is on leave, so approval of INV-003 is pending until next week.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"AWAITING_INTERNAL_APPROVAL\",\"confidence\":0.9,\"invoice_numbers\":[\"INV-003\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"next week\",\"role\":\"promised_payment\"}],\"promised_payment_date\":null,\"evidence_quote\":\"Our finance director is on leave, so approval of INV-003 is pending until next week.\",\"summary_en\":\"Customer says approval of invoice INV-003 is pending because the finance director is on leave, until next week.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "19467470a3857c3b1e180b3fa3c9427d0465f7deb882a89ae94541637378949b",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "We are facing cash flow constraints and would like to pay INV-011 in two instalments.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"CASHFLOW_DELAY\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We are facing cash flow constraints and would like to pay INV-011 in two instalments.\",\"summary_en\":\"Customer reports cash flow constraints and requests to pay invoice INV-011 in two instalments.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "89198338dc01e987948d99a806f9dcd74caa179b60c15ea8d75d6add45959c7d",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "لم نستلم إشعار التسليم الخاص بالفاتورة INV-009",
+        "language_hint": "ar"
+      },
+      "response": "{\"label\":\"MISSING_DELIVERY_NOTE\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-009\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"لم نستلم إشعار التسليم الخاص بالفاتورة INV-009\",\"summary_en\":\"The customer says they have not received the delivery note for invoice INV-009.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "d1889d2f85f8e15323cb929fcc4d8915a1902a6ea764a39c8fb78f50e85f2e33",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر",
+        "language_hint": "ar"
+      },
+      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 أكتوبر\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر\",\"summary_en\":\"Customer states that invoice INV-005 was paid on 20 October.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "7504c59d0ae9cb70fd489a8cc0270eb84c2ad439bcf9261bb3ecc2f9c0451887",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Thanks, noted.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"NO_ACTION_NEEDED\",\"confidence\":0.85,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Thanks, noted.\",\"summary_en\":\"Customer sent a brief acknowledgement with no payment dispute, promise, or request.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "66f0e2e094e82d3a335ee170de2509dc15b156a0919a4f5dc643cbb2c703d319",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Please advise.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"UNCLEAR\",\"confidence\":0.3,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please advise.\",\"summary_en\":\"The customer message only says 'Please advise' with no details about the unpaid invoice, so it cannot be classified.\"}"
+    },
+    {
+      "kind": "classify",
+      "request_sha256": "959855f00693dcffa185b8c72d3a71f121ef75690c9cfed91ab264c6cc6fd944",
+      "prompt_version": "classify-v1",
+      "model": "anthropic:classifier",
+      "request": {
+        "text": "Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.",
+        "language_hint": "en"
+      },
+      "response": "{\"label\":\"WRONG_ENTITY_OR_DETAILS\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-006\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.\",\"summary_en\":\"Customer states invoice INV-006 is addressed to the wrong legal entity and that the TRN shown differs from theirs.\"}"
+    }
+  ]
+}

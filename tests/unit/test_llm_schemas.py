@@ -84,9 +84,33 @@ def test_confidence_bounds_accepted(confidence: float) -> None:
             "amounts_mentioned.0.value",
         ),
         (
-            {"amounts_mentioned": [{"value": "47,000", "currency": "AED", "role": "other"}]},
+            {"amounts_mentioned": [{"value": "47,00", "currency": "AED", "role": "other"}]},
             "amounts_mentioned.0.value",
-        ),
+        ),  # not a thousands group
+        (
+            {"amounts_mentioned": [{"value": "4,7000", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # group of four
+        (
+            {"amounts_mentioned": [{"value": "47.000,50", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # European separators
+        (
+            {"amounts_mentioned": [{"value": "47 000", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # space as a separator
+        (
+            {"amounts_mentioned": [{"value": "-47000", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # a sign
+        (
+            {"amounts_mentioned": [{"value": "4.7e4", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # an exponent
+        (
+            {"amounts_mentioned": [{"value": "AED 47,000", "currency": "AED", "role": "other"}]},
+            "amounts_mentioned.0.value",
+        ),  # a currency inside the value
         (
             {"amounts_mentioned": [{"value": "1.005", "currency": "AED", "role": "other"}]},
             "amounts_mentioned.0.value",
@@ -115,6 +139,25 @@ def test_bad_classifications_are_rejected(changes: dict[str, Any], where: str) -
         parse_response("classify", raw, Classification)
     assert error.value.kind == "classify"
     assert where in error.value.reason
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "47000",
+        "47000.5",
+        "47000.00",
+        "47,000",
+        "1,050,000.00",
+        "\u0664\u0667\u066c\u0660\u0660\u0660",
+    ],
+)
+def test_amounts_are_kept_as_written(value: str) -> None:
+    # The model copies the amount as the message writes it (§7.3); code normalises it when it
+    # verifies the extraction (D-035). The live run of S3.06 wrote "47,000" for M-01.
+    amounts = [{"value": value, "currency": "AED", "role": "po_amount"}]
+    raw = json.dumps({**CLASSIFICATION, "amounts_mentioned": amounts}, ensure_ascii=False)
+    assert parse_response("classify", raw, Classification).amounts_mentioned[0].value == value
 
 
 @pytest.mark.parametrize("key", ["label", "confidence", "evidence_quote", "summary_en"])
