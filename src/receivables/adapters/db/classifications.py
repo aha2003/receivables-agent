@@ -322,3 +322,38 @@ def reject(engine: Engine, message_id: str, *, clock: Clock, actor: str) -> dict
         )
         stored = _stored(conn, message_id)
     return classification_json(stored)
+
+
+def inbox_items(engine: Engine) -> list[dict[str, Any]]:
+    """Inbound messages to work on (§10 Inbox): unclassified first, then pending ones,
+    those that need review before the others; accepted and rejected ones are done."""
+    c, k = Correspondence.__table__, Classification.__table__
+    stmt = (
+        select(c, k.c.message_id.label("classified"))
+        .select_from(c.outerjoin(k, k.c.message_id == c.c.message_id))
+        .where(c.c.direction == "inbound")
+        .where((k.c.message_id.is_(None)) | (k.c.status == "pending"))
+        .order_by(c.c.sent_at, c.c.message_id)
+    )
+    items: list[dict[str, Any]] = []
+    with engine.connect() as conn:
+        for row in conn.execute(stmt).all():
+            stored = _stored(conn, row.message_id) if row.classified else None
+            items.append(
+                {
+                    "message_id": row.message_id,
+                    "invoice_number": row.invoice_number,
+                    "customer_id": row.customer_id,
+                    "sent_at": datetime.fromisoformat(row.sent_at).astimezone(DUBAI),
+                    "language": row.language,
+                    "subject": row.subject,
+                    "body": row.body,
+                    "classification": None if stored is None else classification_json(stored),
+                }
+            )
+
+    def order(item: dict[str, Any]) -> int:
+        result = item["classification"]
+        return 0 if result is None else (1 if result["needs_review"] else 2)
+
+    return sorted(items, key=order)  # stable: sent_at order within each group

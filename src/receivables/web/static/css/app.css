@@ -29,3 +29,9 @@ pre.body { white-space: pre-wrap; background: #fff; border: 1px solid #ddd; padd
 article.draft, article.run { border-top: 1px solid #ddd; padding-top: 0.5rem; }
 form.run-agent { margin: 0.5rem 0 1rem; }
 form.run-agent label { display: inline-block; margin-right: 1rem; }
+/* Inbox (S3.06) */
+.card { border: 1px solid #d8d8d8; border-radius: 6px; padding: 0.75rem 1rem; margin: 1rem 0; }
+.card blockquote { margin: 0.5rem 0; padding-left: 0.75rem; border-left: 3px solid #d8d8d8; white-space: pre-wrap; }
+.card dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+.card dd { margin: 0; }
+form.inline { display: inline-block; margin-right: 0.5rem; }
