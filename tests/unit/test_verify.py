@@ -457,3 +457,88 @@ def test_an_absent_amount_is_never_verified(fils: int) -> None:
         review_threshold=THRESHOLD,
     )
     assert result.needs_review is True
+
+
+# --- edges found by mutation testing -------------------------------------------------------------
+
+
+def test_compatibility_characters_are_normalised(ledger: list[LedgerRow]) -> None:
+    message = "See \uff30\uff2f-B-004 for INV-004."  # full-width "PO"
+    ex = extraction(po_numbers=("PO-B-004",), invoice_numbers=("INV-004",), evidence_quote="See")
+    assert verify(ex, message, ledger).flags == ()
+
+
+@pytest.mark.parametrize("value", ["sNaN", "NaN", "Infinity", "-Infinity"])
+def test_non_finite_amounts_are_unverified_not_errors(ledger: list[LedgerRow], value: str) -> None:
+    ex = extraction(
+        label="PO_AMOUNT_MISMATCH",
+        invoice_numbers=("INV-004",),
+        amounts=(AmountClaim(value, "AED", "po_amount"),),
+        evidence_quote="Please correct.",
+    )
+    result = verify(ex, M01, ledger)
+    assert Flag("UNVERIFIED_EXTRACTION", field="amounts_mentioned") in result.flags
+    assert result.amount_difference is None
+
+
+@pytest.mark.parametrize(
+    ("message", "difference"),
+    [
+        # Arabic keywords alone, without a PO or invoice reference next to the amount.
+        (f"INV-004: أمر الشراء بمبلغ {AR_47000}", "3000.00"),
+        (f"INV-004: PO-B-004 صحيح لكن الفاتورة بمبلغ {AR_47000}", None),
+        # A sentence end separates the keyword from the amount.
+        ("Purchase order PO-B-004 is attached. The total was 47,000. INV-004 is wrong.", None),
+    ],
+)  # fmt: skip
+def test_role_keywords_in_arabic_and_sentence_ends(
+    ledger: list[LedgerRow], message: str, difference: str | None
+) -> None:
+    result = verify(_po((AmountClaim("47000", "AED", "po_amount"),)), message, ledger)
+    assert result.amount_difference == (to_fils(difference) if difference else None)
+
+
+def test_canonical_ids_match_whatever_their_case(ledger: list[LedgerRow]) -> None:
+    from dataclasses import replace
+
+    rows = [replace(r, invoice_number=r.invoice_number.lower()) for r in ledger]
+    ex = extraction(invoice_numbers=("INV-004",), evidence_quote="Please correct.")
+    assert verify(ex, M01, rows).matched == ("inv-004",)
+
+
+def test_the_difference_uses_the_invoice_amount_not_the_open_amount(
+    ledger: list[LedgerRow],
+) -> None:
+    # INV-005: amount 30,000, of which 10,000 is paid (open 20,000).
+    message = "Invoice INV-005 is wrong: purchase order PO-B-005 was for AED 27,000."
+    ex = extraction(
+        label="PO_AMOUNT_MISMATCH",
+        invoice_numbers=("INV-005",),
+        amounts=(AmountClaim("27000", "AED", "po_amount"),),
+        evidence_quote="Invoice INV-005 is wrong",
+    )
+    assert verify(ex, message, ledger).amount_difference == to_fils("3000.00")
+
+
+def test_the_same_invoice_twice_is_one_match(ledger: list[LedgerRow]) -> None:
+    ex = extraction(
+        label="PO_AMOUNT_MISMATCH",
+        invoice_numbers=("INV-004", "inv-004"),
+        amounts=(AmountClaim("47000", "AED", "po_amount"),),
+        evidence_quote="Please correct.",
+    )
+    result = verify(ex, M01, ledger)
+    assert result.matched == ("INV-004",)
+    assert result.amount_difference == to_fils("3000.00")
+
+
+def test_flags_serialise_to_the_stored_shape() -> None:
+    assert Flag("LEDGER_STILL_OPEN", invoice_number="INV-005", amount=2000000).as_dict() == {
+        "code": "LEDGER_STILL_OPEN",
+        "invoice_number": "INV-005",
+        "amount": 2000000,
+    }
+    assert Flag("UNVERIFIED_EXTRACTION", field="po_amount").as_dict() == {
+        "code": "UNVERIFIED_EXTRACTION",
+        "field": "po_amount",
+    }
