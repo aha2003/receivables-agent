@@ -29,6 +29,7 @@ from receivables.agent.cases import (
     PaidInFull,
     transition,
 )
+from receivables.agent.drafting import DraftWriter, generate_draft
 from receivables.agent.facts import AgentFacts
 from receivables.agent.plans import PlanRejection, validate_plan
 from receivables.agent.policy import L2Limits, SendDraft, evaluate_send, send_facts_from
@@ -36,7 +37,7 @@ from receivables.agent.rules_planner import Plan, PlanStep, plan_case
 from receivables.agent.tools import TOOL_REGISTRY
 from receivables.core.config import EngineConfig
 from receivables.core.draft_validator import check_draft
-from receivables.core.drafts import build_fact_block, render_template
+from receivables.core.drafts import build_fact_block
 
 __all__ = [
     "AgentStore",
@@ -84,6 +85,8 @@ class TickConfig:
     max_words: int
     invoice_regex: str
     sender_name: str
+    max_regenerations: int = 2
+    sender_domain: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -175,6 +178,7 @@ class _Tick:
     states: dict[str, CaseState] = field(default_factory=dict)
     applied_events: set[tuple[str, str]] = field(default_factory=set)
     kill_switch: bool = False
+    drafter: DraftWriter | None = None  # None: the §8.4 template only (D-036)
 
     @property
     def persist(self) -> bool:
@@ -213,9 +217,13 @@ def run_tick(
     autonomy_level: int,
     config: TickConfig,
     planner: PlanSource | None = None,
+    drafter: DraftWriter | None = None,
     new_run_id: Callable[[], str] = lambda: f"RUN-{uuid4().hex[:12]}",
 ) -> RunSummary:
-    """One tick (§18.6). The caller commits or rolls back the store's transaction."""
+    """One tick (§18.6). The caller commits or rolls back the store's transaction.
+
+    ``drafter`` writes LLM drafts (§8.2); without it every draft is the §8.4 template.
+    """
     if now_local.tzinfo is None:
         raise ValueError("now_local must carry a time zone")
     if autonomy_level not in (0, 1, 2):
@@ -224,6 +232,7 @@ def run_tick(
     run_id = new_run_id()
     tick = _Tick(store, facts, config, run_id, now_local, autonomy_level)
     tick.kill_switch = config.l2.kill_switch  # read once, at the start of the tick
+    tick.drafter = drafter
     tick.states = dict(store.case_states())
     tick.applied_events = set(store.applied_events())
     summary = RunSummary(
@@ -446,13 +455,14 @@ def _draft_message(tick: _Tick, invoice: str, args: dict[str, Any], step_id: str
         tone=args["tone"],
         dispute_label=args.get("dispute_label"),
     )
-    subject, body = render_template(block)
-    violations = check_draft(
-        subject,
-        body,
+    outcome = generate_draft(
         block,
+        tick.drafter,
+        max_regenerations=tick.config.max_regenerations,
         max_words=tick.config.max_words,
         invoice_regex=tick.config.invoice_regex,
+        recipient=customer.contact_email,
+        sender_domain=tick.config.sender_domain,
     )
     draft_id = f"{step_id}-D"
     tick.store.add_draft(
@@ -461,14 +471,20 @@ def _draft_message(tick: _Tick, invoice: str, args: dict[str, Any], step_id: str
             "invoice_numbers": list(args["invoice_numbers"]),
             "customer_id": customer.customer_id,
             "tone": args["tone"],
-            "subject": subject,
-            "body": body,
+            "subject": outcome.subject,
+            "body": outcome.body,
             "facts": block.to_json(),
-            "generator": "template",
-            "violations": list(violations),
+            "generator": outcome.generator,
+            "violations": list(outcome.violations),
         },
     )
-    return {"draft_id": draft_id, "generator": "template", "violations": list(violations)}
+    return {
+        "draft_id": draft_id,
+        "generator": outcome.generator,
+        "violations": list(outcome.violations),
+        # Why earlier LLM attempts were sent back: violation codes only, never text (§8.2).
+        "attempts": [list(codes) for codes in outcome.attempts],
+    }
 
 
 def _task(tick: _Tick, step_id: str, invoice: str | None, owner: str, text: str, due: date) -> str:
@@ -579,6 +595,8 @@ def _recheck(tick: _Tick, draft: DraftRecord) -> tuple[str, ...]:
         block,
         max_words=tick.config.max_words,
         invoice_regex=tick.config.invoice_regex,
+        recipient=facts.customers[draft.customer_id].contact_email,
+        sender_domain=tick.config.sender_domain,
     )
     return tuple(sorted({*draft.violations, *found}))
 

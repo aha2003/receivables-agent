@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from receivables.adapters.db.agent_store import run_agent_tick
 from receivables.adapters.db.controls import kill_switch_on
+from receivables.adapters.llm.drafter import make_draft_writer
 from receivables.api.agent_views import case_runs, pending_approvals, run_trace, send_decisions
 from receivables.api.csrf import ensure_token
 from receivables.api.imports import ImportRefusal, run_import
@@ -203,6 +204,7 @@ async def run_agent_form(
         as_of=day,
         dry_run=is_dry,
         requested_by=request.state.user.username,
+        drafter=make_draft_writer(state.llm),
         request={
             "as_of": None if day is None else day.isoformat(),
             "now": None,
