@@ -239,6 +239,15 @@ def test_a_missing_model_id_is_refused() -> None:
 # --- logs: model role, latency, tokens and prompt hash only --------------------------------------
 
 
+def test_a_failed_call_never_reports_the_previous_calls_tokens() -> None:
+    live = client(Server(reply(GOOD), httpx2.TimeoutException("slow")))
+    live.classify(M01, "en")
+    assert live.usage() == (120, 40)
+    with pytest.raises(LLMUnavailable):
+        live.classify(M01, "en")
+    assert live.usage() == (None, None)
+
+
 def test_the_call_is_logged_with_tokens_and_without_ids_or_content() -> None:
     with json_logs(lambda: ()) as logs:
         client(Server(reply(GOOD))).classify(M01, "en")

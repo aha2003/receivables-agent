@@ -80,8 +80,14 @@ def test_live_mode_builds_the_anthropic_client_without_sending_anything(
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
     for name, value in MODELS.items():
         monkeypatch.setenv(name, value)
-    client = make_llm_client(Settings(llm_mode="live"), _config(False), customer_names=tuple)
+    config = _config(False)
+    config = dataclasses.replace(
+        config, llm=dataclasses.replace(config.llm, timeout_seconds=12, max_retries=0)
+    )
+    client = make_llm_client(Settings(llm_mode="live"), config, customer_names=tuple)
     assert isinstance(client.inner, AnthropicClient)  # behind redaction (D-031)
+    sdk = client.inner._client  # pyright: ignore[reportPrivateUsage]
+    assert (sdk.timeout, sdk.max_retries) == (12.0, 0)  # from config.yaml llm
     assert repr(client.inner) == "AnthropicClient()"
     assert client.model == "anthropic"
     # The network guard (tests/network_guard.py) fails the run if building it touched a socket.

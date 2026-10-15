@@ -63,7 +63,6 @@ class AnthropicClient(RawLLMClient):
             max_retries=max_retries,
             http_client=http_client,
         )
-        self._timeout = float(timeout_seconds)
         self._usage: tuple[int | None, int | None] = (None, None)
         self.model = "anthropic"
 
@@ -91,17 +90,14 @@ class AnthropicClient(RawLLMClient):
                 ],
                 messages=[{"role": "user", "content": _user_turn(payload)}],
                 output_config={"format": {"type": "json_schema", "schema": CLASSIFICATION_SCHEMA}},
-                timeout=self._timeout,
             )
         except anthropic.APIError as error:
             raise LLMUnavailable(type(error).__name__) from None
         self._usage = (message.usage.input_tokens, message.usage.output_tokens)
         if message.stop_reason != "end_turn":
             raise LLMResponseInvalid(kind, f"stopped: {message.stop_reason}")
-        texts = [block.text for block in message.content if block.type == "text"]
-        if not texts:
-            raise LLMResponseInvalid(kind, "no text in the response")
-        return "".join(texts)
+        # No text block gives "", which fails validation as "not JSON" like any bad output.
+        return "".join(block.text for block in message.content if block.type == "text")
 
 
 def _user_turn(payload: Mapping[str, Any]) -> str:
