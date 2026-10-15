@@ -156,6 +156,8 @@ class _Llm(_Strict):
 
 
 SENDER_NAME_MAX_WORDS = 8
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_DOMAIN = re.compile(rf"(?=.{{1,253}}$)(?:{_LABEL}\.)+[A-Za-z]{{2,63}}")  # a bare host name
 
 
 class _Drafts(_Strict):
@@ -163,6 +165,17 @@ class _Drafts(_Strict):
     max_words: PlainInt = Field(default=140, ge=1)
     invoice_number_regex: str = r"\b[A-Z]{2,6}-\d{2,}\b"
     sender_name: str = Field(default="Accounts Receivable Team", min_length=1, max_length=100)
+    # §18.9: the one domain (besides the recipient's address) a draft may link or write to.
+    sender_domain: str | None = None
+
+    @field_validator("sender_domain")
+    @classmethod
+    def _bare_domain(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not _DOMAIN.fullmatch(value):
+            raise ValueError("sender_domain must be a bare domain such as example.com")
+        return value.lower()
 
     @field_validator("sender_name")
     @classmethod
@@ -313,6 +326,7 @@ class DraftsSection:
     max_words: int
     invoice_number_regex: str
     sender_name: str
+    sender_domain: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

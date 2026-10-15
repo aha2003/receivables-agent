@@ -4,12 +4,18 @@
 appended. ``CLASSIFICATION_SCHEMA`` is the JSON schema given to structured outputs: it fixes the
 fields, their types and the label and role lists; the length and format limits are checked
 again by the Pydantic models in ``schemas.py`` (§7.2 "always validate again"). The planner and
-drafter prompts arrive with S3.08 and S3.07.
+drafter prompt is §8.3, verbatim; the planner prompt arrives with S3.08.
 """
 
 from typing import Any
 
-__all__ = ["CLASSIFICATION_SCHEMA", "CLASSIFIER_SYSTEM", "LABEL_DEFINITIONS"]
+__all__ = [
+    "CLASSIFICATION_SCHEMA",
+    "CLASSIFIER_SYSTEM",
+    "DRAFTER_SYSTEM",
+    "DRAFT_SCHEMA",
+    "LABEL_DEFINITIONS",
+]
 
 # §7.3, verbatim.
 _CLASSIFIER_INSTRUCTIONS = (
@@ -95,3 +101,17 @@ CLASSIFICATION_SCHEMA: dict[str, Any] = _object(
         "summary_en": {"type": "string"},
     }
 )
+
+
+# §8.3, verbatim. The fact block follows in the user turn as FACTS JSON.
+DRAFTER_SYSTEM = (
+    "Write a short, polite payment follow-up email in English from the supplier to the "
+    "customer, using only the FACTS JSON. Use only the invoice numbers, amounts and dates that "
+    "appear in FACTS. Do not add any other numbers or dates. Do not mention legal action, "
+    "courts, penalties, interest or other customers. Match the tone: 1 = friendly reminder, 2 = "
+    "firm reminder, 3 = formal reminder that asks for a payment date. If `dispute_label` is "
+    "present, acknowledge that issue and say what the supplier will do next without admitting "
+    "fault. Maximum 140 words. Output JSON with keys `subject` and `body` (plain text)."
+)
+
+DRAFT_SCHEMA: dict[str, Any] = _object({"subject": {"type": "string"}, "body": {"type": "string"}})

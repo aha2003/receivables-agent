@@ -181,7 +181,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §7, §9, §10
   - Tests: T-API-05, T-LLM-01 (15-message smoke gate), T-UI-04
   - Done when: Accepting a classification creates the right event and an audit row.
-- [ ] **S3.07** LLM drafts with validator and template fallback
+- [x] **S3.07** LLM drafts with validator and template fallback
   - Goal: LLM drafting, regeneration limit, deterministic template fallback, URL and contact rule.
   - Spec: §8.2, §8.3, §18.9
   - Tests: T-DRF-03

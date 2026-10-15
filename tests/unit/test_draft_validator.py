@@ -9,7 +9,9 @@ from receivables.core.draft_validator import (
     BODY_TOO_LONG,
     DEFAULT_INVOICE_REGEX,
     FORBIDDEN_PHRASE,
+    UNFILLED_PLACEHOLDER,
     UNKNOWN_AMOUNT,
+    UNKNOWN_CONTACT_OR_URL,
     UNKNOWN_DATE,
     UNKNOWN_INVOICE,
     check_draft,
@@ -263,3 +265,105 @@ def test_check_draft_reads_the_subject_too() -> None:
 )
 def test_mentions_flags_any_fact_like_content(text: str, codes: tuple[str, ...]) -> None:
     assert mentions(text, RX) == codes
+
+
+# --- §18.9: no URL or email address except the recipient's and the sender domain --------------
+
+RECIPIENT = "accounts@beta.example"
+DOMAIN = "supplier.example"
+
+
+def contact(text: str, recipient: str | None = RECIPIENT, domain: str | None = DOMAIN) -> bool:
+    found = validate_draft(text, FACTS, RX, recipient=recipient, sender_domain=domain)
+    return UNKNOWN_CONTACT_OR_URL in found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Please reply to accounts@beta.example.",
+        "Please reply to ACCOUNTS@Beta.Example.",
+        "Questions? Write to ar@supplier.example or see https://supplier.example/statement.",
+        "Our portal: https://billing.supplier.example/pay and www.supplier.example.",
+        "No contact details at all.",
+        "Amounts like AED 50,000.00 and e.g. or i.e. are not links.",
+        "Due 2026-07-01. Version 1.2 and U.A.E. and No. 5 are not links.",
+        "Dear [CUSTOMER], thank you.",  # the name placeholder is restored later (D-031)
+    ],
+)
+def test_allowed_contacts(text: str) -> None:
+    assert not contact(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Write to someone@else.example instead.",
+        "Write to accounts@beta.example.evil.com instead.",  # not the recipient
+        "Pay at https://pay-now.example/inv-004 today.",
+        "Pay at http://203.0.113.5/pay today.",
+        "Visit www.beta-payments.com.",
+        "Visit beta-payments.com to pay.",
+        "Visit supplier.example.evil.com to pay.",  # the domain must end the host
+        "Visit https://supplier.example@evil.example/ now.",  # user-info trick
+        "Pay at hxxps://evil.example/x.",  # any scheme counts
+        "Fetch ftp://203.0.113.5/remittance today.",  # any scheme, even without a domain name
+        "Pay at bit.ly/abc today.",  # bare hosts on any top-level domain (spec review)
+        "See evil.ru for details.",
+        "Settle online at pay.online/beta.",
+        "Visit evil.company now.",
+        "Pay via 203.0.113.5/pay now.",
+        "Open https:\\\\evil.ru now.",  # a backslash scheme
+        "Visit evil\u3002com now.",  # an ideographic full stop
+        "Visit evil.c\u03bfm now.",  # a Greek omicron in the top-level domain
+        "Open hxxp://198.51.100.7/pay now.",
+        "Pay at https://ev​il.example/x.",  # zero-width characters are removed first
+        "Call us on [PHONE] or write to [EMAIL].",  # the model tried to add contact details
+        "Transfer to [IBAN].",
+    ],
+)
+def test_unknown_contacts_and_urls(text: str) -> None:
+    assert contact(text)
+
+
+def test_without_a_sender_domain_only_the_recipient_is_allowed() -> None:
+    assert not contact("Reply to accounts@beta.example.", domain=None)
+    assert contact("See https://supplier.example/x.", domain=None)
+    assert contact("Reply to accounts@beta.example.", recipient=None, domain=None)
+
+
+def test_check_draft_passes_the_contacts_through() -> None:
+    found = check_draft(
+        "Payment reminder: invoice INV-004",
+        "Please reply to accounts@beta.example or visit https://elsewhere.example.",
+        FACTS,
+        max_words=140,
+        invoice_regex=RX,
+        recipient=RECIPIENT,
+        sender_domain=DOMAIN,
+    )
+    assert found == (UNKNOWN_CONTACT_OR_URL,)
+
+
+def test_a_sender_name_may_not_hold_a_link() -> None:
+    assert mentions("Visit www.example.com", RX) == (UNKNOWN_CONTACT_OR_URL,)
+
+
+def test_check_draft_allows_the_recipient_it_is_given() -> None:
+    body = "Please send remittance details to accounts@beta.example."
+    common = {"max_words": 140, "invoice_regex": RX}
+    assert check_draft("Invoice INV-004", body, FACTS, recipient=RECIPIENT, **common) == ()
+    assert check_draft("Invoice INV-004", body, FACTS, **common) == (UNKNOWN_CONTACT_OR_URL,)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Dear [Customer], thank you.", "Dear [CUSTOMER_NAME],", "Dear [ CUSTOMER ],",
+     "Regards, [Your Name]", "Write to [EMAIL]."],
+)  # fmt: skip
+def test_an_unfilled_placeholder_is_a_violation(text: str) -> None:
+    assert UNFILLED_PLACEHOLDER in validate_draft(text, FACTS, RX)
+
+
+def test_text_without_brackets_has_no_placeholder() -> None:
+    assert UNFILLED_PLACEHOLDER not in validate_draft("Invoice (INV-004) is due.", FACTS, RX)

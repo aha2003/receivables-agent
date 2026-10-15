@@ -235,3 +235,11 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §7.2, §7.3, §7.4, NFR-07 / T-LLM-01 (the gate test now runs in CI on the committed recording), T-VER-01..05 unchanged
 - Deviations or decisions (link docs/DECISIONS.md): D-035
 - Next step: S3.07 LLM drafts with validator and template fallback
+
+## 2026-10-16 — [S3.07] LLM drafts with validator and template fallback
+- PR: see branch | Branch: s3-07-llm-drafts | Commit: see PR head
+- Tests: `uv run pytest -q` → 2058 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; every mutation of the drafting loop, the contact rule, the drafter adapter and the wiring killed; every spec-review regression test fails on the earlier code
+- Spec / test IDs covered: §8.2, §8.3, §8.4, §18.9 / T-DRF-03 (three violating drafts: the template is used, `generator = template`, no violations), T-DRF-01 and T-DRF-02 unchanged; §8.3 prompt verbatim (checked against SPEC.md); the drafter never sees a customer name and the saved draft has it restored; dry runs, L0 and the kill switch make no model calls
+- Deviations or decisions (link docs/DECISIONS.md): D-036 (options 1a, 2a, 3a; `UNKNOWN_CONTACT_OR_URL` and `UNFILLED_PLACEHOLDER`; review fixes and limits)
+- Unverified: live drafting quality until a live agent run (`LLM_MODE=live`); the model calls hold the tick's database transaction (a known limit)
+- Next step: S3.08 LLM planner with rule fallback

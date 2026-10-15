@@ -206,3 +206,19 @@ def test_agent_overrides(tmp_path: Path) -> None:
 def test_invalid_agent_and_mail_config_is_rejected(tmp_path: Path, text: str) -> None:
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, text))
+
+
+def test_sender_domain_is_optional_and_lower_cased(tmp_path: Path) -> None:
+    assert load_config(ROOT / "config.yaml").drafts.sender_domain is None
+    config = load_config(_write(tmp_path, "drafts:\n  sender_domain: Supplier.Example\n"))
+    assert config.drafts.sender_domain == "supplier.example"
+
+
+@pytest.mark.parametrize(
+    "domain",
+    ["https://supplier.example", "supplier", "a@supplier.example", "supplier.example/x",
+     "-bad.example", "supplier .example", "null", "''"],
+)  # fmt: skip
+def test_sender_domain_must_be_a_bare_domain(tmp_path: Path, domain: str) -> None:
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, f"drafts:\n  sender_domain: {domain}\n"))

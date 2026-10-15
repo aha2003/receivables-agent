@@ -32,6 +32,7 @@ from receivables.adapters.db.models import (
 )
 from receivables.adapters.db.repo import load_agent_facts, write_audit
 from receivables.agent.cases import CaseState
+from receivables.agent.drafting import DraftWriter
 from receivables.agent.facts import AgentFacts
 from receivables.agent.orchestrator import (
     DraftRecord,
@@ -352,6 +353,8 @@ def tick_config(config: Config) -> TickConfig:
         max_words=config.drafts.max_words,
         invoice_regex=config.drafts.invoice_number_regex,
         sender_name=config.drafts.sender_name,
+        max_regenerations=config.drafts.max_regenerations,
+        sender_domain=config.drafts.sender_domain,
     )
 
 
@@ -363,6 +366,7 @@ def run_agent_tick(
     as_of: date | None = None,
     autonomy_level: int | None = None,
     planner: PlanSource | None = None,
+    drafter: DraftWriter | None = None,
     now_local: datetime | None = None,
     dry_run: bool = False,
     requested_by: str | None = None,
@@ -370,6 +374,7 @@ def run_agent_tick(
 ) -> RunSummary:
     """One tick in one transaction; ``dry_run`` rolls the whole tick back, trace included.
 
+    ``drafter`` writes LLM drafts in real runs; a dry run uses the template (D-036).
     ``now_local`` defaults to the clock (callers decide when another time is allowed, D-026);
     ``as_of`` defaults to that time's date in Dubai. The effective kill switch (config or
     runtime, D-025) is read inside the tick's transaction.
@@ -387,6 +392,8 @@ def run_agent_tick(
                 autonomy_level=level,
                 config=dataclasses.replace(tick_config(config), l2=l2),
                 planner=planner,
+                # A dry run drafts from the template only: a preview never spends model calls.
+                drafter=None if dry_run else drafter,
             )
             if requested_by is not None:  # who started the run, with the values they chose
                 write_audit(

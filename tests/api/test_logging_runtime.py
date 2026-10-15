@@ -75,8 +75,11 @@ class TestSec04:
         assert [v for v in INJECTED if v in text] == []
         assert [n for n in names if n.lower() in text.lower()] == []
         # The LLM call: model, latency, token counts and a prompt hash only (NFR-07).
-        (call,) = [line for line in lines if line["event"] == "llm.call"]
-        assert set(call) == LLM_FIELDS
+        calls = [line for line in lines if line["event"] == "llm.call"]
+        # Draft calls too (S3.07); those made during a web request also carry its request_id.
+        assert calls and all(set(c) - {"request_id"} == LLM_FIELDS for c in calls)
+        assert {c["kind"] for c in calls} == {"classify", "draft"}
+        (call,) = [c for c in calls if c["kind"] == "classify"]
         assert (call["kind"], call["model"], call["outcome"]) == ("classify", "fake", "ok")
         assert len(call["prompt_sha256"]) == 64
         # The tick is logged, with the request id of the request that ran it.
