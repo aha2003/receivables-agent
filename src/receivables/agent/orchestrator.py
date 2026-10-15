@@ -484,6 +484,11 @@ def _draft_message(tick: _Tick, invoice: str, args: dict[str, Any], step_id: str
         "violations": list(outcome.violations),
         # Why earlier LLM attempts were sent back: violation codes only, never text (§8.2).
         "attempts": [list(codes) for codes in outcome.attempts],
+        # Which model role and prompt wrote an LLM draft (§18.6 step 6); never a model id.
+        "model": getattr(tick.drafter, "model", None) if outcome.generator == "llm" else None,
+        "prompt_version": (
+            getattr(tick.drafter, "prompt_version", None) if outcome.generator == "llm" else None
+        ),
     }
 
 

@@ -20,6 +20,7 @@ __all__ = [
     "BODY_TOO_LONG",
     "DEFAULT_INVOICE_REGEX",
     "FORBIDDEN_PHRASE",
+    "UNFILLED_PLACEHOLDER",
     "UNKNOWN_AMOUNT",
     "UNKNOWN_CONTACT_OR_URL",
     "UNKNOWN_DATE",
@@ -35,17 +36,26 @@ UNKNOWN_DATE = "UNKNOWN_DATE"
 FORBIDDEN_PHRASE = "FORBIDDEN_PHRASE"
 BODY_TOO_LONG = "BODY_TOO_LONG"  # §8.2 step 4 gives no code (D-022)
 UNKNOWN_CONTACT_OR_URL = "UNKNOWN_CONTACT_OR_URL"  # §18.9
+UNFILLED_PLACEHOLDER = "UNFILLED_PLACEHOLDER"  # §8.2 gives no code (D-036)
 
 # §18.9: no URL or email address except the recipient's and the supplier's sender domain.
-# Detected on normalised text: emails, scheme or "www." links, and bare domains with a common
-# top-level domain. Redaction tokens for contact details mean the model wanted to add one.
+# Detected on normalised text (full-stop look-alikes become "."): email addresses, links with
+# any scheme (also "scheme:\\") or "www.", and any bare host name (labels and an alphabetic
+# top-level domain, in any script) or IPv4 address. Redaction tokens for contact details mean
+# the model wanted to add one. Over-detection only sends a draft back (D-036).
 _EMAIL_ADDRESS = re.compile(r"[\w.%+'-]+@([\w-]+(?:\.[\w-]+)+)")
+_LABEL = r"[^\W_](?:[\w-]*[^\W_])?"
+_HOST = rf"{_LABEL}(?:\.{_LABEL})*\.[^\W\d_]{{2,63}}"
+_IPV4 = r"\d{1,3}(?:\.\d{1,3}){3}"
 _LINK = re.compile(
-    r"\b(?:[a-z][a-z0-9+.-]*://|www\.)([^\s/?#<>\"')\]]+)"
-    r"|\b((?:[a-z0-9-]+\.)+(?:com|net|org|ae|io|co|info|biz|me|app|link|xyz|example))\b",
+    r"(?:\b[a-z][a-z0-9+.-]*:(?://|\\\\)|\bwww\.)([^\s/\\?#<>\"')\]]+)"
+    rf"|(?<![\w.@-])({_HOST}|{_IPV4})(?![\w-])",
     re.IGNORECASE,
 )
 _CONTACT_TOKENS = re.compile(r"\[(?:EMAIL|PHONE|IBAN|TRN)\]")
+_FULL_STOPS = str.maketrans({"\u3002": ".", "\uff61": ".", "\ufe52": "."})
+# Any bracketed placeholder left in a draft (for example "[Customer]" or "[CUSTOMER_NAME]").
+_PLACEHOLDER = re.compile(r"\[[^\[\]\n]{1,60}\]")
 
 DEFAULT_INVOICE_REGEX = r"\b[A-Z]{2,6}-\d{2,}\b"
 
@@ -149,6 +159,7 @@ def _on_domain(host: str, domain: str | None) -> bool:
 
 def _unknown_contact(text: str, recipient: str | None, sender_domain: str | None) -> bool:
     """Any URL or address other than the recipient's and the sender domain's (§18.9)."""
+    text = text.translate(_FULL_STOPS)
     allowed = recipient.casefold() if recipient else None
     domain = sender_domain.casefold() if sender_domain else None
     for m in _EMAIL_ADDRESS.finditer(text):
@@ -193,6 +204,8 @@ def validate_draft(
         violations.add(FORBIDDEN_PHRASE)
     if _unknown_contact(text, recipient, sender_domain):
         violations.add(UNKNOWN_CONTACT_OR_URL)
+    if _PLACEHOLDER.search(text):
+        violations.add(UNFILLED_PLACEHOLDER)
     return tuple(sorted(violations))
 
 

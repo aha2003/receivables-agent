@@ -9,6 +9,7 @@ from receivables.core.draft_validator import (
     BODY_TOO_LONG,
     DEFAULT_INVOICE_REGEX,
     FORBIDDEN_PHRASE,
+    UNFILLED_PLACEHOLDER,
     UNKNOWN_AMOUNT,
     UNKNOWN_CONTACT_OR_URL,
     UNKNOWN_DATE,
@@ -286,6 +287,7 @@ def contact(text: str, recipient: str | None = RECIPIENT, domain: str | None = D
         "Our portal: https://billing.supplier.example/pay and www.supplier.example.",
         "No contact details at all.",
         "Amounts like AED 50,000.00 and e.g. or i.e. are not links.",
+        "Due 2026-07-01. Version 1.2 and U.A.E. and No. 5 are not links.",
         "Dear [CUSTOMER], thank you.",  # the name placeholder is restored later (D-031)
     ],
 )
@@ -306,6 +308,14 @@ def test_allowed_contacts(text: str) -> None:
         "Visit https://supplier.example@evil.example/ now.",  # user-info trick
         "Pay at hxxps://evil.example/x.",  # any scheme counts
         "Fetch ftp://203.0.113.5/remittance today.",  # any scheme, even without a domain name
+        "Pay at bit.ly/abc today.",  # bare hosts on any top-level domain (spec review)
+        "See evil.ru for details.",
+        "Settle online at pay.online/beta.",
+        "Visit evil.company now.",
+        "Pay via 203.0.113.5/pay now.",
+        "Open https:\\\\evil.ru now.",  # a backslash scheme
+        "Visit evil\u3002com now.",  # an ideographic full stop
+        "Visit evil.c\u03bfm now.",  # a Greek omicron in the top-level domain
         "Open hxxp://198.51.100.7/pay now.",
         "Pay at https://ev​il.example/x.",  # zero-width characters are removed first
         "Call us on [PHONE] or write to [EMAIL].",  # the model tried to add contact details
@@ -344,3 +354,16 @@ def test_check_draft_allows_the_recipient_it_is_given() -> None:
     common = {"max_words": 140, "invoice_regex": RX}
     assert check_draft("Invoice INV-004", body, FACTS, recipient=RECIPIENT, **common) == ()
     assert check_draft("Invoice INV-004", body, FACTS, **common) == (UNKNOWN_CONTACT_OR_URL,)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Dear [Customer], thank you.", "Dear [CUSTOMER_NAME],", "Dear [ CUSTOMER ],",
+     "Regards, [Your Name]", "Write to [EMAIL]."],
+)  # fmt: skip
+def test_an_unfilled_placeholder_is_a_violation(text: str) -> None:
+    assert UNFILLED_PLACEHOLDER in validate_draft(text, FACTS, RX)
+
+
+def test_text_without_brackets_has_no_placeholder() -> None:
+    assert UNFILLED_PLACEHOLDER not in validate_draft("Invoice (INV-004) is due.", FACTS, RX)

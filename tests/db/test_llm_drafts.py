@@ -158,3 +158,48 @@ def test_another_customers_address_sends_the_draft_back(engine: Engine) -> None:
     run_agent_tick(engine, CLOCK, CONFIG, as_of=date(2026, 10, 31), drafter=write)
     assert {d["generator"] for d in drafts(engine)} == {"template"}
     assert all(s["attempts"] == [["UNKNOWN_CONTACT_OR_URL"]] * 3 for s in draft_steps(engine))
+
+
+def test_the_trace_names_the_model_role_and_prompt_of_an_llm_draft(engine: Engine) -> None:
+    _, write = drafter(engine, good_draft)
+    run_agent_tick(engine, CLOCK, CONFIG, as_of=date(2026, 10, 31), drafter=write)
+    steps = draft_steps(engine)
+    assert steps and all((s["model"], s["prompt_version"]) == ("fake", "draft-v1") for s in steps)
+
+
+def test_template_drafts_name_no_model(engine: Engine) -> None:
+    run_agent_tick(engine, CLOCK, CONFIG, as_of=date(2026, 10, 31))
+    assert all((s["model"], s["prompt_version"]) == (None, None) for s in draft_steps(engine))
+
+
+@pytest.mark.parametrize("setting", ["L0", "kill_switch"])
+def test_no_model_call_at_l0_or_with_the_kill_switch(engine: Engine, setting: str) -> None:
+    import dataclasses
+
+    fake, write = drafter(engine, good_draft)
+    config = CONFIG
+    if setting == "kill_switch":
+        l2 = dataclasses.replace(CONFIG.agent.l2, kill_switch=True)
+        config = dataclasses.replace(CONFIG, agent=dataclasses.replace(CONFIG.agent, l2=l2))
+    level = 0 if setting == "L0" else None
+    run_agent_tick(
+        engine, CLOCK, config, as_of=date(2026, 10, 31), autonomy_level=level, drafter=write
+    )
+    assert fake.calls == []
+    assert drafts(engine) == []
+
+
+def test_a_customer_name_in_the_sign_off_keeps_drafts_on_the_template(engine: Engine) -> None:
+    import dataclasses
+
+    # "Beta Contracting LLC Receivables" would reach the drafter as "[CUSTOMER] Receivables",
+    # and restoring it could put another customer's name in the sign-off (spec review, D-036).
+    config = dataclasses.replace(
+        CONFIG,
+        drafts=dataclasses.replace(CONFIG.drafts, sender_name="Beta Contracting LLC Receivables"),
+    )
+    fake, write = drafter(engine, good_draft)
+    run_agent_tick(engine, CLOCK, config, as_of=date(2026, 10, 31), drafter=write)
+    assert fake.calls == []
+    assert {d["generator"] for d in drafts(engine)} == {"template"}
+    assert all(s["attempts"] == [["UNAVAILABLE"]] for s in draft_steps(engine))

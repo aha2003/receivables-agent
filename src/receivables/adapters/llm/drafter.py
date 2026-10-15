@@ -8,21 +8,47 @@
 from collections.abc import Mapping
 from typing import Any
 
-from receivables.adapters.llm.base import LLMClient
+from receivables.adapters.llm.base import PROMPT_VERSIONS, LLMClient
+from receivables.adapters.llm.redacting import RedactingClient
 from receivables.adapters.llm.schemas import LLMCallFailed, LLMResponseInvalid
-from receivables.agent.drafting import DraftInvalid, DraftUnavailable, DraftWriter
+from receivables.agent.drafting import (
+    CUSTOMER_PLACEHOLDER,
+    DraftInvalid,
+    DraftUnavailable,
+    DraftWriter,
+)
 
 __all__ = ["make_draft_writer"]
 
 
-def make_draft_writer(client: LLMClient) -> DraftWriter:
-    def write(facts: Mapping[str, Any]) -> tuple[str, str]:
+class _LlmDraftWriter:
+    """The drafter port, with the model role and prompt version for the trace (§18.6)."""
+
+    prompt_version = PROMPT_VERSIONS["draft"]
+
+    def __init__(self, client: LLMClient) -> None:
+        self._client = client
+
+    @property
+    def model(self) -> str:
+        return str(getattr(self._client, "model", "unknown"))
+
+    def __call__(self, facts: Mapping[str, Any]) -> tuple[str, str]:
+        if isinstance(self._client, RedactingClient) and any(
+            CUSTOMER_PLACEHOLDER in self._client.prepared_text(str(facts.get(key) or ""))
+            for key in ("sender_name", "contact_name")
+        ):
+            # A customer name inside the sign-off or greeting would come back as the wrong
+            # name when the placeholder is restored: draft from the template instead (D-036).
+            raise DraftUnavailable("ambiguous customer placeholder")
         try:
-            draft = client.draft(facts)
+            draft = self._client.draft(facts)
         except LLMResponseInvalid:
             raise DraftInvalid from None
         except LLMCallFailed as error:
             raise DraftUnavailable(type(error).__name__) from None
         return draft.subject, draft.body
 
-    return write
+
+def make_draft_writer(client: LLMClient) -> DraftWriter:
+    return _LlmDraftWriter(client)

@@ -20,6 +20,7 @@ from receivables.core.draft_validator import check_draft
 from receivables.core.drafts import FactBlock, render_template
 
 __all__ = [
+    "CUSTOMER_PLACEHOLDER",
     "INVALID_OUTPUT",
     "UNAVAILABLE",
     "DraftInvalid",

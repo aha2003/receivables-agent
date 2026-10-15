@@ -123,7 +123,7 @@ def test_the_regeneration_limit(regenerations: int, calls: int) -> None:
     [
         ("Invoice INV-004", " ".join(["word"] * 141), "BODY_TOO_LONG"),
         ("Invoice INV-004", "Pay at https://pay-now.example/inv-004.", "UNKNOWN_CONTACT_OR_URL"),
-        ("Invoice INV-004", "Write to [EMAIL] for remittance.", "UNKNOWN_CONTACT_OR_URL"),
+        ("Invoice INV-004", "Dear [Customer], thank you.", "UNFILLED_PLACEHOLDER"),
         ("Invoice INV-004", "We charge interest from 2026-11-15.", "UNKNOWN_DATE"),
     ],
 )
@@ -156,6 +156,11 @@ def test_a_violating_template_is_a_bug_not_a_draft() -> None:
     bad_sender = dataclasses.replace(FACTS, sender_name="Visit www.evil.example")
     with pytest.raises(TemplateViolation, match="UNKNOWN_CONTACT_OR_URL"):
         draft(None, facts=bad_sender)
+
+
+def test_a_contact_token_is_both_a_contact_and_a_placeholder() -> None:
+    outcome = draft(Script(("Invoice INV-004", "Write to [EMAIL] for remittance."), GOOD))
+    assert outcome.attempts == (("UNFILLED_PLACEHOLDER", "UNKNOWN_CONTACT_OR_URL"),)
 
 
 def test_the_name_is_restored_in_the_subject_too() -> None:
