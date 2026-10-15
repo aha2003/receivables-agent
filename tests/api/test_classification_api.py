@@ -394,3 +394,92 @@ def test_the_routes_need_a_session_and_csrf(client: TestClient) -> None:
     assert login(client) == 303
     for path in ("/api/correspondence/M-01/classify", "/api/classifications/M-01/accept"):
         assert client.post(path).status_code == 403
+
+
+# --- edges found by mutation testing -------------------------------------------------------------
+
+
+def _insert(engine: Engine, message_id: str, invoice: str | None, customer: str | None,
+            body: str, language: str = "en") -> None:  # fmt: skip
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO correspondence (message_id, invoice_number, customer_id, direction,"
+                " sent_at, language, body) VALUES (:m, :i, :c, 'inbound', '2026-10-29T06:00:00Z',"
+                " :l, :b)"
+            ),
+            {"m": message_id, "i": invoice, "c": customer, "l": language, "b": body},
+        )
+
+
+def test_an_accepted_message_is_not_sent_to_the_model_again(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    use_llm(app_with_messages, engine, lambda _: M01)
+    post(user, "/api/correspondence/M-01/classify")
+    post(user, "/api/classifications/M-01/accept")
+    fake = use_llm(app_with_messages, engine, lambda _: M01)
+    assert post(user, "/api/correspondence/M-01/classify").status_code == 409
+    assert fake.calls == []  # refused before any LLM call
+
+
+def test_an_accept_during_the_model_call_wins(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    use_llm(app_with_messages, engine, lambda _: M01)
+    post(user, "/api/correspondence/M-01/classify")
+
+    def accept_meanwhile(_: Mapping[str, Any]) -> Mapping[str, Any]:
+        with engine.begin() as c:  # someone accepts while the model is thinking
+            c.execute(text("UPDATE classifications SET status = 'accepted'"))
+        return answer(label="UNCLEAR")
+
+    use_llm(app_with_messages, engine, accept_meanwhile)
+    assert post(user, "/api/correspondence/M-01/classify").status_code == 409
+    stored = rows(engine, "SELECT label, status FROM classifications")
+    assert stored == [{"label": "PO_AMOUNT_MISMATCH", "status": "accepted"}]  # not overwritten
+
+
+def test_the_known_customer_can_come_from_the_messages_invoice(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    # No customer_id, but the message is about INV-001 (CUST-A); INV-004 belongs to CUST-B.
+    _insert(engine, "M-60", "INV-001", None, "About INV-004: wrong quantity.")
+    use_llm(
+        app_with_messages,
+        engine,
+        lambda _: answer(label="GOODS_OR_SERVICE_ISSUE", invoice_numbers=["INV-004"],
+                         evidence_quote="wrong quantity"),
+    )  # fmt: skip
+    flags = post(user, "/api/correspondence/M-60/classify").json()["flags"]
+    assert {"code": "CUSTOMER_INVOICE_MISMATCH", "invoice_number": "INV-004"} in flags
+
+
+def test_the_event_goes_to_the_invoice_the_message_is_about(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine
+) -> None:
+    # Filed under INV-009, but the text (and the verified extraction) is about INV-011.
+    _insert(engine, "M-61", "INV-009", "CUST-C", "INV-011 has no PO number.")
+    use_llm(
+        app_with_messages,
+        engine,
+        lambda _: answer(label="MISSING_PO", invoice_numbers=["INV-011"],
+                         evidence_quote="INV-011 has no PO number."),
+    )  # fmt: skip
+    post(user, "/api/correspondence/M-61/classify")
+    event = post(user, "/api/classifications/M-61/accept").json()["event"]
+    assert event["invoice_number"] == "INV-011"
+
+
+@pytest.mark.parametrize(("language", "hint"), [("auto", None), ("ar", "ar"), (None, None)])
+def test_the_language_hint(
+    user: TestClient, app_with_messages: FastAPI, engine: Engine, language: str | None,
+    hint: str | None,
+) -> None:  # fmt: skip
+    _insert(engine, "M-62", None, None, "Thanks, noted.", language or "")
+    if language is None:
+        with engine.begin() as c:
+            c.execute(text("UPDATE correspondence SET language = NULL WHERE message_id = 'M-62'"))
+    fake = use_llm(app_with_messages, engine, lambda _: answer())
+    post(user, "/api/correspondence/M-62/classify")
+    assert fake.calls[0][1]["language_hint"] == hint

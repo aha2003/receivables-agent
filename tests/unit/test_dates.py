@@ -40,7 +40,8 @@ def test_dates_resolve(value: str, expected: date) -> None:
         ("5 January", date(2026, 12, 28), date(2027, 1, 5)),  # across the new year
         ("28 December", date(2027, 1, 3), date(2026, 12, 28)),  # and back
         ("29 February", date(2027, 6, 1), date(2028, 2, 29)),  # the nearest one that exists
-        ("14 April", date(2026, 10, 14), date(2027, 4, 14)),  # a tie goes to the future
+        # 2027-04-14 and 2028-04-14 are 366 days apart; 2027-10-14 is 183 days from each.
+        ("14 April", date(2027, 10, 14), date(2028, 4, 14)),  # a tie goes to the future
     ],
 )
 def test_the_year_is_the_nearest_occurrence(value: str, sent: date, expected: date) -> None:

@@ -45,6 +45,7 @@ def _make(year: int, month: int, day: int) -> date | None:
 
 
 def _nearest(month: int, day: int, around: date) -> date | None:
+    """The occurrence nearest to ``around``; ``date`` itself refuses impossible days."""
     candidates = [d for y in (around.year - 1, around.year, around.year + 1)
                   if (d := _make(y, month, day)) is not None]  # fmt: skip
     if not candidates:
@@ -66,7 +67,5 @@ def resolve_message_date(value: str, sent_on: date) -> date | None:
             return _nearest(_MONTHS[month], int(day), sent_on)
     if m := _NUMERIC.fullmatch(text):
         day, month, year = int(m[1]), int(m[2]), m[3]
-        if not 1 <= month <= 12:
-            return None
         return _make(int(year), month, day) if year else _nearest(month, day, sent_on)
     return None
