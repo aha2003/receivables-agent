@@ -6,7 +6,12 @@ are synthetic stand-ins.
 """
 
 import json
+import logging
+import os
 import re
+import subprocess
+import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, get_args
@@ -47,7 +52,9 @@ M01 = (
 Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
-def reply(text: str, stop_reason: str = "end_turn", status: int = 200) -> httpx2.Response:
+def reply(
+    text: str, stop_reason: str = "end_turn", status: int = 200, **usage: int
+) -> httpx2.Response:
     body = {
         "id": "msg_test",
         "type": "message",
@@ -56,7 +63,7 @@ def reply(text: str, stop_reason: str = "end_turn", status: int = 200) -> httpx2
         "content": [{"type": "text", "text": text}],
         "stop_reason": stop_reason,
         "stop_sequence": None,
-        "usage": {"input_tokens": 120, "output_tokens": 40},
+        "usage": {"input_tokens": 120, "output_tokens": 40, **usage},
     }
     return httpx2.Response(status, json=body)
 
@@ -239,6 +246,24 @@ def test_a_missing_model_id_is_refused() -> None:
 # --- logs: model role, latency, tokens and prompt hash only --------------------------------------
 
 
+def test_cached_prompt_tokens_count_as_input() -> None:
+    server = Server(reply(GOOD, cache_read_input_tokens=900, cache_creation_input_tokens=30))
+    live = client(server)
+    live.classify(M01, "en")
+    assert live.usage() == (1050, 40)
+
+
+def test_call_state_is_per_thread() -> None:
+    live = client(Server(reply(GOOD)))
+    worker = threading.Thread(target=live.classify, args=(M01, "en"))
+    worker.start()
+    worker.join()
+    # Another thread's call never shows up as this thread's model role or tokens.
+    assert (live.model, live.usage()) == ("anthropic", (None, None))
+    live.classify(M01, "en")
+    assert (live.model, live.usage()) == ("anthropic:classifier", (120, 40))
+
+
 def test_a_failed_call_never_reports_the_previous_calls_tokens() -> None:
     live = client(Server(reply(GOOD), httpx2.TimeoutException("slow")))
     live.classify(M01, "en")
@@ -264,6 +289,29 @@ def test_the_call_is_logged_with_tokens_and_without_ids_or_content() -> None:
     text = logs.text()
     assert FAKE_KEY not in text and not [m for m in MODELS.values() if m in text]
     assert "INV-004" not in text and "Please correct" not in text
+
+
+# --- the SDK's own logging stays off (D-032) ------------------------------------------------------
+
+
+def test_the_sdk_never_turns_on_its_own_logging() -> None:
+    # This module imports the SDK at collection, before any per-test fixture runs; the test below
+    # runs it in a separate pytest process with ANTHROPIC_LOG=debug exported.
+    assert logging.getLogger("anthropic").level == logging.NOTSET
+    assert logging.getLogger("httpx2").level == logging.NOTSET
+
+
+def test_anthropic_log_in_the_shell_is_ignored() -> None:
+    target = f"{Path(__file__).resolve()}::test_the_sdk_never_turns_on_its_own_logging"
+    done = subprocess.run(  # noqa: S603 - a fixed command: this test file under pytest
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", target],
+        env={**os.environ, "ANTHROPIC_LOG": "debug"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert done.returncode == 0, done.stdout[-2000:]
 
 
 # --- the prompt and schema match the spec and the models -----------------------------------------

@@ -27,7 +27,16 @@ class JsonLogs:
 def json_logs(customer_names: Callable[[], Iterable[str]]) -> Iterator[JsonLogs]:
     root = logging.getLogger()
     saved_root = (list(root.handlers), root.level)
-    named = ["sqlalchemy", "anthropic", "httpx", "uvicorn", "uvicorn.error", "uvicorn.access"]
+    named = [
+        "sqlalchemy",
+        "anthropic",
+        "httpx",
+        "httpx2",
+        "httpcore2",
+        "uvicorn",
+        "uvicorn.error",
+        "uvicorn.access",
+    ]
     saved = {n: (logging.getLogger(n).level, list(logging.getLogger(n).handlers),
                  logging.getLogger(n).propagate) for n in named}  # fmt: skip
     stream = io.StringIO()

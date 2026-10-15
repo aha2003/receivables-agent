@@ -48,6 +48,12 @@ def test_it_refuses_live_mode_without_model_ids() -> None:
     assert FAKE_KEY not in done.stdout + done.stderr
 
 
+def test_it_refuses_while_the_sdk_would_log_the_request() -> None:
+    done = _run({"LLM_MODE": "live", "ANTHROPIC_API_KEY": FAKE_KEY, "ANTHROPIC_LOG": "debug"})
+    assert done.returncode == 2
+    assert "unset ANTHROPIC_LOG" in done.stderr and FAKE_KEY not in done.stdout + done.stderr
+
+
 def _module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("live_smoke", SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -75,7 +81,10 @@ def test_it_prints_a_summary_only(
 
     monkeypatch.setenv("LLM_MODE", "live")
     monkeypatch.setattr(module, "make_llm_client", make)
+    configured: list[object] = []
+    monkeypatch.setattr(module, "configure_logging", configured.append)
     assert module.main() == 0
+    assert len(configured) == 1  # the scrubbed pipeline is in place before the call
     out = capsys.readouterr().out
     assert "label:        PO_AMOUNT_MISMATCH (expected PO_AMOUNT_MISMATCH)" in out
     assert "attempts:     1" in out and "tokens:       None in, None out" in out

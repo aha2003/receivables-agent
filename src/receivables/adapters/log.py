@@ -198,9 +198,11 @@ def configure_logging(
     logging.captureWarnings(True)  # warnings become records, so they are scrubbed too
     # SQLAlchemy logs SQL with bound values at INFO; the anthropic SDK logs request bodies at
     # DEBUG (ANTHROPIC_LOG); uvicorn and the SDK may bring their own handlers.
-    for name in ("sqlalchemy", "anthropic"):
+    for name in ("sqlalchemy", "anthropic", "httpx2", "httpcore2"):
         logging.getLogger(name).setLevel(logging.WARNING)
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "anthropic", "httpx"):
+    for name in (
+        "uvicorn", "uvicorn.error", "uvicorn.access", "anthropic", "httpx", "httpx2", "httpcore2",
+    ):  # fmt: skip
         logging.getLogger(name).handlers.clear()
         logging.getLogger(name).propagate = True
     return handler

@@ -4,13 +4,16 @@ Run only by hand, never in CI or by the test suite:
 
     LLM_MODE=live uv run --env-file .env python scripts/live_smoke.py
 
-It refuses to run unless ``LLM_MODE=live`` and the API key and three model ids are set. The
+It refuses to run unless ``LLM_MODE=live`` and the API key and three model ids are set, and
+while ``ANTHROPIC_LOG`` is set (the SDK would log the request). Logging is the app's scrubbed
+pipeline. The
 message and customer names are the synthetic fixtures; the text goes through the same redaction
 as the app (D-031). It prints the label, confidence, review flag, error code, attempts, latency
 and token counts, and never the key, the model ids or the model's raw output.
 """
 
 import csv
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,6 +23,7 @@ from receivables.adapters.llm.base import RawLLMClient
 from receivables.adapters.llm.classification import classify_message
 from receivables.adapters.llm.factory import LiveModeUnavailable, make_llm_client
 from receivables.adapters.llm.mode import LlmModeConflict
+from receivables.adapters.log import configure_logging
 from receivables.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,8 +41,13 @@ def main() -> int:
     if settings.llm_mode != "live":
         print("refused: set LLM_MODE=live to run the live smoke test", file=sys.stderr)
         return 2
+    if os.environ.get("ANTHROPIC_LOG"):
+        # The SDK's own debug logging would print the request, model id included.
+        print("refused: unset ANTHROPIC_LOG to run the live smoke test", file=sys.stderr)
+        return 2
     config = load_config(ROOT / settings.config_path)
     names = tuple(row["customer_name"] for row in _rows("customers.csv"))
+    configure_logging(lambda: names)  # the app's scrubbed logs; SDK loggers held at WARNING
     try:
         client = make_llm_client(settings, config, customer_names=lambda: names)
     except (LiveModeUnavailable, LlmModeConflict) as error:

@@ -16,6 +16,7 @@ raw text then goes through the same Pydantic validation as every other client.
 """
 
 import json
+import threading
 from collections.abc import Mapping
 from typing import Any
 
@@ -63,18 +64,23 @@ class AnthropicClient(RawLLMClient):
             max_retries=max_retries,
             http_client=http_client,
         )
-        self._usage: tuple[int | None, int | None] = (None, None)
-        self.model = "anthropic"
+        # Per-call state is per thread: one client serves concurrent requests (threadpool).
+        self._call = threading.local()
 
     def __repr__(self) -> str:
         return "AnthropicClient()"  # never the key or the model ids
 
+    @property
+    def model(self) -> str:
+        """The model's role in this thread's last call (never its id)."""
+        return getattr(self._call, "model", "anthropic")
+
     def usage(self) -> tuple[int | None, int | None]:
-        return self._usage
+        return getattr(self._call, "usage", (None, None))
 
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
-        self._usage = (None, None)
-        self.model = f"anthropic:{ROLES[kind]}"
+        self._call.usage = (None, None)
+        self._call.model = f"anthropic:{ROLES[kind]}"
         if kind != "classify":
             raise PromptNotAvailable(f"no live {kind} prompt yet")
         try:
@@ -93,7 +99,14 @@ class AnthropicClient(RawLLMClient):
             )
         except anthropic.APIError as error:
             raise LLMUnavailable(type(error).__name__) from None
-        self._usage = (message.usage.input_tokens, message.usage.output_tokens)
+        usage = message.usage
+        # With caching, cached prompt tokens are reported apart from input_tokens; all count.
+        processed = (
+            usage.input_tokens
+            + (usage.cache_read_input_tokens or 0)
+            + (usage.cache_creation_input_tokens or 0)
+        )
+        self._call.usage = (processed, usage.output_tokens)
         if message.stop_reason != "end_turn":
             raise LLMResponseInvalid(kind, f"stopped: {message.stop_reason}")
         # No text block gives "", which fails validation as "not JSON" like any bad output.
