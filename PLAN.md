@@ -166,7 +166,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §3.1, §13
   - Tests: T-SEC-01, T-SEC-04
   - Done when: No email, phone, TRN, IBAN or customer name in captured prompts or logs.
-- [ ] **S3.04** Anthropic client
+- [x] **S3.04** Anthropic client
   - Goal: Official SDK adapter with structured outputs or strict tool use plus Pydantic validation, one retry, 30 s timeout, prompt caching, model ids from env; manual `scripts/live_smoke.py` (never run in CI).
   - Spec: §3.2, §7.2, §7.3
   - Tests: T-LLM-02
