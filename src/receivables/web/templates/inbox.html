@@ -21,7 +21,7 @@
   <dl>
     <dt>Label</dt><dd>{{ c.label|replace("_", " ")|lower }}</dd>
     <dt>Confidence</dt><dd>{{ "%.2f"|format(c.confidence or 0) }} (model score, uncalibrated)</dd>
-    {% if c.amount_difference %}<dt>Amount difference</dt><dd>AED {{ c.amount_difference }} (invoice minus PO, computed by code)</dd>{% endif %}
+    {% if c.amount_difference_fils is not none %}<dt>Amount difference</dt><dd>{{ c.amount_difference_fils|aed }} (invoice minus PO, computed by code)</dd>{% endif %}
     {% if c.promised_payment_date %}<dt>Promised date</dt><dd>{{ c.promised_payment_date }}</dd>{% endif %}
     {% if c.evidence_quote %}<dt>Evidence</dt><dd dir="auto">“{{ c.evidence_quote }}”</dd>{% endif %}
     {% if c.summary_en %}<dt>Summary</dt><dd>{{ c.summary_en }}</dd>{% endif %}

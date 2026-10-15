@@ -85,6 +85,7 @@ def classification_json(row: Any) -> dict[str, Any]:
         "needs_review": bool(row.needs_review),
         "flags": json.loads(row.flags_json),
         "amount_difference": None if difference is None else str(from_fils(difference)),
+        "amount_difference_fils": difference,
         "promised_payment_date": extraction.get("resolved_promised_date"),
         "status": row.status,
         "model": row.model,

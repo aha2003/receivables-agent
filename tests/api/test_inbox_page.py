@@ -162,3 +162,18 @@ def test_the_forms_need_csrf(user: TestClient) -> None:
 def test_an_empty_inbox_points_to_upload(client: TestClient) -> None:
     assert login(client) == 303
     assert "Upload <code>correspondence.csv</code>" in client.get("/inbox").text
+
+
+def test_the_amount_difference_is_formatted(user: TestClient, app: FastAPI, engine: Engine) -> None:
+    use_llm(
+        app,
+        engine,
+        answer(
+            label="PO_AMOUNT_MISMATCH",
+            invoice_numbers=["INV-004"],
+            amounts_mentioned=[{"value": "47000", "currency": "AED", "role": "po_amount"}],
+            evidence_quote="Please correct.",
+        ),
+    )
+    form(user, "/inbox/M-01/classify")
+    assert "AED 3,000.00 (invoice minus PO" in card(user.get("/inbox").text, "M-01")  # §10 format
