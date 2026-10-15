@@ -305,6 +305,8 @@ def test_allowed_contacts(text: str) -> None:
         "Visit supplier.example.evil.com to pay.",  # the domain must end the host
         "Visit https://supplier.example@evil.example/ now.",  # user-info trick
         "Pay at hxxps://evil.example/x.",  # any scheme counts
+        "Fetch ftp://203.0.113.5/remittance today.",  # any scheme, even without a domain name
+        "Open hxxp://198.51.100.7/pay now.",
         "Pay at https://ev​il.example/x.",  # zero-width characters are removed first
         "Call us on [PHONE] or write to [EMAIL].",  # the model tried to add contact details
         "Transfer to [IBAN].",
@@ -335,3 +337,10 @@ def test_check_draft_passes_the_contacts_through() -> None:
 
 def test_a_sender_name_may_not_hold_a_link() -> None:
     assert mentions("Visit www.example.com", RX) == (UNKNOWN_CONTACT_OR_URL,)
+
+
+def test_check_draft_allows_the_recipient_it_is_given() -> None:
+    body = "Please send remittance details to accounts@beta.example."
+    common = {"max_words": 140, "invoice_regex": RX}
+    assert check_draft("Invoice INV-004", body, FACTS, recipient=RECIPIENT, **common) == ()
+    assert check_draft("Invoice INV-004", body, FACTS, **common) == (UNKNOWN_CONTACT_OR_URL,)

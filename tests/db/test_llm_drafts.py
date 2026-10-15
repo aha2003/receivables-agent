@@ -123,3 +123,38 @@ def test_without_a_drafter_the_run_is_unchanged(engine: Engine) -> None:
     run_agent_tick(engine, CLOCK, CONFIG, as_of=date(2026, 10, 31))
     assert {d["generator"] for d in drafts(engine)} == {"template"}
     assert all(step["attempts"] == [] for step in draft_steps(engine))
+
+
+def test_the_recipient_and_the_sender_domain_are_allowed_in_a_real_run(engine: Engine) -> None:
+    import csv
+    import dataclasses
+
+    with (FIXTURES / "invoices.csv").open(encoding="utf-8") as f:
+        owner = {r["invoice_number"]: r["customer_id"] for r in csv.DictReader(f)}
+    with (FIXTURES / "customers.csv").open(encoding="utf-8") as f:
+        email = {r["customer_id"]: r["contact_email"] for r in csv.DictReader(f)}
+
+    def with_contacts(request: Mapping[str, Any]) -> dict[str, str]:
+        draft = good_draft(request)
+        recipient = email[owner[request["facts"]["invoices"][0]["invoice_number"]]]
+        draft["body"] += f"\nReply to {recipient} or see https://ar.supplier.example/statement."
+        return draft
+
+    config = dataclasses.replace(
+        CONFIG, drafts=dataclasses.replace(CONFIG.drafts, sender_domain="supplier.example")
+    )
+    _, write = drafter(engine, with_contacts)
+    run_agent_tick(engine, CLOCK, config, as_of=date(2026, 10, 31), drafter=write)
+    assert {d["generator"] for d in drafts(engine)} == {"llm"}  # both contacts are allowed
+
+
+def test_another_customers_address_sends_the_draft_back(engine: Engine) -> None:
+    def wrong_recipient(request: Mapping[str, Any]) -> dict[str, str]:
+        draft = good_draft(request)
+        draft["body"] += "\nReply to someone@else.example."
+        return draft
+
+    _, write = drafter(engine, wrong_recipient)
+    run_agent_tick(engine, CLOCK, CONFIG, as_of=date(2026, 10, 31), drafter=write)
+    assert {d["generator"] for d in drafts(engine)} == {"template"}
+    assert all(s["attempts"] == [["UNKNOWN_CONTACT_OR_URL"]] * 3 for s in draft_steps(engine))

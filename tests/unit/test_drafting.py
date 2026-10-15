@@ -156,3 +156,9 @@ def test_a_violating_template_is_a_bug_not_a_draft() -> None:
     bad_sender = dataclasses.replace(FACTS, sender_name="Visit www.evil.example")
     with pytest.raises(TemplateViolation, match="UNKNOWN_CONTACT_OR_URL"):
         draft(None, facts=bad_sender)
+
+
+def test_the_name_is_restored_in_the_subject_too() -> None:
+    subject = "Invoice INV-004 for [CUSTOMER]"
+    outcome = draft(Script((subject, GOOD[1])))
+    assert outcome.subject == "Invoice INV-004 for Beta Contracting LLC"
