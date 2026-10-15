@@ -28,7 +28,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from receivables.adapters.llm.base import PROMPT_VERSIONS, RawLLMClient, request_key
 from receivables.adapters.llm.schemas import LLMCallFailed
 
-__all__ = ["CASSETTE_FORMAT", "CassetteError", "CassetteMiss", "ReplayClient", "load_cassettes"]
+__all__ = [
+    "CASSETTE_FORMAT",
+    "CassetteError",
+    "CassetteMiss",
+    "RecordingClient",
+    "ReplayClient",
+    "load_cassettes",
+]
 
 CASSETTE_FORMAT = 1
 
@@ -128,3 +135,42 @@ def interaction(
         "request": json.loads(json.dumps(request)),
         "response": response,
     }
+
+
+class RecordingClient(RawLLMClient):
+    """Wraps a client and keeps each request with the raw response it got (manual recording).
+
+    The request recorded is the one the client received, so behind ``RedactingClient`` it is
+    already redacted. For a request asked twice (the §7.2 retry), the last response is kept,
+    since a cassette holds one response per request. ``model`` is the client's role label
+    (for example ``anthropic:classifier``), never a model id (D-034).
+    """
+
+    def __init__(self, inner: RawLLMClient) -> None:
+        self.inner = inner
+        self._recorded: dict[str, dict[str, Any]] = {}
+
+    @property
+    def model(self) -> str:
+        return str(getattr(self.inner, "model", "unknown"))
+
+    def usage(self) -> tuple[int | None, int | None]:
+        return self.inner.usage()
+
+    def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
+        raw = self.inner.complete(kind, payload)
+        self._recorded[request_key(kind, payload)] = interaction(kind, payload, raw, self.model)
+        return raw
+
+    def cassette(self, name: str) -> dict[str, Any]:
+        return {
+            "format": CASSETTE_FORMAT,
+            "name": name,
+            "synthetic": True,
+            "interactions": list(self._recorded.values()),
+        }
+
+    def write(self, path: Path, name: str) -> None:
+        path.write_text(
+            json.dumps(self.cassette(name), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
