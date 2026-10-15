@@ -21,6 +21,7 @@ __all__ = [
     "DEFAULT_INVOICE_REGEX",
     "FORBIDDEN_PHRASE",
     "UNKNOWN_AMOUNT",
+    "UNKNOWN_CONTACT_OR_URL",
     "UNKNOWN_DATE",
     "UNKNOWN_INVOICE",
     "check_draft",
@@ -33,6 +34,18 @@ UNKNOWN_AMOUNT = "UNKNOWN_AMOUNT"
 UNKNOWN_DATE = "UNKNOWN_DATE"
 FORBIDDEN_PHRASE = "FORBIDDEN_PHRASE"
 BODY_TOO_LONG = "BODY_TOO_LONG"  # §8.2 step 4 gives no code (D-022)
+UNKNOWN_CONTACT_OR_URL = "UNKNOWN_CONTACT_OR_URL"  # §18.9
+
+# §18.9: no URL or email address except the recipient's and the supplier's sender domain.
+# Detected on normalised text: emails, scheme or "www." links, and bare domains with a common
+# top-level domain. Redaction tokens for contact details mean the model wanted to add one.
+_EMAIL_ADDRESS = re.compile(r"[\w.%+'-]+@([\w-]+(?:\.[\w-]+)+)")
+_LINK = re.compile(
+    r"\b(?:[a-z][a-z0-9+.-]*://|www\.)([^\s/?#<>\"')\]]+)"
+    r"|\b((?:[a-z0-9-]+\.)+(?:com|net|org|ae|io|co|info|biz|me|app|link|xyz|example))\b",
+    re.IGNORECASE,
+)
+_CONTACT_TOKENS = re.compile(r"\[(?:EMAIL|PHONE|IBAN|TRN)\]")
 
 DEFAULT_INVOICE_REGEX = r"\b[A-Z]{2,6}-\d{2,}\b"
 
@@ -129,10 +142,37 @@ def _scan(text: str, invoice_regex: str) -> tuple[list[str], list[int | None], l
     return invoices, amounts, _mentioned_dates(text)
 
 
-def validate_draft(text: str, facts: FactBlock, invoice_regex: str) -> tuple[str, ...]:
+def _on_domain(host: str, domain: str | None) -> bool:
+    host = host.casefold().rstrip(".")
+    return domain is not None and (host == domain or host.endswith("." + domain))
+
+
+def _unknown_contact(text: str, recipient: str | None, sender_domain: str | None) -> bool:
+    """Any URL or address other than the recipient's and the sender domain's (§18.9)."""
+    allowed = recipient.casefold() if recipient else None
+    domain = sender_domain.casefold() if sender_domain else None
+    for m in _EMAIL_ADDRESS.finditer(text):
+        if m.group(0).casefold() != allowed and not _on_domain(m.group(1), domain):
+            return True
+    without_addresses = _EMAIL_ADDRESS.sub(" ", text)
+    for m in _LINK.finditer(without_addresses):
+        if not _on_domain(m.group(1) or m.group(2), domain):
+            return True
+    return _CONTACT_TOKENS.search(text) is not None
+
+
+def validate_draft(
+    text: str,
+    facts: FactBlock,
+    invoice_regex: str,
+    *,
+    recipient: str | None = None,
+    sender_domain: str | None = None,
+) -> tuple[str, ...]:
     """Violations of ``text`` against ``facts``, distinct and sorted.
 
-    ``invoice_regex`` is the customer's configured ``drafts.invoice_number_regex``.
+    ``invoice_regex`` is the customer's configured ``drafts.invoice_number_regex``;
+    ``recipient`` and ``sender_domain`` are the only contacts a draft may name (§18.9).
     """
     text = _normalise(text)
     invoices, amounts, dates = _scan(text, invoice_regex)
@@ -151,6 +191,8 @@ def validate_draft(text: str, facts: FactBlock, invoice_regex: str) -> tuple[str
         violations.add(UNKNOWN_DATE)
     if _FORBIDDEN.search(text):
         violations.add(FORBIDDEN_PHRASE)
+    if _unknown_contact(text, recipient, sender_domain):
+        violations.add(UNKNOWN_CONTACT_OR_URL)
     return tuple(sorted(violations))
 
 
@@ -168,6 +210,7 @@ def mentions(text: str, invoice_regex: str) -> tuple[str, ...]:
             (UNKNOWN_AMOUNT, amounts),
             (UNKNOWN_DATE, dates),
             (FORBIDDEN_PHRASE, _FORBIDDEN.search(text)),
+            (UNKNOWN_CONTACT_OR_URL, _unknown_contact(text, None, None)),
         )
         if present
     }
@@ -175,10 +218,25 @@ def mentions(text: str, invoice_regex: str) -> tuple[str, ...]:
 
 
 def check_draft(
-    subject: str, body: str, facts: FactBlock, *, max_words: int, invoice_regex: str
+    subject: str,
+    body: str,
+    facts: FactBlock,
+    *,
+    max_words: int,
+    invoice_regex: str,
+    recipient: str | None = None,
+    sender_domain: str | None = None,
 ) -> tuple[str, ...]:
     """``validate_draft`` over subject and body, plus the body word limit (§8.2 step 4)."""
-    violations = set(validate_draft(f"{subject}\n{body}", facts, invoice_regex))
+    violations = set(
+        validate_draft(
+            f"{subject}\n{body}",
+            facts,
+            invoice_regex,
+            recipient=recipient,
+            sender_domain=sender_domain,
+        )
+    )
     if len(body.split()) > max_words:
         violations.add(BODY_TOO_LONG)
     return tuple(sorted(violations))
