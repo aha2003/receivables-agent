@@ -187,12 +187,11 @@ def test_upload_page_and_report(client: TestClient) -> None:
 def test_upload_page_refusals(client: TestClient) -> None:
     assert login(client) == 303
     response = client.post(
-        "/upload/correspondence",
+        "/upload/ledgers",  # not a file kind (correspondence became one in S3.06)
         files={"file": ("m.csv", b"message_id\n", "text/csv")},
         data={"csrf_token": csrf(client)},
     )
-    assert response.status_code == 501
-    assert "arrives in S3.06" in response.text
+    assert response.status_code == 404
 
 
 def test_every_page_has_banner_nav_and_as_of(seeded: TestClient) -> None:

@@ -15,7 +15,6 @@ from receivables.core.validation import FILE_KINDS
 
 __all__ = ["ImportRefusal", "run_import", "safe_filename"]
 
-LATER_KINDS = {"correspondence": "S3.06"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -48,10 +47,6 @@ async def run_import(
     mode: str = "upsert",
     dry_run: str | None = None,
 ) -> ImportResult | ImportRefusal:
-    if kind in LATER_KINDS:
-        return ImportRefusal(
-            501, "not_implemented", f"{kind} import arrives in {LATER_KINDS[kind]}."
-        )
     if kind not in FILE_KINDS:
         return ImportRefusal(404, "not_found", f"Unknown file kind {kind[:40]!r}.")
     form = await request.form()  # options may come as query parameters or form fields

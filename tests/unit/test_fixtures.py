@@ -392,3 +392,23 @@ def test_bad_invoices_customer_set_matches_spec(golden_results: dict[str, Any]) 
     ids = re.search(r"customer id set `\{([^}]+)\}`", section)
     assert ids is not None
     assert golden_results["bad_invoices_customer_ids"] == [s.strip() for s in ids[1].split(",")]
+
+
+def test_correspondence_import_fixture_matches_the_labelled_messages(
+    load_fixture_csv: Callable[[str], list[dict[str, str]]],
+) -> None:
+    # fixtures/correspondence.csv is §6.10 in the §4.5 columns (D-034).
+    labelled = {r["message_id"]: r for r in load_fixture_csv("correspondence_labeled.csv")}
+    owners = {r["invoice_number"]: r["customer_id"] for r in load_fixture_csv("invoices.csv")}
+    rows = load_fixture_csv("correspondence.csv")
+    assert [r["message_id"] for r in rows] == list(labelled)
+    for row in rows:
+        source = labelled[row["message_id"]]
+        assert row["body"] == source["body"]
+        assert row["language"] == source["language"]
+        assert row["invoice_number"] == (
+            "" if source["invoice_number"] == "none" else source["invoice_number"]
+        )
+        assert row["customer_id"] == owners.get(row["invoice_number"], "")
+        assert row["direction"] == "inbound"
+        assert row["sent_at"].startswith("2026-10-") and row["sent_at"].endswith("+04:00")

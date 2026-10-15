@@ -11,13 +11,22 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import Connection, Engine, Table, exc, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import Clock, utc_timestamp
-from receivables.adapters.db.models import Customer, Event, Import, Invoice, Payment
+from receivables.adapters.db.models import (
+    Classification,
+    Correspondence,
+    Customer,
+    Event,
+    Import,
+    Invoice,
+    Payment,
+)
 from receivables.adapters.db.repo import table_counts, write_audit
 from receivables.core.ledger import InvoiceRecord, PaymentRecord
 from receivables.core.scoring import EventRecord
@@ -25,6 +34,7 @@ from receivables.core.validation import (
     FILE_KINDS,
     CustomerRow,
     Issue,
+    MessageRecord,
     References,
     ValidationResult,
     validate_csv,
@@ -200,12 +210,41 @@ def _references(conn: Connection) -> References:
     payments = conn.execute(
         select(Payment.payment_id, Payment.invoice_number, Payment.amount_fils)
     ).all()
+    c = Correspondence
+    classified = conn.execute(
+        select(
+            c.message_id, c.invoice_number, c.customer_id, c.direction, c.sent_at,
+            c.language, c.subject, c.body,
+        ).join(Classification, Classification.message_id == c.message_id)
+    ).all()  # fmt: skip
     return References(
+        classified_messages={
+            r.message_id: MessageRecord(
+                message_id=r.message_id,
+                invoice_number=r.invoice_number,
+                customer_id=r.customer_id,
+                direction=r.direction,
+                sent_at=_stored_time(r.sent_at),
+                language=r.language,
+                subject=r.subject,
+                body=r.body,
+            )
+            for r in classified
+        },
         customer_ids=customers,
         invoice_customers={r.invoice_number: r.customer_id for r in invoices},
         invoice_amounts={r.invoice_number: r.amount_fils for r in invoices},
         existing_payments={r.payment_id: (r.invoice_number, r.amount_fils) for r in payments},
     )
+
+
+def _stored_time(value: str) -> datetime:
+    """A stored ``sent_at`` in UTC; one that cannot be read never equals an imported row."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return datetime.min.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _payment_count(conn: Connection) -> int:
@@ -253,6 +292,17 @@ def _row(record: object) -> dict[str, Any]:
             "promise_date": record.promise_date.isoformat() if record.promise_date else None,
             "source": "import",
         }
+    if isinstance(record, MessageRecord):
+        return {
+            "message_id": record.message_id,
+            "invoice_number": record.invoice_number,
+            "customer_id": record.customer_id,
+            "direction": record.direction,
+            "sent_at": record.sent_at.strftime("%Y-%m-%dT%H:%M:%SZ"),  # UTC, sortable (§9)
+            "language": record.language,
+            "subject": record.subject,
+            "body": record.body,
+        }
     raise TypeError(f"unexpected record {type(record).__name__}")  # pragma: no cover
 
 
@@ -261,6 +311,7 @@ _TARGETS: dict[str, tuple[Any, str]] = {
     "invoices": (Invoice, "invoice_number"),
     "payments": (Payment, "payment_id"),
     "events": (Event, "event_id"),
+    "correspondence": (Correspondence, "message_id"),
 }
 
 

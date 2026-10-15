@@ -284,7 +284,7 @@ def test_unallocated_warning_in_response(db: Engine, fixture_text: Callable[[str
 
 def test_unsupported_kind(db: Engine) -> None:
     with pytest.raises(ValueError, match="unsupported"):
-        import_csv(db, "correspondence", b"message_id\n", filename="m.csv", clock=CLOCK)
+        import_csv(db, "mappings", b"message_id\n", filename="m.csv", clock=CLOCK)
 
 
 def test_concurrent_duplicate_is_caught_by_unique_key(

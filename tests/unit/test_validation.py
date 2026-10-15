@@ -1,6 +1,6 @@
 """Fixed-schema CSV validation (SPEC §4.1-§4.6): T-IMP-01..03, T-UNA-02 plus rule coverage."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -12,6 +12,7 @@ from receivables.core.scoring import EventRecord
 from receivables.core.validation import (
     DISPUTE_LABELS,
     CustomerRow,
+    MessageRecord,
     References,
     derive_tin,
     validate_csv,
@@ -454,7 +455,7 @@ def test_dispute_label_taxonomy_has_13_labels() -> None:
 
 def test_unknown_kind_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported"):
-        validate_csv("correspondence", "message_id\n", References(), TODAY)
+        validate_csv("mappings", "message_id\n", References(), TODAY)
 
 
 def test_blank_and_empty_rows_are_skipped() -> None:
@@ -605,3 +606,87 @@ def test_reimport_same_customer_within_amount_is_clean() -> None:
     )
     result = validate_csv("invoices", INV_HEADER + _invoice_line(amount="100.00"), refs, TODAY)
     assert result.errors == () and result.warnings == ()
+
+
+# --- correspondence (§4.5; S3.06, D-034) ----------------------------------------------------------
+
+_MSG_REFS = References(
+    customer_ids=GOLDEN_CUSTOMERS,
+    invoice_customers={"INV-004": "CUST-B", "INV-001": "CUST-A"},
+)
+_MSG_HEADER = "message_id,invoice_number,customer_id,direction,sent_at,language,subject,body\n"
+
+
+def _messages(*rows: str, refs: References = _MSG_REFS) -> Any:
+    return validate_csv(
+        "correspondence", _MSG_HEADER + "".join(r + "\n" for r in rows), refs, TODAY
+    )
+
+
+def test_correspondence_rows_parse_with_utc_times() -> None:
+    result = _messages(
+        'M-1,INV-004,CUST-B,inbound,2026-10-12T09:15:00+04:00,en,Re: INV-004,"Hello, INV-004."',
+        "M-2,,,outbound,2026-10-12T05:15:00Z,,,",
+    )
+    assert result.errors == ()
+    first, second = result.records
+    assert isinstance(first, MessageRecord) and isinstance(second, MessageRecord)
+    assert first.sent_at == datetime(2026, 10, 12, 5, 15, tzinfo=UTC)
+    assert (first.body, first.language, first.customer_id) == ("Hello, INV-004.", "en", "CUST-B")
+    assert (second.invoice_number, second.language, second.body) == (None, None, None)
+
+
+def test_a_multi_line_body_is_one_row() -> None:
+    result = _messages('M-1,,,inbound,2026-10-12T05:15:00Z,en,,"line one\nline two"')
+    (record,) = result.records
+    assert isinstance(record, MessageRecord) and record.body == "line one\nline two"
+
+
+@pytest.mark.parametrize(
+    ("row", "code", "field"),
+    [
+        (",,,inbound,2026-10-12T05:15:00Z,,,", "E_REQUIRED_EMPTY", "message_id"),
+        ("M-1,,,,2026-10-12T05:15:00Z,,,", "E_REQUIRED_EMPTY", "direction"),
+        ("M-1,,,inbound,,,,", "E_REQUIRED_EMPTY", "sent_at"),
+        ("M-1,,,inbound,2026-10-12T05:15:00,,,", "E_BAD_DATE", "sent_at"),  # no offset
+        ("M-1,,,inbound,12/10/2026,,,", "E_BAD_DATE", "sent_at"),
+        ("M-1,,,inbound,2026-10-12,,,", "E_BAD_DATE", "sent_at"),
+        ("M-1,,,sideways,2026-10-12T05:15:00Z,,,", "E_BAD_ENUM", "direction"),
+        ("M-1,,,inbound,2026-10-12T05:15:00Z,fr,,", "E_BAD_ENUM", "language"),
+        ("M-1,INV-404,,inbound,2026-10-12T05:15:00Z,,,", "E_FK_MISSING", "invoice_number"),
+        ("M-1,,CUST-Z,inbound,2026-10-12T05:15:00Z,,,", "E_FK_MISSING", "customer_id"),
+        (
+            "M-1,INV-001,CUST-B,inbound,2026-10-12T05:15:00Z,,,",
+            "E_CUSTOMER_MISMATCH",
+            "customer_id",
+        ),
+        ("M" * 65 + ",,,inbound,2026-10-12T05:15:00Z,,,", "E_BAD_ENUM", "message_id"),
+        ("M-1,,,inbound,2026-10-12T05:15:00Z,,," + "b" * 20_001, "E_BAD_ENUM", "body"),
+        ("M-1,,,inbound,2026-10-12T05:15:00Z,," + "s" * 501 + ",", "E_BAD_ENUM", "subject"),
+    ],
+)
+def test_correspondence_row_errors(row: str, code: str, field: str) -> None:
+    result = _messages(row)
+    assert [(e.code, e.field) for e in result.errors] == [(code, field)]
+
+
+def test_duplicate_message_ids_in_one_file() -> None:
+    result = _messages(
+        "M-1,,,inbound,2026-10-12T05:15:00Z,,,", "M-1,,,inbound,2026-10-13T05:15:00Z,,,"
+    )
+    assert [(e.line, e.code) for e in result.errors] == [(3, "E_DUP_KEY")]
+
+
+def test_a_classified_message_keeps_its_text() -> None:
+    stored = _messages("M-1,,,inbound,2026-10-12T05:15:00Z,en,,Original text").records[0]
+    assert isinstance(stored, MessageRecord)
+    refs = References(customer_ids=GOLDEN_CUSTOMERS, classified_messages={"M-1": stored})
+    same = _messages("M-1,,,inbound,2026-10-12T09:15:00+04:00,en,,Original text", refs=refs)
+    assert same.errors == ()  # the same message again (another notation of the same time)
+    changed = _messages("M-1,,,inbound,2026-10-12T05:15:00Z,en,,Edited text", refs=refs)
+    assert [(e.code, e.field) for e in changed.errors] == [("E_DUP_KEY", "message_id")]
+
+
+def test_a_future_message_is_a_warning() -> None:
+    result = _messages("M-1,,,inbound,2026-11-02T05:15:00Z,,,")
+    assert [(w.code, w.field) for w in result.warnings] == [("W_FUTURE_DATE", "sent_at")]
