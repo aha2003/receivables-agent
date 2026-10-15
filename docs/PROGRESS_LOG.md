@@ -227,3 +227,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-034 (options 1a, 2a, 3a; locked text of classified messages; event invoice rule; review fixes). Tests that asserted correspondence import was "not implemented" now use a still-unknown kind
 - Unverified: T-LLM-01 accuracy until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/eval_classifier.py --record`
 - Next step: S3.07 LLM drafts with validator and template fallback
+
+## 2026-10-15 — Fix after S3.06: amounts as written (D-035)
+- PR: see branch | Branch: fix-llm-amounts-as-written | Commit: see PR head
+- Why: the maintainer's live T-LLM-01 run (accuracy 0.933, gate passed) missed only M-01, because the model wrote "47,000" as in the message and the schema accepted only "47000"
+- Tests: `uv run pytest -q` → 1974 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; the recording now replays at 15/15; every mutation of the parser and the new log line killed; every spec-review regression test fails on the earlier code
+- Spec / test IDs covered: §7.2, §7.3, §7.4, NFR-07 / T-LLM-01 (the gate test now runs in CI on the committed recording), T-VER-01..05 unchanged
+- Deviations or decisions (link docs/DECISIONS.md): D-035
+- Next step: S3.07 LLM drafts with validator and template fallback

@@ -1,9 +1,9 @@
 """T-LLM-01: the classifier smoke gate over the 15 synthetic §6.10 messages (D-034).
 
-The live run is manual (``scripts/eval_classifier.py``). Its ``--record`` option writes
-``tests/cassettes/t_llm_01.json``; the gate test below replays that recording and enforces
-accuracy >= 0.80. Until the maintainer records it, that one test skips. Everything else here
-uses FakeClient; nothing reaches the network.
+The live run is manual (``scripts/eval_classifier.py``). Its ``--record`` option wrote
+``tests/cassettes/t_llm_01.json`` (committed, D-035); the gate test below replays that recording
+and enforces accuracy >= 0.80. Everything else here uses FakeClient; nothing reaches the
+network.
 """
 
 import json
@@ -122,12 +122,10 @@ def test_a_retried_request_keeps_the_response_that_was_used(tmp_path: Path) -> N
     assert evaluate(behind_redaction(ReplayClient(path)), MESSAGES[:1]) == first
 
 
-@pytest.mark.skipif(
-    not RECORDED.exists(),
-    reason="T-LLM-01 gate pending: the maintainer records it with "
-    "`LLM_MODE=live uv run --env-file .env python scripts/eval_classifier.py --record`",
-)
 def test_llm_01_smoke_gate_on_the_recorded_run() -> None:
+    # The maintainer's live run, committed (D-035); a missing file fails, it does not skip.
+    # Re-record with `LLM_MODE=live uv run --env-file .env python scripts/eval_classifier.py
+    # --record` whenever the prompt version changes.
     result = evaluate(behind_redaction(ReplayClient(RECORDED)), MESSAGES)
     misses = [r for r in result.results if r[1] != r[2]]
     assert result.passes_smoke_gate, f"accuracy {float(result.accuracy):.3f}; misses {misses}"
@@ -168,7 +166,6 @@ def test_ci_never_runs_the_script() -> None:
         assert "eval_classifier" not in workflow.read_text(encoding="utf-8"), workflow.name
 
 
-@pytest.mark.skipif(not RECORDED.exists(), reason="T-LLM-01 run not recorded yet")
 def test_the_recorded_m01_answer_now_verifies(
     golden_ledger_inputs: tuple[list[InvoiceRecord], list[PaymentRecord]],
 ) -> None:
