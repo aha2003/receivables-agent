@@ -43,6 +43,12 @@ LLM_ENVIRONMENT = (
     "ANTHROPIC_MODEL_DRAFTER",
     "LLM_MODE",
     "LLM_REPLAY",
+    # Read by the anthropic SDK itself (D-032): none may redirect, authenticate or log a call.
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "ANTHROPIC_LOG",
+    "ANTHROPIC_WEBHOOK_SIGNING_KEY",
 )
 
 

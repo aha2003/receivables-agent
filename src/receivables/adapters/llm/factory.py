@@ -1,16 +1,17 @@
-"""Choosing the LLM client (SPEC §3.5; docs/DECISIONS.md D-029).
+"""Choosing the LLM client (SPEC §3.5; docs/DECISIONS.md D-029, D-032).
 
 ``make_llm_client`` builds the client for the effective mode, always wrapped in
-``RedactingClient`` (D-031): ``fake`` gives a FakeClient with no
-scripts (every call raises, so callers take their specified fallback), ``replay`` gives a
-ReplayClient over ``llm.cassette_dir``. ``live`` is refused until the Anthropic client exists
-(S3.04); no test ever builds a live client.
+``RedactingClient`` (D-031): ``fake`` gives a FakeClient with no scripts (every call raises, so
+callers take their specified fallback), ``replay`` gives a ReplayClient over
+``llm.cassette_dir`` and ``live`` gives an AnthropicClient, which needs the API key and the three
+model ids. Building a client sends nothing; no test ever calls the live API.
 """
 
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from receivables.adapters.config import Config
+from receivables.adapters.llm.anthropic_client import AnthropicClient
 from receivables.adapters.llm.base import LLMClient
 from receivables.adapters.llm.fake import FakeClient
 from receivables.adapters.llm.mode import resolve_llm_mode
@@ -22,7 +23,7 @@ __all__ = ["LiveModeUnavailable", "make_llm_client"]
 
 
 class LiveModeUnavailable(RuntimeError):
-    """``LLM_MODE=live`` was asked for before the live client exists."""
+    """``LLM_MODE=live`` without the API key or a model id (their values are never shown)."""
 
 
 def make_llm_client(
@@ -43,4 +44,19 @@ def _raw_client(settings: Settings, config: Config) -> LLMClient:
         return FakeClient()
     if mode == "replay":
         return ReplayClient(Path(config.llm.cassette_dir))  # relative to the working directory
-    raise LiveModeUnavailable("LLM_MODE=live is not available until S3.04; use fake or replay")
+    models = {
+        "planner": settings.anthropic_model_planner,
+        "classifier": settings.anthropic_model_classifier,
+        "drafter": settings.anthropic_model_drafter,
+    }
+    missing = [f"ANTHROPIC_MODEL_{role.upper()}" for role, model in models.items() if not model]
+    if settings.anthropic_api_key is None or not settings.anthropic_api_key.get_secret_value():
+        missing.insert(0, "ANTHROPIC_API_KEY")
+    if missing or settings.anthropic_api_key is None:
+        raise LiveModeUnavailable(f"LLM_MODE=live needs {', '.join(missing)} set")
+    return AnthropicClient(
+        api_key=settings.anthropic_api_key,
+        models={role: model for role, model in models.items() if model},
+        timeout_seconds=config.llm.timeout_seconds,
+        max_retries=config.llm.max_retries,
+    )
