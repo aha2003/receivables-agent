@@ -273,3 +273,36 @@ def test_failed_calls_can_be_caught_in_one_place() -> None:
     for client in clients:
         with pytest.raises(LLMCallFailed):
             client.draft({"unrecorded": True})
+
+
+# --- a refused answer is logged, by field path only (D-035) ----------------------------------
+
+
+def test_a_refused_answer_is_logged_without_content() -> None:
+    from log_capture import json_logs
+
+    bad = {
+        "label": "PO_AMOUNT_MISMATCH",
+        "confidence": 0.9,
+        "invoice_numbers": ["INV-004"],
+        "po_numbers": [],
+        "amounts_mentioned": [{"value": "47 000", "currency": "AED", "role": "po_amount"}],
+        "dates_mentioned": [],
+        "promised_payment_date": None,
+        "evidence_quote": "Synthetic quote text",
+        "summary_en": "Synthetic summary text",
+    }
+    with json_logs(lambda: ()) as logs, pytest.raises(LLMResponseInvalid):
+        FakeClient(classify=[bad]).classify("Synthetic message about INV-004", "en")
+    (line,) = [x for x in logs.lines() if x["event"] == "llm.response_invalid"]
+    assert set(line) == {
+        "event", "level", "logger", "timestamp",
+        "kind", "prompt_version", "prompt_sha256", "reason",
+    }  # fmt: skip
+    assert (line["level"], line["kind"]) == ("warning", "classify")
+    assert line["reason"] == "schema mismatch at amounts_mentioned.0.value"
+    assert line["prompt_sha256"] == request_key(
+        "classify", {"text": "Synthetic message about INV-004", "language_hint": "en"}
+    )
+    for content in ("Synthetic quote", "Synthetic summary", "Synthetic message", "47 000"):
+        assert content not in logs.text()

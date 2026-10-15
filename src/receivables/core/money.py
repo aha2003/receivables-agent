@@ -4,10 +4,12 @@
 exponent, so no decimal context precision or rounding mode can alter a value.
 """
 
+import re
+import unicodedata
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
-__all__ = ["MAX_FILS_DIGITS", "from_fils", "to_fils"]
+__all__ = ["MAX_FILS_DIGITS", "from_fils", "parse_written_amount", "to_fils"]
 
 _FILS_EXPONENT = -2
 
@@ -68,3 +70,26 @@ def from_fils(n: int) -> Decimal:
         raise ValueError("amount out of range")
     digits = tuple(int(d) for d in str(abs(n)))
     return Decimal((1 if n < 0 else 0, digits, _FILS_EXPONENT))
+
+
+# An amount as a customer writes it (and the model copies it, D-035): ASCII or Arabic-Indic
+# digits, optional comma thousands groups of three, at most two decimals.
+_WRITTEN_AMOUNT = re.compile(r"([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(\.[0-9]{1,2})?")
+_ARABIC_SEPARATORS = str.maketrans({"\u066c": ",", "\u066b": "."})
+MAX_WRITTEN_AMOUNT_CHARS = 32
+
+
+def parse_written_amount(value: str) -> Decimal | None:
+    """``"47,000"``, ``"47000.00"`` or the same in Arabic-Indic digits as an exact ``Decimal``;
+    ``None`` for anything else (other separators, signs, spaces, exponents, more than two
+    decimals)."""
+    if len(value) > MAX_WRITTEN_AMOUNT_CHARS:
+        return None
+    text = "".join(
+        str(unicodedata.digit(ch)) if ch.isdecimal() else ch
+        for ch in value.translate(_ARABIC_SEPARATORS)
+    )
+    match = _WRITTEN_AMOUNT.fullmatch(text)
+    if match is None:
+        return None
+    return Decimal(match.group(1).replace(",", "") + (match.group(2) or ""))

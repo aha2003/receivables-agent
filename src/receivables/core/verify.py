@@ -25,12 +25,12 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from fractions import Fraction
 from typing import Any
 
 from receivables.core.ledger import LedgerRow
-from receivables.core.money import to_fils
+from receivables.core.money import parse_written_amount, to_fils
 
 __all__ = [
     "AmountClaim",
@@ -138,11 +138,8 @@ def _amounts(text: str) -> list[tuple[Decimal, int]]:
 
 
 def _decimal(value: str) -> Decimal | None:
-    try:
-        number = Decimal(_digits(value.strip()))
-    except InvalidOperation:
-        return None
-    return number if number.is_finite() else None
+    """The model's amount as written in the message (``47,000``), as an exact ``Decimal``."""
+    return parse_written_amount(value)  # the same rule as the response schema
 
 
 # --- the PO role --------------------------------------------------------------------------------
