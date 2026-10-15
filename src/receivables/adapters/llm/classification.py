@@ -11,8 +11,9 @@ from dataclasses import dataclass
 
 from receivables.adapters.llm.base import LLMClient
 from receivables.adapters.llm.schemas import Classification, LLMCallFailed, LLMResponseInvalid
+from receivables.core.verify import AmountClaim, DateClaim, Extraction
 
-__all__ = ["ClassifyOutcome", "classify_message", "unclear"]
+__all__ = ["ClassifyOutcome", "classify_message", "to_extraction", "unclear"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +51,19 @@ def classify_message(client: LLMClient, text: str, language_hint: str | None) ->
             return ClassifyOutcome(unclear(), True, type(failure).__name__, attempt)
         return ClassifyOutcome(result, False, None, attempt)
     return ClassifyOutcome(unclear(), True, error, 2)
+
+
+def to_extraction(classification: Classification) -> Extraction:
+    """The validated model output as the plain record ``verify_extraction`` checks (§7.4)."""
+    return Extraction(
+        label=classification.label,
+        confidence=classification.confidence,
+        invoice_numbers=tuple(classification.invoice_numbers),
+        po_numbers=tuple(classification.po_numbers),
+        amounts=tuple(
+            AmountClaim(a.value, a.currency, a.role) for a in classification.amounts_mentioned
+        ),
+        dates=tuple(DateClaim(d.value, d.role) for d in classification.dates_mentioned),
+        promised_payment_date=classification.promised_payment_date,
+        evidence_quote=classification.evidence_quote,
+    )
