@@ -33,6 +33,8 @@ from receivables.adapters.llm.fake import FakeClient
 from receivables.adapters.llm.prompts import (
     CLASSIFICATION_SCHEMA,
     CLASSIFIER_SYSTEM,
+    DRAFT_SCHEMA,
+    DRAFTER_SYSTEM,
     LABEL_DEFINITIONS,
 )
 from receivables.adapters.llm.schemas import AmountMentioned, Classification, DateMentioned
@@ -223,12 +225,10 @@ def test_timeout_and_retries_come_from_the_config() -> None:
     assert (live._client.timeout, live._client.max_retries) == (30.0, 3)  # pyright: ignore[reportPrivateUsage]
 
 
-@pytest.mark.parametrize("kind", ["plan", "draft"])
-def test_plan_and_draft_have_no_live_prompt_yet(kind: str) -> None:
+def test_plan_has_no_live_prompt_yet() -> None:
     server = Server(reply(GOOD))
-    live = client(server)
     with pytest.raises(PromptNotAvailable):
-        live.plan({}) if kind == "plan" else live.draft({})
+        client(server).plan({})  # the planner prompt arrives in S3.08
     assert server.requests == []
 
 
@@ -349,3 +349,129 @@ def test_the_schema_matches_the_pydantic_model() -> None:
     date_roles = DateMentioned.model_fields["role"].annotation
     assert date["properties"]["role"]["enum"] == list(get_args(date_roles))
     assert amount["additionalProperties"] is False and date["additionalProperties"] is False
+
+
+# --- the drafter (§8.3, S3.07) ----------------------------------------------------------------
+
+FACTS = {
+    "customer_name": "[CUSTOMER]",
+    "contact_name": "Accounts Team",
+    "sender_name": "Accounts Receivable Team",
+    "invoices": [{"invoice_number": "INV-004", "amount": "50000.00", "open_amount": "50000.00",
+                  "due_date": "2026-07-01", "days_overdue": 122}],
+    "as_of": "2026-10-31",
+    "tone": 3,
+    "dispute_label": "PO_AMOUNT_MISMATCH",
+    "amount_difference": "3000.00",
+}  # fmt: skip
+DRAFT = json.dumps({"subject": "Invoice INV-004", "body": "Dear Accounts Team, ..."})
+
+
+def test_the_draft_request_follows_8_3() -> None:
+    server = Server(reply(DRAFT))
+    result = client(server).draft(FACTS)
+    assert (result.subject, result.body) == ("Invoice INV-004", "Dear Accounts Team, ...")
+    (body,) = server.bodies()
+    assert body["model"] == MODELS["drafter"]
+    assert body["system"] == [
+        {"type": "text", "text": DRAFTER_SYSTEM, "cache_control": {"type": "ephemeral"}}
+    ]
+    assert body["output_config"] == {"format": {"type": "json_schema", "schema": DRAFT_SCHEMA}}
+    (turn,) = body["messages"]
+    assert turn["role"] == "user" and turn["content"].startswith("FACTS ")
+    assert json.loads(turn["content"].removeprefix("FACTS ")) == FACTS
+    assert "INV-004" not in json.dumps(body["system"])  # facts only in the user turn
+    assert "temperature" not in body
+
+
+def test_the_drafter_prompt_is_8_3_verbatim() -> None:
+    quote = next(
+        line[2:] for line in _spec_section("### 8.3").splitlines() if line.startswith("> ")
+    )
+    assert quote == DRAFTER_SYSTEM
+    assert DRAFT_SCHEMA == {
+        "type": "object",
+        "properties": {"subject": {"type": "string"}, "body": {"type": "string"}},
+        "required": ["subject", "body"],
+        "additionalProperties": False,
+    }
+
+
+def test_a_live_draft_never_sees_the_name_and_the_saved_one_has_it() -> None:
+    from datetime import date
+
+    from receivables.adapters.llm.drafter import make_draft_writer
+    from receivables.adapters.llm.redacting import RedactingClient
+    from receivables.agent.drafting import generate_draft
+    from receivables.core.drafts import FactBlock, FactInvoice
+
+    answer = {
+        "subject": "Invoice INV-004",
+        "body": "Dear Accounts Team, invoice INV-004 (AED 50,000.00) for [CUSTOMER] was due on "
+        "2026-07-01. Please confirm a payment date.",
+    }
+    server = Server(reply(json.dumps(answer)))
+    redacted = RedactingClient(
+        client(server),
+        redact_before_send=True,
+        pseudonymize_customer_names=True,
+        customer_names=lambda: ("Beta Contracting LLC",),
+    )
+    facts = FactBlock(
+        customer_name="Beta Contracting LLC",
+        contact_name="Accounts Team",
+        sender_name="Accounts Receivable Team",
+        invoices=(FactInvoice(invoice_number="INV-004", amount=5_000_000, open_amount=5_000_000,
+                              due_date=date(2026, 7, 1), days_overdue=122),),
+        as_of=date(2026, 10, 31),
+        tone=3,
+    )  # fmt: skip
+    outcome = generate_draft(
+        facts,
+        make_draft_writer(redacted),
+        max_regenerations=2,
+        max_words=140,
+        invoice_regex=r"\b[A-Z]{2,6}-\d{2,}\b",
+        recipient="accounts@beta.example",
+        sender_domain=None,
+    )
+    assert outcome.generator == "llm" and "for Beta Contracting LLC was due" in outcome.body
+    sent = json.dumps(server.bodies())
+    assert "Beta Contracting" not in sent and '\\"customer_name\\": \\"[CUSTOMER]\\"' in sent
+
+
+@pytest.mark.parametrize(
+    ("answer", "generator", "attempts"),
+    [
+        (reply("{not json"), "template", [["INVALID_OUTPUT"]] * 3),
+        (httpx2.TimeoutException("slow"), "template", [["UNAVAILABLE"]]),
+    ],
+)
+def test_a_failing_live_drafter_falls_back_to_the_template(
+    answer: httpx2.Response | Exception, generator: str, attempts: list[list[str]]
+) -> None:
+    from datetime import date
+
+    from receivables.adapters.llm.drafter import make_draft_writer
+    from receivables.agent.drafting import generate_draft
+    from receivables.core.drafts import FactBlock, FactInvoice
+
+    server = Server(answer)
+    facts = FactBlock(
+        customer_name="Beta Contracting LLC", contact_name="Accounts Team",
+        sender_name="Accounts Receivable Team",
+        invoices=(FactInvoice(invoice_number="INV-004", amount=5_000_000, open_amount=5_000_000,
+                              due_date=date(2026, 7, 1), days_overdue=122),),
+        as_of=date(2026, 10, 31), tone=1,
+    )  # fmt: skip
+    outcome = generate_draft(
+        facts,
+        make_draft_writer(client(server)),
+        max_regenerations=2,
+        max_words=140,
+        invoice_regex=r"\b[A-Z]{2,6}-\d{2,}\b",
+        recipient=None,
+        sender_domain=None,
+    )
+    assert outcome.generator == generator
+    assert [list(a) for a in outcome.attempts] == attempts
