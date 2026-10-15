@@ -156,7 +156,8 @@ class _Llm(_Strict):
 
 
 SENDER_NAME_MAX_WORDS = 8
-_DOMAIN = re.compile(r"(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}")
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_DOMAIN = re.compile(rf"(?=.{{1,253}}$)(?:{_LABEL}\.)+[A-Za-z]{{2,63}}")  # a bare host name
 
 
 class _Drafts(_Strict):
