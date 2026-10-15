@@ -238,11 +238,14 @@ def test_validation_errors_use_the_json_error_format(app: FastAPI, client: TestC
 def test_uvicorn_entry_point_builds_the_app_lazily(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
+    from log_capture import json_logs
+
     import receivables.api.main as main_module
 
     monkeypatch.setenv("SESSION_SECRET", SECRET)
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'lazy.db'}")
-    assert isinstance(main_module.app, FastAPI)
+    with json_logs(lambda: ()):  # the server entry point installs global logging (D-031)
+        assert isinstance(main_module.app, FastAPI)
     with pytest.raises(AttributeError):
         _ = main_module.not_an_attribute  # pyright: ignore[reportAttributeAccessIssue]
 

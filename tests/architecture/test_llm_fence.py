@@ -1,7 +1,8 @@
 """Only the live Anthropic client may reach the network (SPEC §3.5; D-029).
 
-Every module under ``src/receivables`` is parsed with ``ast``; none may import ``anthropic`` or
-``httpx`` except ``adapters/llm/anthropic_client.py`` (added in S3.04). Nothing is imported.
+Every module under ``src/receivables`` is parsed with ``ast``; none may import ``anthropic`` or an
+HTTP client (``httpx``, ``httpx2`` and their ``httpcore`` cores; the SDK uses ``httpx2``) except
+``adapters/llm/anthropic_client.py``. Nothing is imported.
 """
 
 import ast
@@ -10,7 +11,7 @@ from pathlib import Path
 import pytest
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "receivables"
-FENCED = ("anthropic", "httpx")
+FENCED = ("anthropic", "httpx", "httpx2", "httpcore", "httpcore2")
 ALLOWED = SRC / "adapters" / "llm" / "anthropic_client.py"
 
 
@@ -36,6 +37,10 @@ def fenced_imports(source: str) -> list[str]:
     return out
 
 
+def test_the_allowed_module_exists_and_is_the_only_one_importing_the_sdk() -> None:
+    assert fenced_imports(ALLOWED.read_text(encoding="utf-8"))  # the fence fences something
+
+
 def test_only_the_anthropic_client_imports_anthropic_or_httpx() -> None:
     files = sorted(SRC.rglob("*.py"))
     assert len(files) > 20
@@ -57,6 +62,8 @@ def test_only_the_anthropic_client_imports_anthropic_or_httpx() -> None:
         "from anthropic.types import Message",
         "import httpx",
         "from httpx import Client",
+        "import httpx2",
+        "from httpcore2 import ConnectionPool",
         "import os, httpx",
         "def f():\n    import anthropic",
         "m = __import__('anthropic')",

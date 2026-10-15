@@ -240,11 +240,14 @@ def test_other_root_handlers_and_sdk_handlers_are_replaced() -> None:
     stray = logging.StreamHandler(io.StringIO())
     with json_logs(lambda: NAMES):
         root.addHandler(stray)  # e.g. logging.basicConfig from ANTHROPIC_LOG
-        logging.getLogger("anthropic").addHandler(stray)
+        for sdk in ("anthropic", "httpx2", "httpcore2"):
+            logging.getLogger(sdk).addHandler(stray)
+            logging.getLogger(sdk).setLevel(logging.DEBUG)  # as ANTHROPIC_LOG=debug would
         handler = configure_logging(lambda: NAMES, handler=logging.StreamHandler(io.StringIO()))
         assert root.handlers == [handler]
-        assert logging.getLogger("anthropic").handlers == []
-        assert not logging.getLogger("anthropic").isEnabledFor(logging.INFO)  # no prompt bodies
+        for sdk in ("anthropic", "httpx2", "httpcore2"):  # the SDK and its HTTP client
+            assert logging.getLogger(sdk).handlers == [], sdk
+            assert not logging.getLogger(sdk).isEnabledFor(logging.INFO), sdk  # no prompt bodies
 
 
 def test_warnings_are_scrubbed_like_any_record() -> None:

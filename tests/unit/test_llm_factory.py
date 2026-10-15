@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from receivables.adapters.config import Config, load_config
+from receivables.adapters.llm.anthropic_client import AnthropicClient
 from receivables.adapters.llm.factory import LiveModeUnavailable, make_llm_client
 from receivables.adapters.llm.fake import FakeClient, FakeScriptExhausted
 from receivables.adapters.llm.mode import LlmModeConflict
@@ -41,9 +42,55 @@ def test_replay_mode_with_no_cassettes_is_refused(tmp_path: Path) -> None:
         )
 
 
-def test_live_mode_is_refused_until_the_live_client_exists() -> None:
-    with pytest.raises(LiveModeUnavailable, match=r"S3\.04"):
+FAKE_KEY = "test-only-not-a-real-anthropic-key-0123456789"
+MODELS = {
+    "ANTHROPIC_MODEL_PLANNER": "test-only-planner-model-id",
+    "ANTHROPIC_MODEL_CLASSIFIER": "test-only-classifier-model-id",
+    "ANTHROPIC_MODEL_DRAFTER": "test-only-drafter-model-id",
+}
+
+
+@pytest.mark.parametrize(
+    ("env", "missing"),
+    [
+        ({}, "ANTHROPIC_API_KEY, ANTHROPIC_MODEL_PLANNER, ANTHROPIC_MODEL_CLASSIFIER, "
+             "ANTHROPIC_MODEL_DRAFTER"),
+        ({"ANTHROPIC_API_KEY": FAKE_KEY}, "ANTHROPIC_MODEL_PLANNER, ANTHROPIC_MODEL_CLASSIFIER, "
+                                          "ANTHROPIC_MODEL_DRAFTER"),
+        ({**MODELS}, "ANTHROPIC_API_KEY"),
+        ({**MODELS, "ANTHROPIC_API_KEY": ""}, "ANTHROPIC_API_KEY"),
+        ({**MODELS, "ANTHROPIC_API_KEY": FAKE_KEY, "ANTHROPIC_MODEL_DRAFTER": ""},
+         "ANTHROPIC_MODEL_DRAFTER"),
+    ],
+)  # fmt: skip
+def test_live_mode_needs_the_key_and_all_model_ids(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], missing: str
+) -> None:
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(LiveModeUnavailable) as error:
         make_llm_client(Settings(llm_mode="live"), _config(False), customer_names=tuple)
+    assert str(error.value) == f"LLM_MODE=live needs {missing} set"
+    assert FAKE_KEY not in str(error.value)
+
+
+def test_live_mode_builds_the_anthropic_client_without_sending_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    for name, value in MODELS.items():
+        monkeypatch.setenv(name, value)
+    config = _config(False)
+    config = dataclasses.replace(
+        config, llm=dataclasses.replace(config.llm, timeout_seconds=12, max_retries=0)
+    )
+    client = make_llm_client(Settings(llm_mode="live"), config, customer_names=tuple)
+    assert isinstance(client.inner, AnthropicClient)  # behind redaction (D-031)
+    sdk = client.inner._client  # pyright: ignore[reportPrivateUsage]
+    assert (sdk.timeout, sdk.max_retries) == (12.0, 0)  # from config.yaml llm
+    assert repr(client.inner) == "AnthropicClient()"
+    assert client.model == "anthropic"
+    # The network guard (tests/network_guard.py) fails the run if building it touched a socket.
 
 
 @pytest.mark.parametrize(("mode", "replay"), [("fake", True), ("replay", False), ("live", True)])

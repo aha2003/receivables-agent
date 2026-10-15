@@ -3,6 +3,8 @@ suite-wide guards: no network (``tests/network_guard.py``) and no LLM environmen
 
 import csv
 import json
+import os
+import sys
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -19,6 +21,13 @@ from receivables.core.scoring import EventRecord
 from receivables.core.validation import CustomerRow
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """The anthropic SDK reads ANTHROPIC_LOG once, when imported; nothing has imported it yet,
+    so removing it here keeps its own debug logging off for the whole run (D-032)."""
+    assert "anthropic" not in sys.modules, "the SDK was imported before conftest could clean up"
+    os.environ.pop("ANTHROPIC_LOG", None)
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
@@ -43,6 +52,12 @@ LLM_ENVIRONMENT = (
     "ANTHROPIC_MODEL_DRAFTER",
     "LLM_MODE",
     "LLM_REPLAY",
+    # Read by the anthropic SDK itself (D-032): none may redirect, authenticate or log a call.
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "ANTHROPIC_LOG",
+    "ANTHROPIC_WEBHOOK_SIGNING_KEY",
 )
 
 

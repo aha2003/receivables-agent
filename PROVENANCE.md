@@ -11,6 +11,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | Package | Version | Licence | Purpose | Added in |
 |---|---|---|---|---|
 | alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
+| anthropic | 1.14.0 | MIT | Official Claude SDK, imported only by `adapters/llm/anthropic_client.py` (§3.1, D-032) | S3.04 |
 | argon2-cffi | 25.1.0 | MIT | Argon2id password hashing | S1.11 |
 | fastapi | 0.143.0 | MIT | HTTP API and pages | S1.11 |
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
@@ -32,18 +33,26 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | argon2-cffi-bindings | 26.1.0 | MIT |
 | cffi | 2.1.1 | MIT-0 |
 | click | 8.5.0 | BSD-3-Clause |
+| docstring-parser | 0.18.0 | MIT (installed by anthropic) |
 | h11 | 0.16.0 | MIT |
+| httpcore2 | 2.13.1 | BSD-3-Clause (installed by anthropic via httpx2) |
+| httpx2 | 2.13.1 | BSD-3-Clause (installed by anthropic; its HTTP client) |
 | idna | 3.20 | BSD-3-Clause |
+| jiter | 0.17.0 | MIT (installed by anthropic) |
 | mako | 1.4.3 | MIT |
 | markupsafe | 3.0.4 | BSD-3-Clause |
-| opentelemetry-api | 1.45.1 | Apache-2.0 (installed by FastAPI; no telemetry is configured or exported) |
+| opentelemetry-api | 1.45.1 | Apache-2.0 (installed by FastAPI and anthropic; no telemetry is configured or exported) |
 | pycparser | 3.11 | BSD-3-Clause |
 | pydantic | 2.14.1 | MIT |
 | pydantic-core | 2.50.1 | MIT |
 | python-dotenv | 1.2.4 | BSD-3-Clause (installed by pydantic-settings; the app reads no `.env` file) |
+| sniffio | 1.3.1 | MIT OR Apache-2.0 (installed by anthropic) |
 | starlette | 1.8.0 | BSD-3-Clause |
+| truststore | 0.10.5 | MIT (installed by httpx2; system certificate store) |
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | typing-inspection | 0.4.4 | MIT |
+
+Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `sys_platform == 'emscripten'`).
 
 ## Development dependencies (direct)
 

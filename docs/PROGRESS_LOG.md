@@ -204,3 +204,11 @@ Append one entry per completed step (newest last). Format:
 - Spec / test IDs covered: §3.1, §13 NFR-04, NFR-07 / T-SEC-01 (M-01 with an email, phone, TRN, IBAN and customer name injected: none reaches the client for classify, plan or draft; switches; names read at each call; Hypothesis on nested payloads), T-SEC-04 (M-01 through the client, an agent tick and web requests with the server's logging: no body or personal data in the logs; `llm.call` with model, latency, tokens and prompt hash only; request ids); structlog JSON pipeline with scrubber, fail-closed paths and server entry point
 - Deviations or decisions (link docs/DECISIONS.md): D-031 (option a: draft facts pseudonymised, S3.07 restores the name; log pipeline and its limits; review fixes). New dependency: structlog 26.1.0 (PROVENANCE.md)
 - Next step: S3.04 Anthropic client
+
+## 2026-10-15 — [S3.04] Anthropic client
+- PR: see branch | Branch: s3-04-anthropic-client | Commit: see PR head
+- Tests: `uv run pytest -q` → 1706 passed, 1 skipped (the network-guard probe); ruff check and format clean; pyright 0 errors; pip-audit: no known vulnerabilities; every mutation of the client, fallback, factory, prompt, schema, smoke script and review fixes killed (two equivalent lines removed)
+- Spec / test IDs covered: §3.2, §7.1-§7.3 / T-LLM-02 (bad JSON 30 times through the real client over a mock transport and through FakeClient: UNCLEAR, confidence 0, needs_review after exactly one retry; no exception escapes; timeouts and API errors without a schema retry); §7.3 prompt verbatim with §7.1 definitions (checked against SPEC.md), cached; structured-output schema matching the Pydantic model; config timeout and retries; model ids from env, never logged; live mode in the factory; manual `scripts/live_smoke.py` (refusals tested, never run by CI or tests)
+- Deviations or decisions (link docs/DECISIONS.md): D-032 (no temperature in this SDK; explicit key and base URL; fallback scope; model role logged instead of id; live plan and draft wait for S3.08 and S3.07; review fixes). New dependency: anthropic 1.14.0 with httpx2, httpcore2, jiter, docstring-parser, sniffio, truststore (PROVENANCE.md)
+- Unverified: live behaviour (schema acceptance, caching) until the maintainer runs the smoke script
+- Next step: S3.05 Extraction verification
