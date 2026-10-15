@@ -5,7 +5,7 @@ All messages are the synthetic §6.10 fixtures.
 """
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,7 @@ def app_with_messages(app: FastAPI, engine: Engine, clock: SimulatedClock) -> Fa
     return app
 
 
-Script = Callable[[dict[str, Any]], dict[str, Any] | str]
+Script = Callable[[Mapping[str, Any]], Mapping[str, Any] | str]
 
 
 def use_llm(app: FastAPI, engine: Engine, script: Script) -> FakeClient:
