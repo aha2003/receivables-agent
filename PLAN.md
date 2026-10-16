@@ -231,7 +231,7 @@ Confirm the exact date with the organisers. Exit: submission pack complete, demo
   - Spec: §20.1
   - Tests: manual review
   - Done when: A new evaluator can start the demo from the README.
-- [ ] **C1.03** Architecture and agent-flow diagram
+- [x] **C1.03** Architecture and agent-flow diagram
   - Goal: One page in `docs/ARCHITECTURE.md` (Mermaid): ports and adapters, agent loop, policy gate.
   - Spec: §20.1
   - Tests: manual review

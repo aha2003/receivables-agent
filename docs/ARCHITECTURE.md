@@ -4,7 +4,7 @@ One page for evaluators and contributors: how the code is layered, how one agent
 
 ## 1. Ports and adapters
 
-The pure core holds every financial rule; the agent holds the decision loop and declares the ports it needs; adapters implement them with SQLite, the Anthropic API (behind redaction, which `config.yaml` turns on by default), a sandbox mail outbox and the clock. The web app and the CLI are the entry points; both reach the agent through `adapters/db/agent_store.py` `run_agent_tick`. `adapters.db` and `adapters.mail` use each other: the store delivers through the gateway, and the gateway reads drafts and customers.
+The pure core holds every financial rule; the agent holds the decision loop and declares the ports it needs; adapters implement them with SQLite, the Anthropic API (behind redaction, which `config.yaml` turns on by default), a sandbox mail outbox and the clock. The web app (pages and JSON API) and the CLI are the entry points. The web app and the manual scripts reach the agent through `adapters/db/agent_store.py` `run_agent_tick`; the CLI only manages data (`reset`, `seed`, `create-user`) and never runs the agent. `adapters.db` and `adapters.mail` use each other: the store delivers through the gateway, and the gateway reads drafts and customers.
 
 ```mermaid
 flowchart TB
