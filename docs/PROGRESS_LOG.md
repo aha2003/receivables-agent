@@ -309,3 +309,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-043 (options 1a, 2a, 3a; review fixes)
 - Unverified: the artifact upload runs on GitHub only (checked in CI on this PR)
 - Next step: C1.02 README
+
+## 2026-10-17 — [C1.02] README
+- PR: see branch | Branch: c1-02-readme | Commit: see PR head
+- Tests: `uv run pytest -q` → 2351 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/test_readme.py` (16 tests: every path, CLI subcommand, setting and demo file named exists; figures match the golden results; the replay/config coupling; limitations cite real decisions; no value claims)
+- Spec / test IDs covered: §20.1 (README with setup, controls, synthetic-data notice, known limitations and demo script), §19.4 (run-of-show steps 1 to 5; 6 and 7 marked Slice 4)
+- Manual review: the Quickstart followed in a fresh clone of the branch (temporary folder and `.env`): install, settings, reset, login, the golden dashboard (AED 193,000.00 / AED 147,000.00), an L1 agent run (9 cases, 22 steps, 2 denied) and the health audit all worked
+- Deviations or decisions (link docs/DECISIONS.md): D-044 (options 1a, 2a, 3a; review fixes; a demo-readiness gap for the maintainer: a live L2 sandbox delivery and a disputed-invoice denial depend on today's date and the live planner, to be resolved in Slice 4 or 5)
+- Unverified: browsers other than Chromium-based; the demo in `live` mode end to end through the UI (the live gates are covered by `scripts/live_e2e.py`)
+- Next step: C1.03 Architecture and agent-flow diagram

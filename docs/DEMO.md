@@ -107,7 +107,7 @@ What the audience should take away: the message text is data, never instructions
 |---|---|---|
 | 1 | Run the agent as of 2026-10-31, open **INV-003**. | The draft panel: "Review before sending. Nothing is sent automatically.", Approve, Reject, Copy and Mark sent; no send button anywhere (S3.09). |
 | 2 | **Approvals**: approve INV-003's item. | At L1 the draft is marked approved for you to send from your own email; at L2 a policy denial can be overridden into the sandbox outbox only, never past the kill switch or the recipient rule. |
-| 3 | Upload a payments file with an unallocated payment (for example `P-005,,CUST-C,2026-10-28,12000.00,payment`, T-UNA-01), open **Unallocated cash**, allocate it to INV-008. | INV-008's open amount becomes AED 0.00 and its case resolves; an invoice the payment would overpay is not offered; every attempt is audited (S3.11). |
+| 3 | Upload `tests/fixtures/demo/unallocated_payment.csv` (one synthetic unallocated CUST-C payment, P-011, dated 2026-10-10 so it is already received) on **Upload** as payments, open **Unallocated cash**, allocate it to INV-008. | INV-008's open amount becomes AED 0.00 and its case resolves; an invoice the payment would overpay is not offered; every attempt is audited (S3.11). |
 | 4 | On the dashboard, open **Receivables Health Audit report (printable)**. | The §11 report as of the dashboard's date: AED 193,000.00 outstanding, AED 147,000.00 overdue, CUST-B 69.4%, "estimated DSO (90-day sales proxy)", "Heuristic score. Not a probability." and Definitions and limits (S3.12). |
 
 ### Live end-to-end check (Slice 3 exit, gates D1 and D3)

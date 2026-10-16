@@ -1,0 +1,2 @@
+payment_id,invoice_number,customer_id,payment_date,amount,payment_type
+P-011,,CUST-C,2026-10-10,12000.00,payment

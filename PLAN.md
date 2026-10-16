@@ -226,7 +226,7 @@ Confirm the exact date with the organisers. Exit: submission pack complete, demo
   - Spec: §20.1
   - Tests: test report generated in CI
   - Done when: Report lists every implemented test ID.
-- [ ] **C1.02** README
+- [x] **C1.02** README
   - Goal: Setup, controls, synthetic-data notice, known limitations and the demo script.
   - Spec: §20.1
   - Tests: manual review
