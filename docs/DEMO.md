@@ -62,7 +62,7 @@ No LLM planner, classification, LLM drafts, inbox, human approval, or sending fr
 
 ## Slice 3 (in progress): the inbox and classification
 
-Added with S3.06. The classifier runs in the mode set by `LLM_MODE` (default `fake`). In fake mode every **Classify** honestly falls back to "unclear, needs review" (no model is called); the flags and accept rules below were checked by hand on 2026-10-15 with a scripted classifier against a throwaway copy of the golden data. A live run needs `LLM_MODE=live` with the key and model ids in `.env` (D-032); message text is redacted before it is sent (D-031).
+Added with S3.06 to S3.08. The classifier, planner and drafter run in the mode set by `LLM_MODE` (default `fake`). In fake mode every **Classify** honestly falls back to "unclear, needs review", and the agent plans by rules and drafts from templates (no model is called); the flags and accept rules below were checked by hand on 2026-10-15 with a scripted classifier against a throwaway copy of the golden data. A live run needs `LLM_MODE=live` with the key and model ids in `.env` (D-032); message text is redacted before it is sent (D-031).
 
 ### Setup
 
@@ -78,6 +78,17 @@ As for Slice 1 and 2, then on **Upload**, upload `fixtures/correspondence.csv` (
 | 4 | Press **Accept** on M-01. | The card leaves the inbox; the INV-004 timeline gains "2026-10-12: dispute opened (PO_AMOUNT_MISMATCH)", dated on the day the message was sent. |
 | 5 | Classify **M-03** ("…released on 20 October"). | Promised date 2026-10-20, read from "20 October" relative to the day it was sent; **Accept** creates a promise to pay. |
 
+### Recorded demo (replay mode, no API spend)
+
+`scripts/record_demo.py --record`, run once by the maintainer in live mode, records the 15 classifications and one agent run (LLM plans and drafts) to `tests/cassettes/live_demo.json`. To present from that recording, disclose that the answers are recorded (T-DEMO-01) and:
+
+1. set `llm.replay: true` in `config.yaml` (it must agree with the mode, D-029);
+2. `uv run receivables reset` (stop the app first), then start the app with `LLM_MODE=replay uv run --env-file .env uvicorn receivables.api.main:app --no-proxy-headers`;
+3. run the agent **before** uploading correspondence, as of 2026-10-31: the plans and drafts come from the recording ("Generator: llm" on each draft);
+4. upload `fixtures/correspondence.csv` and classify the messages: the answers come from the recording.
+
+Anything else (a second run, other messages, other data) finds no recording: plans fall back to the rules, drafts to the templates and classifications to "unclear, needs review", and nothing calls the API.
+
 ### What this part does not show
 
-The live accuracy gate (T-LLM-01) needs a run the maintainer records with `scripts/eval_classifier.py --record`; LLM drafts, the LLM planner, approvals and the sandbox outbox follow in S3.07 to S3.09.
+Approvals and the sandbox outbox follow in S3.09.
