@@ -227,7 +227,7 @@ def classify_stored(
                 "label": result.label,
                 "confidence": result.confidence,
                 "needs_review": bool(values["needs_review"]),
-                "flags": [f.code for f in verification.flags],
+                "flags": [f.code for f in flags],
                 "error": outcome.error,
                 "model": client.model,
             },
@@ -239,7 +239,7 @@ def classify_stored(
             "message_id": message_id,
             "label": result.label,
             "needs_review": bool(values["needs_review"]),
-            "flags": [f.code for f in verification.flags],
+            "flags": [f.code for f in flags],
         },
     )
     return classification_json(row)

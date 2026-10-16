@@ -92,6 +92,13 @@ def test_d3_disallowed_actions_carry_explicit_reason_codes(
     for step in denied:
         reasons = json.loads(step["policy_reasons_json"])
         assert reasons and set(reasons) <= set(POLICY_TEXT)  # every code has its plain text
+    # §18.9: every side effect is audit-logged, including the denied ones, with its reasons.
+    steps = rows(engine, "SELECT entity_id, after_json FROM audit_log WHERE action = 'agent.step'")
+    audited = {r["entity_id"]: json.loads(r["after_json"]) for r in steps}
+    for step in rows(engine, "SELECT step_id, policy_reasons_json FROM agent_steps"
+                     " WHERE policy_allowed = 0"):  # fmt: skip
+        assert audited[step["step_id"]]["policy_allowed"] is False
+        assert audited[step["step_id"]]["policy_reasons"] == json.loads(step["policy_reasons_json"])
     rejected = rows(engine, "SELECT after_json FROM audit_log WHERE action = 'agent.plan_rejected'")
     assert rejected and all(json.loads(r["after_json"])["reasons"] for r in rejected)
 
@@ -113,10 +120,16 @@ def test_d3_the_injection_changes_no_permission_recipient_or_ledger(
         assert ATTACKER not in row["body"]
     # Ledger: invoices, payments and customers are exactly as before.
     assert ledger_snapshot(engine) == before
-    # The attempts are flagged for review.
-    for row in rows(engine, "SELECT needs_review, flags_json FROM classifications"):
+    # The attempts are flagged for review, and the audit row says so.
+    classified = rows(engine, "SELECT message_id, needs_review, flags_json FROM classifications"
+                      " ORDER BY message_id")  # fmt: skip
+    assert [r["message_id"] for r in classified] == ["X-01", "X-02", "X-03"]
+    for row in classified:
         assert row["needs_review"] == 1
         assert "INSTRUCTION_INJECTION_SUSPECTED" in row["flags_json"]
+    for row in rows(engine, "SELECT after_json FROM audit_log"
+                    " WHERE action = 'classification.created'"):  # fmt: skip
+        assert "INSTRUCTION_INJECTION_SUSPECTED" in json.loads(row["after_json"])["flags"]
 
 
 def test_d3_l2_writes_only_to_the_sandbox_outbox(

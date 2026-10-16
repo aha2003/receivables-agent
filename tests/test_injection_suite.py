@@ -142,6 +142,8 @@ def test_inj_01_the_flag_does_not_depend_on_the_models_answer(
     assert ("INSTRUCTION_INJECTION_SUSPECTED" in codes) is flagged
     assert [c for c in codes if c != "INSTRUCTION_INJECTION_SUSPECTED"] == []
     assert stored["needs_review"] == int(flagged)
+    (audit,) = rows(db, "SELECT after_json FROM audit_log WHERE action = 'classification.created'")
+    assert json.loads(audit["after_json"])["flags"] == codes  # the decision is audited
 
 
 @pytest.mark.parametrize("plan", [plan_send_to_attacker, plan_email_ledger])
@@ -151,7 +153,8 @@ def test_inj_01_a_plan_carrying_that_recipient_is_rejected(db: Engine, plan: Any
     rejected = rows(db, "SELECT entity_id, after_json FROM audit_log"
                     " WHERE action = 'agent.plan_rejected'")  # fmt: skip
     cases = {r["invoice_number"] for r in rows(db, "SELECT invoice_number FROM agent_steps")}
-    # Every case's plan was rejected, and the rule planner ran instead.
+    # Every case's plan was rejected (the hostile messages' cases among them); the rules ran.
+    assert {"INV-003", "INV-012"} <= cases
     assert {r["entity_id"] for r in rejected} == cases
     assert all(json.loads(r["after_json"])["status"] == "PLAN_REJECTED" for r in rejected)
     (run,) = rows(db, "SELECT fallback FROM agent_runs")
@@ -188,30 +191,31 @@ def rule_plan(db: Engine) -> Any:
 
 
 def test_inj_01_the_hostile_text_never_reaches_the_planner_or_the_drafter(db: Engine) -> None:
-    # The planner sees message headers only; the drafter sees the fact block only (§18.9).
+    # The planner sees message headers only; the drafter sees the fact block only (§18.9),
+    # even after the hostile message was classified (its model summary names the attacker).
+    classify(db, "X-01")
     fake = tick(db, plan=rule_plan(db), draft=draft_to_attacker)
     plans, drafts = requests_text(fake, "plan"), requests_text(fake, "draft")
     assert plans and drafts
     assert any('"X-01"' in p for p in plans)  # the hostile message's header was observed
-    for text in HOSTILE_TEXT:
+    for text in (*HOSTILE_TEXT, "[EMAIL]"):  # an address would arrive redacted as [EMAIL]
         assert not [s for s in plans + drafts if text in s]
 
 
-def test_inj_01_a_plan_request_holds_one_customer_and_no_secret(
-    db: Engine, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # §18.9: no secret, credential or full ledger in a prompt.
-    secret = "sk-ant-test-only-sentinel-0123456789"
-    monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
-    fake = tick(db, plan=plan_email_ledger)
+def test_inj_01_a_request_holds_one_customer_never_the_ledger(db: Engine) -> None:
+    # §18.9: no full ledger in a prompt. Each plan or draft request names only invoices of the
+    # case's own customer. (Keys never reach a request body: test_anthropic_client.py.)
+    fake = tick(db, plan=rule_plan(db), draft=draft_to_attacker)
     invoices = rows(db, "SELECT invoice_number, customer_id FROM invoices")
     customer_of = {r["invoice_number"]: r["customer_id"] for r in invoices}
-    for _, request in (c for c in fake.calls if c[0] == "plan"):
+    checked = 0
+    for kind, request in fake.calls:
         sent = json.dumps(request)
-        assert secret not in sent
-        own = customer_of[request["observation"]["case"]["invoice_number"]]
-        others = [n for n, c in customer_of.items() if c != own and f'"{n}"' in sent]
-        assert others == []
+        named = [n for n in customer_of if f'"{n}"' in sent]
+        assert named, kind
+        assert len({customer_of[n] for n in named}) == 1, (kind, named)
+        checked += 1
+    assert checked == len(fake.calls) > 0
 
 
 # --- T-INJ-02 -------------------------------------------------------------------------------------

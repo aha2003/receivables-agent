@@ -6,9 +6,9 @@ instruct the system rather than talk about an invoice:
 
 - ``override``: "ignore previous instructions", "system prompt", "you are now", "developer
   mode" and the like, in English or Arabic;
-- ``recipient``: a request to send, email, forward or export something to an email address
+- ``recipient``: a request to send, email, forward or export something *to* an email address
   that is not one of ``allowed_addresses`` (the customer's stored contact address);
-- ``ledger``: a request to mark or set all invoices or accounts as paid, settled or closed.
+- ``ledger``: a request to mark or set invoices or accounts as paid, settled or closed.
 
 This is a routing aid only: a signal sends the message to review (``needs_review``). It is not
 the defence and nothing relies on it. The defences are structural: the message is quoted data
@@ -26,49 +26,63 @@ __all__ = ["SIGNALS", "injection_signals"]
 
 SIGNALS = ("override", "recipient", "ledger")
 
-# Zero-width and bidirectional controls are removed so they cannot split a phrase.
-_INVISIBLE = dict.fromkeys(
-    [0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x00AD, *range(0x202A, 0x202F), *range(0x2066, 0x206A)]
-)
-_ARABIC_MARKS = re.compile("[\u064b-\u065f\u0670\u0640]")  # harakat and tatweel
+# Every pattern is linear on untrusted text up to the import limit: quantifiers are bounded and
+# possessive (``++``, ``{m,n}+``), so a crafted message cannot make matching backtrack.
+_TATWEEL = "ـ"
 
 _OVERRIDE = [
     re.compile(
-        r"\b(?:ignore|disregard|forget|override|bypass|skip)\b(?:\W+\w+){0,3}?\W+"
+        r"\b(?:ignore|disregard|forget|override|bypass|skip)\b(?:\W{1,5}+\w{1,30}+){0,3}?\W{1,5}+"
         r"(?:previous|prior|above|earlier|preceding|all|any|your|the|system|these|those)"
-        r"(?:\W+\w+){0,2}?\W+(?:instructions?|prompts?|rules?|directions?|guidelines?|orders?)\b"
+        r"(?:\W{1,5}+\w{1,30}+){0,2}?\W{1,5}+"
+        r"(?:instructions?|prompts?|rules?|directions?|guidelines?)\b"
     ),
-    re.compile(r"\bsystem\s+(?:prompt|message|instructions?)\b"),
-    re.compile(r"\b(?:reveal|show|print|repeat|output)\s+(?:me\s+)?(?:your|the)\s+prompt\b"),
-    re.compile(r"\byou\s+are\s+now\b"),
-    re.compile(r"\bnew\s+instructions?\b"),
-    re.compile(r"\b(?:developer|admin|god)\s+mode\b"),
-    re.compile(r"\b(?:jailbreak|prompt\s+injection)\b"),
-    # Arabic: "ignore the (previous) instructions", "previous instructions", "you are now".
+    re.compile(r"\bsystem (?:prompt|message|instructions?)\b"),
+    re.compile(r"\b(?:reveal|show|print|repeat|output) (?:me )?(?:your|the) prompt\b"),
+    re.compile(r"\byou are now\b"),
+    re.compile(r"\bnew instructions?\b"),
+    re.compile(r"\b(?:developer|admin|god) mode\b"),
+    re.compile(r"\b(?:jailbreak|prompt injection)\b"),
+    # Arabic: "ignore (all) (your/the) instructions", "(your/the) previous instructions",
+    # "you are now"; with or without the article and with a possessive suffix.
     re.compile(
-        r"(?:تجاهل|تجاهلي|تجاهلوا|انس|اهمل|أهمل)\s+(?:\S+\s+){0,2}?(?:التعليمات|الأوامر|الاوامر)"
+        r"(?:تجاهل|تجاهلي|تجاهلوا|انس|انسي|اهمل|أهمل) (?:\S{1,30}+ ){0,3}?\S{0,4}?"
+        r"(?:تعليمات|أوامر|اوامر)"
     ),
-    re.compile(r"(?:التعليمات|الأوامر|الاوامر)\s+السابقة"),
-    re.compile(r"(?:انت|أنت)\s+(?:الان|الآن)"),
+    re.compile(r"(?:تعليمات|أوامر|اوامر)\S{0,3}+ (?:ال)?سابق"),
+    re.compile(r"(?:انت|أنت) (?:الان|الآن)"),
 ]
 
 _SEND = re.compile(
     r"\b(?:send|e-?mail|forward|mail|export|share|transfer|copy|cc|bcc)\b"
-    r"|(?:أرسل|ارسل|ارسلوا|أرسلوا|حول|حوّل|ابعث|إبعث)"
+    r"|(?:أرسل|ارسل|ارسلوا|أرسلوا|ابعث|إبعث)"
 )
-_ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_TO = re.compile(r"\b(?:to|cc|bcc)\b|إلى|الى")  # a recipient follows the verb
+_ADDRESS = re.compile(r"[\w.+-]{1,64}+@[\w-]{1,63}+(?:\.[\w-]{1,63}+){1,8}+")
 _SEND_WINDOW = 120  # characters between the verb and the address, within one message
 
 _LEDGER = re.compile(
-    r"\b(?:mark|set|record|update|change|make)\s+(?:all|every|each)\s+(?:of\s+)?"
-    r"(?:the\s+|my\s+|our\s+)?(?:invoices?|accounts?|bills?|balances?)\s+(?:as\s+|to\s+)?"
+    r"\b(?:mark|set|record|update|change|make) (?:\S{1,30}+ ){0,6}?"
+    r"(?:invoices?|accounts?|bills?|balances?)\b(?: \S{1,30}+){0,6}? (?:as|to) "
     r"(?:paid|settled|closed|cleared|zero)\b"
 )
 
 
 def _normal(text: str) -> str:
-    folded = unicodedata.normalize("NFKC", text).translate(_INVISIBLE).casefold()
-    return re.sub(r"\s+", " ", _ARABIC_MARKS.sub("", folded))
+    """NFKC, case-folded, without combining marks (Arabic harakat, the dot of Turkish İ) or
+    format characters (zero-width and bidirectional controls), tatweel removed, and every
+    whitespace run as one space."""
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    kept = "".join(
+        c for c in folded if c != _TATWEEL and unicodedata.category(c) not in ("Mn", "Cf")
+    )
+    return re.sub(r"\s++", " ", kept)
+
+
+def _asks_to_send_to(normal: str, address: re.Match[str]) -> bool:
+    before = normal[max(0, address.start() - _SEND_WINDOW) : address.start()]
+    verbs = list(_SEND.finditer(before))
+    return bool(verbs) and _TO.search(before, verbs[-1].start()) is not None
 
 
 def injection_signals(text: str, *, allowed_addresses: Iterable[str] = ()) -> tuple[str, ...]:
@@ -81,8 +95,7 @@ def injection_signals(text: str, *, allowed_addresses: Iterable[str] = ()) -> tu
     for address in _ADDRESS.finditer(normal):
         if address.group().rstrip(".").casefold() in allowed:
             continue
-        before = normal[max(0, address.start() - _SEND_WINDOW) : address.start()]
-        if _SEND.search(before):
+        if _asks_to_send_to(normal, address):
             found.add("recipient")
             break
     if _LEDGER.search(normal):

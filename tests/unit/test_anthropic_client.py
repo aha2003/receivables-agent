@@ -235,6 +235,7 @@ def test_inj_01_a_hostile_message_stays_data_in_the_user_turn() -> None:
     (turn,) = body["messages"]
     assert json.loads(turn["content"]) == {"language_hint": "en", "message": hostile}
     assert "tools" not in body  # the classifier is given no tool to call
+    assert FAKE_KEY not in json.dumps(body)  # §18.9: no secret in a prompt (only the header)
 
 
 def test_timeout_and_retries_come_from_the_config() -> None:
