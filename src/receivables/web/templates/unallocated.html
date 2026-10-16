@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Unallocated cash{% endblock %}
+{% block content %}
+<h1>Unallocated cash</h1>
+<p class="note">Payments received without an invoice. They do not reduce any invoice's open amount until you allocate them. Allocate the whole payment to one invoice of the same customer; a payment larger than an invoice's open amount cannot go to that invoice (splitting is not supported). Every allocation, and every refused attempt, is audited.</p>
+{% if customers %}
+{% for c in customers %}
+<section id="cust-{{ c.customer_id }}">
+  <h2>{{ c.customer_name }}</h2>
+  <p>Unallocated cash {{ c.unallocated|aed }}; overdue exposure {{ c.overdue|aed }}.</p>
+  <table>
+    <thead><tr><th>Payment</th><th>Date</th><th class="num">Amount</th><th>Allocate to</th></tr></thead>
+    <tbody>
+    {% for p in c.payments %}
+    <tr id="pay-{{ p.payment_id }}">
+      <td>{{ p.payment_id }}</td>
+      <td>{{ p.payment_date }}</td>
+      <td class="num">{{ p.amount|aed }}</td>
+      <td>
+        {% if not p.received %}
+        <span class="note">Dated after today: it can be allocated once received.</span>
+        {% elif not p.invoices %}
+        <span class="note">This customer has no open invoice.</span>
+        {% else %}
+        <form method="post" action="/unallocated/{{ p.payment_id|urlencode }}/allocate" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Invoice
+            <select name="invoice_number" required>
+              {% for i in p.invoices %}
+              <option value="{{ i.invoice_number }}"{% if not i.fits %} disabled{% endif %}>{{ i.invoice_number }}: {{ i.open_amount|aed }} open{% if i.days_overdue and i.days_overdue > 0 %}, {{ i.days_overdue }} days overdue{% endif %}{% if not i.fits %} (payment is larger){% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit">Allocate</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% else %}<p>No unallocated payments.</p>{% endif %}
+{% endblock %}

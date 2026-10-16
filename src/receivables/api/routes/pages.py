@@ -22,6 +22,7 @@ from receivables.api.invoice_detail import invoice_detail
 from receivables.api.llm_ports import llm_ports
 from receivables.api.params import parse_as_of
 from receivables.api.snapshot import data_quality, dso_formula, take_snapshot
+from receivables.api.unallocated_view import unallocated_view
 from receivables.core.aging import BUCKETS, aging_summary
 from receivables.core.queue import HEURISTIC_NOTE
 from receivables.core.scoring import BANDS
@@ -173,6 +174,14 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
 async def approvals_page(request: Request) -> Response:
     items = await run_in_threadpool(pending_approvals, request.app.state.engine)
     return await render(request, "approvals.html", {"items": items})
+
+
+@router.get("/unallocated", response_class=HTMLResponse)
+async def unallocated_page(request: Request) -> Response:
+    """§10: unallocated payments by customer, each with an Allocate action (§6.7)."""
+    state = request.app.state
+    customers = await run_in_threadpool(unallocated_view, state.engine, state.clock.today())
+    return await render(request, "unallocated.html", {"customers": customers})
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)

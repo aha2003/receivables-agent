@@ -3,7 +3,7 @@
 {% block title %}Approvals{% endblock %}
 {% block content %}
 <h1>Approvals</h1>
-<p class="note">Items the agent prepared that need a human decision. At L0 and L1, Approve marks the draft approved: you send it from your own email and mark it sent on the invoice page. At L2, Approve overrides the policy's denial and delivers the draft to the sandbox outbox only; the kill switch and the recipient rule can never be overridden.</p>
+<p class="note">Items the agent prepared that need a human decision. At L0 and L1, Approve marks the draft approved: you send it from your own email and mark it sent on the invoice page. At L2, Approve overrides the policy's denial and delivers the draft to the sandbox outbox only; the kill switch and the recipient rule can never be overridden. Approving an allocation allocates the payment to the invoice, by the same rules as the Unallocated cash page.</p>
 {% include "_run_form.html" %}
 {% if items %}
 <table>

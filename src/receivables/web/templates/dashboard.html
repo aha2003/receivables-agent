@@ -13,7 +13,7 @@
   <section id="dso"><h2><abbr title="{{ dso_formula }}">Estimated DSO (90-day sales proxy)</abbr></h2>
     <p class="big">{% if kpis.dso.value is none %}N/A{% else %}{{ kpis.dso.value }} days{% endif %}</p>
     <p class="as-of-note">as of {{ as_of }}</p><p class="note">{{ dso_formula }}</p></section>
-  <section id="unallocated"><h2>Unallocated cash</h2><p class="big">{{ kpis.unallocated.total|aed }}</p><p class="as-of-note">as of {{ as_of }}</p></section>
+  <section id="unallocated"><h2><a href="/unallocated">Unallocated cash</a></h2><p class="big">{{ kpis.unallocated.total|aed }}</p><p class="as-of-note">as of {{ as_of }}</p></section>
 </div>
 
 <section id="aging">
