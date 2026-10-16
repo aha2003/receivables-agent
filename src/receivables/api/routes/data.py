@@ -1,14 +1,15 @@
-"""JSON API: dashboard, queue, invoice detail and imports (SPEC §9)."""
+"""JSON API: dashboard, queue, invoice detail and imports, and the §11 report (SPEC §9)."""
 
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from receivables.api.imports import ImportRefusal, run_import
 from receivables.api.invoice_detail import invoice_detail
 from receivables.api.params import parse_as_of, parse_limit
+from receivables.api.report import report_context
 from receivables.api.snapshot import dashboard_json, queue_json, take_snapshot
 
 router = APIRouter()
@@ -20,6 +21,16 @@ async def dashboard(request: Request, as_of: str | None = None) -> dict[str, Any
     state = request.app.state
     snap = await run_in_threadpool(take_snapshot, state.engine, day, state.config.engine)
     return dashboard_json(snap)
+
+
+@router.get("/api/report", response_class=HTMLResponse)
+async def report(request: Request, as_of: str | None = None) -> Response:
+    """§11 Receivables Health Audit: a standalone, printable HTML page (D-041)."""
+    day = parse_as_of(request, as_of)
+    state = request.app.state
+    snap = await run_in_threadpool(take_snapshot, state.engine, day, state.config.engine)
+    context = await run_in_threadpool(report_context, state.engine, snap)
+    return state.templates.TemplateResponse(request, "report.html", {"r": context})
 
 
 @router.get("/api/queue")

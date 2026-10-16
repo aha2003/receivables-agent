@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Receivables Health Audit · {{ r.as_of }} · SYNTHETIC DEMO DATA</title>
+  <link rel="stylesheet" href="/static/css/report.css">
+</head>
+<body>
+<div role="status" class="banner">SYNTHETIC DEMO DATA: fictional company, customers and amounts.</div>
+<main>
+<header>
+  <h1>Receivables Health Audit</h1>
+  <p>As of <strong>{{ r.as_of }}</strong>. Every figure is computed by deterministic code from the imported ledger; the observations are filled-in templates, not model-written.</p>
+</header>
+
+<section id="headline">
+  <h2>1. Headline</h2>
+  <table class="kv">
+    <tr><th>Total outstanding</th><td class="num">{{ r.total_open|aed }}</td></tr>
+    <tr><th>Overdue</th><td class="num">{{ r.overdue_total|aed }} ({% if r.overdue_pct is none %}N/A{% else %}{{ r.overdue_pct }}%{% endif %} of the total)</td></tr>
+    <tr><th>{{ r.dso_label }}</th><td class="num">{% if r.dso is none %}N/A (no sales in the window){% else %}{{ r.dso }} days{% endif %}</td></tr>
+    <tr><th>Data coverage</th><td>{{ r.coverage.invoices }} invoices{% if r.coverage.first_invoice %} dated {{ r.coverage.first_invoice }} to {{ r.coverage.last_invoice }}{% endif %}; {% if r.coverage.has_payments %}{{ r.coverage.payments }} payments{% else %}no payments imported{% endif %}; {{ r.coverage.unallocated_count }} unallocated payment{{ "" if r.coverage.unallocated_count == 1 else "s" }} ({{ r.coverage.unallocated_total|aed }})</td></tr>
+  </table>
+  <p class="note">{{ r.dso_formula }} Window {{ r.dso_window[0] }} to {{ r.dso_window[1] }}; credit sales in the window {{ r.credit_sales_in_window|aed }}.</p>
+  {% if r.observations %}
+  <h3>Observations</h3>
+  <ul class="observations">{% for line in r.observations %}<li>{{ line }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+<section id="aging">
+  <h2>2. Aging</h2>
+  <table>
+    <thead><tr><th>Bucket (days overdue)</th><th class="num">Open amount</th><th class="num">% of total</th></tr></thead>
+    <tbody>{% for b in r.buckets %}<tr><td>{{ b.name }}</td><td class="num">{{ b.amount|aed }}</td><td class="num">{% if b.pct is none %}N/A{% else %}{{ b.pct }}%{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+
+<section id="customers">
+  <h2>3. Top 10 customers by overdue exposure</h2>
+  {% if r.top_customers %}
+  <div class="scroll"><table>
+    <thead><tr><th>Customer</th><th class="num">Overdue</th><th class="num">Share</th><th class="num">Cumulative share</th><th class="num">Unallocated cash</th></tr></thead>
+    <tbody>{% for c in r.top_customers %}<tr><td>{{ c.customer_name }} ({{ c.customer_id }})</td><td class="num">{{ c.amount|aed }}</td><td class="num">{{ c.share_pct }}%</td><td class="num">{{ c.cumulative_pct }}%</td><td class="num">{{ c.unallocated|aed }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p>Nothing is overdue.</p>{% endif %}
+  <h3>Unallocated cash by customer</h3>
+  {% if r.unallocated_by_customer %}
+  <table>
+    <thead><tr><th>Customer</th><th class="num">Unallocated cash</th><th class="num">Overdue exposure</th></tr></thead>
+    <tbody>{% for u in r.unallocated_by_customer %}<tr><td>{{ u.customer_name }} ({{ u.customer_id }})</td><td class="num">{{ u.unallocated|aed }}</td><td class="num">{{ u.overdue|aed }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <p class="note">Unallocated payments reduce no invoice's open amount until allocated. Check whether they belong to an overdue invoice before chasing.</p>
+  {% else %}<p>None.</p>{% endif %}
+</section>
+
+<section id="risk">
+  <h2>4. Heuristic risk exposure</h2>
+  <p class="heuristic"><strong>{{ r.heuristic_note }}</strong> The bands rank overdue invoices by a weighted score (see Definitions); a High band is not a probability of non-payment.</p>
+  <table>
+    <thead><tr><th>Band</th><th class="num">Overdue open amount</th><th class="num">% of overdue</th></tr></thead>
+    <tbody>{% for b in r.bands %}<tr><td>{{ b.band }}</td><td class="num">{{ b.amount|aed }}</td><td class="num">{% if b.pct is none %}N/A{% else %}{{ b.pct }}%{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+
+<section id="disputes">
+  <h2>5. Disputes and blockers</h2>
+  <p>{{ r.disputes.count }} overdue invoice{{ "" if r.disputes.count == 1 else "s" }} with an active dispute, {{ r.disputes.amount|aed }} open.</p>
+  {% if r.disputes.by_label %}
+  <table>
+    <thead><tr><th>Dispute label</th><th class="num">Invoices</th><th class="num">Open amount</th></tr></thead>
+    <tbody>{% for d in r.disputes.by_label %}<tr><td class="id">{{ d.label }}</td><td class="num">{{ d.count }}</td><td class="num">{{ d.amount|aed }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if r.messages is not none %}
+  <h3>Customer messages</h3>
+  <p>{{ r.messages.inbound }} inbound message{{ "" if r.messages.inbound == 1 else "s" }} on or before {{ r.as_of }}: as of that date, {{ r.messages.accepted_total }} classified and accepted by a person, {{ r.messages.rejected }} rejected by a person, {{ r.messages.awaiting_review }} awaiting review, {{ r.messages.not_classified }} not classified. Only accepted classifications are counted below.</p>
+  {% if r.messages.accepted %}
+  <table>
+    <thead><tr><th>Label (accepted)</th><th class="num">Messages</th></tr></thead>
+    <tbody>{% for label, n in r.messages.accepted %}<tr><td>{{ label }}</td><td class="num">{{ n }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section id="queue">
+  <h2>6. Priority queue (top {{ r.queue|length }})</h2>
+  <p class="heuristic">{{ r.heuristic_note }}</p>
+  <div class="scroll"><table>
+    <thead><tr><th class="num">#</th><th>Invoice</th><th>Customer</th><th class="num">Open</th><th class="num">Days overdue</th><th class="num">Risk score</th><th>Band</th><th class="num">Priority value</th><th>Next action</th><th>Flags</th></tr></thead>
+    <tbody>{% for q in r.queue %}<tr><td class="num">{{ q.rank }}</td><td class="id">{{ q.invoice_number }}</td><td>{{ q.customer_name }}</td><td class="num">{{ q.open_amount|aed }}</td><td class="num">{{ q.days_overdue }}</td><td class="num">{{ q.risk_score }}</td><td>{{ q.band }}</td><td class="num">{{ q.priority_value }}</td><td>{{ q.action }}</td><td>{% for f in q.flags %}<p class="flag">{{ f }}</p>{% endfor %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section id="definitions">
+  <h2>7. Definitions and limits</h2>
+  <dl>{% for name, text in r.formulas %}<dt>{{ name }}</dt><dd>{{ text }}</dd>{% endfor %}</dl>
+  <p><strong>About the estimated DSO.</strong> It differs from many companies' reported DSO and can mislead when sales are seasonal, volumes are changing, or opening receivables are unusually large. Compare it with the finance team's own DSO before presenting it as their metric.</p>
+  <h3>Import and data warnings</h3>
+  {% if r.data_warnings or r.import_warnings %}
+  <ul>
+    {% for w in r.data_warnings %}<li>Data as of {{ r.as_of }}: <code>{{ w.code }}</code>{% if w.detail %} ({{ w.detail }}){% endif %}</li>{% endfor %}
+    {% for w in r.import_warnings %}<li>Latest {{ w.file_kind }} import ({{ w.imported_at }}): <code>{{ w.code }}</code>{% if w.line %} line {{ w.line }}{% endif %}{% if w.field %}, {{ w.field }}{% endif %}{% if w.detail %} ({{ w.detail }}){% endif %}</li>{% endfor %}
+  </ul>
+  {% else %}<p>None.</p>{% endif %}
+  <h3>What was not measured</h3>
+  <ul>{% for line in r.not_measured %}<li>{{ line }}</li>{% endfor %}</ul>
+</section>
+</main>
+<footer class="banner">SYNTHETIC DEMO DATA. Receivables Health Audit as of {{ r.as_of }}.</footer>
+</body>
+</html>
