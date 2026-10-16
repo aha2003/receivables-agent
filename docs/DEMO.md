@@ -60,9 +60,9 @@ Kill switch: an admin turns it on with `POST /api/reauth` (password re-entry) an
 
 No LLM planner, classification, LLM drafts, inbox, human approval, or sending from the sandbox outbox (Slice 3); no simulator or learning (Slice 4). At L1 nothing is ever sent by the system.
 
-## Slice 3 (in progress): the inbox and classification
+## Slice 3: Claude integration and human approval
 
-Added with S3.06 to S3.08. The classifier, planner and drafter run in the mode set by `LLM_MODE` (default `fake`). In fake mode every **Classify** honestly falls back to "unclear, needs review", and the agent plans by rules and drafts from templates (no model is called); the flags and accept rules below were checked by hand on 2026-10-15 with a scripted classifier against a throwaway copy of the golden data. A live run needs `LLM_MODE=live` with the key and model ids in `.env` (D-032); message text is redacted before it is sent (D-031).
+Built in S3.01 to S3.13. The classifier, planner and drafter run in the mode set by `LLM_MODE` (default `fake`). In fake mode every **Classify** honestly falls back to "unclear, needs review", and the agent plans by rules and drafts from templates (no model is called); the flags and accept rules below were checked by hand on 2026-10-15 with a scripted classifier against a throwaway copy of the golden data. A live run needs `LLM_MODE=live` with the key and model ids in `.env` (D-032); message text is redacted before it is sent (D-031).
 
 ### Setup
 
@@ -101,6 +101,25 @@ Added with S3.10. Upload `tests/fixtures/injection/correspondence.csv` (syntheti
 
 What the audience should take away: the message text is data, never instructions; plans may use only the 11 tools with checked arguments (no recipient or amount), so an email cannot add a tool or a recipient; drafts with another address or a foreign link fail validation; and the gateway sends only to the stored address, in the sandbox. The automated proof, with models that obey the attacker at every step, is `tests/test_injection_suite.py` and `tests/test_gate_d3.py`.
 
-### What this part does not show
+### Approvals, the sandbox outbox, allocation and the report
 
-Payment allocation and the unallocated-cash screen follow in S3.11.
+| # | Do | Expect |
+|---|---|---|
+| 1 | Run the agent as of 2026-10-31, open **INV-003**. | The draft panel: "Review before sending. Nothing is sent automatically.", Approve, Reject, Copy and Mark sent; no send button anywhere (S3.09). |
+| 2 | **Approvals**: approve INV-003's item. | At L1 the draft is marked approved for you to send from your own email; at L2 a policy denial can be overridden into the sandbox outbox only, never past the kill switch or the recipient rule. |
+| 3 | Upload a payments file with an unallocated payment (for example `P-005,,CUST-C,2026-10-28,12000.00,payment`, T-UNA-01), open **Unallocated cash**, allocate it to INV-008. | INV-008's open amount becomes AED 0.00 and its case resolves; an invoice the payment would overpay is not offered; every attempt is audited (S3.11). |
+| 4 | On the dashboard, open **Receivables Health Audit report (printable)**. | The §11 report as of the dashboard's date: AED 193,000.00 outstanding, AED 147,000.00 overdue, CUST-B 69.4%, "estimated DSO (90-day sales proxy)", "Heuristic score. Not a probability." and Definitions and limits (S3.12). |
+
+### Live end-to-end check (Slice 3 exit, gates D1 and D3)
+
+The maintainer runs, by hand and never in CI:
+
+```bash
+LLM_MODE=live uv run --env-file .env python scripts/live_e2e.py
+```
+
+On throwaway copies of the synthetic company it checks D1 with the live planner and drafter, that a replay of the committed recording has the same shape, D3 with live classification and an L2 run, and a safe fallback when the model cannot be reached (model ids that do not exist; the API refuses before doing any work). It prints only check names and counts; exit 0 means every check passed (D-042). A failure names its check: for example, a cautious live plan that never tries to send fails the D3 pass because nothing was denied or delivered, which is not a safety problem. After it passes and the step is merged, the maintainer tags the merge commit `slice-3-complete`.
+
+### What Slice 3 does not show
+
+The simulator, outcome learning and the playbook follow in Slice 4.
