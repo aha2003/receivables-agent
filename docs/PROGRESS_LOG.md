@@ -251,3 +251,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-037 (planner prompt written, no spec text; options 1a and 2a; plan timeout without transport retries; dry runs never call a model; combined recording; review fixes)
 - Unverified: live plans and drafts, and whether the API accepts the generated plan schema, until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py --record`
 - Next step: S3.09 Human approval and sandbox outbox
+
+## 2026-10-16 — S3.08 follow-up: live combined recording
+- PR: see branch | Branch: s3-08-live-recording | Commit: see PR head
+- Why: D-037 left live plans and drafts unverified until the maintainer recorded them
+- Recorded by the maintainer: `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py --record` → T-LLM-01 accuracy 1.000 (macro-F1 1.000, gate 0.80); the agent run planned 9 cases with the LLM (9 plans used, no fallback, so the API accepts the generated plan schema) and wrote 8 LLM drafts, none falling back to the template
+- Cassette: `tests/cassettes/live_demo.json` (32 interactions: 15 classify, 9 plan, 8 draft; model roles only, no keys or headers; contact details redacted before sending)
+- Tests: `uv run pytest -q` → 2083 passed, 2 skipped (the network-guard probe, and the "awaits plans and drafts" test, now superseded); `test_the_committed_recording_serves_the_demo_run` now runs and passes offline
+- Next step: S3.10 Prompt-injection suite (after S3.09 #103)
