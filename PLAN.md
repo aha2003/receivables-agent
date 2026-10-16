@@ -206,7 +206,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §6.7, §9
   - Tests: T-API-09, T-API-10
   - Done when: Allocation is audited; overpayment and cross-customer attempts return 409.
-- [ ] **S3.12** Receivables Health Audit (synthetic demo report)
+- [x] **S3.12** Receivables Health Audit (synthetic demo report)
   - Goal: Printable report with definitions and limits, labelled synthetic.
   - Spec: §11
   - Tests: T-RPT-01

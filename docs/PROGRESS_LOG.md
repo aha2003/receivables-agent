@@ -283,3 +283,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-040 (options 1a, 2a, 3a; refusal reasons; kept allocations validated as written; URL-safe payment ids; review fixes; the as_of limit of allocations)
 - Unverified: none beyond the stated limit (an allocation applies from the payment's own date in earlier as_of views)
 - Next step: S3.12 Receivables Health Audit (synthetic demo report)
+
+## 2026-10-16 — [S3.12] Receivables Health Audit (synthetic demo report)
+- PR: see branch | Branch: s3-12-health-audit-report | Commit: see PR head
+- Tests: `uv run pytest -q` → 2280 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; every mutation of the report's figures, filters, observations and template guards killed (24 in total; two filters with no effect removed)
+- Spec / test IDs covered: §11 (all seven sections in order, templated observations), §6.2/§6.4/§6.6/§6.7 formulas stated from the configured values, §9 `GET /api/report`, §10 as_of / T-RPT-01 (AED 193,000.00, AED 147,000.00, CUST-B 69.4%, "estimated DSO (90-day sales proxy)", "Heuristic score. Not a probability.", "Definitions and limits"); figures equal the dashboard's; cumulative shares; top-20 queue with flags; message statuses as of the report date; N/A for an empty ledger; escaping; session; checked in the browser at phone and desktop widths (found: shares at two decimals, a headline overflowing narrow screens; both fixed)
+- Deviations or decisions (link docs/DECISIONS.md): D-041 (options 1a, 2a, 3a; review fixes)
+- Unverified: the browser's print to PDF was not exercised (print styles are in place)
+- Next step: S3.13 Record cassettes and live end-to-end run

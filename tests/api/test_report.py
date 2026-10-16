@@ -4,6 +4,7 @@ Golden synthetic data as of 2026-10-31 unless a test says otherwise.
 """
 
 import re
+from datetime import timedelta
 from decimal import Decimal
 from fractions import Fraction
 from html import unescape
@@ -277,3 +278,37 @@ def test_one_overdue_customer_reads_in_the_singular(user: TestClient) -> None:
     assert len(dash["top_overdue_customers"]) == 1
     headline = text_of(section(report(user, "2026-07-15").text, "headline"))
     assert "Top 1 customer accounts for 100.0% of overdue exposure." in headline
+
+
+def test_a_decision_after_as_of_is_not_counted_yet(
+    user: TestClient, app: FastAPI, engine: Engine, clock: SimulatedClock
+) -> None:
+    # Classified on 31 Oct, accepted on 1 Nov: as of 31 Oct it is still awaiting review.
+    upload = user.post(
+        "/api/imports/correspondence",
+        files={"file": ("c.csv", (FIXTURES / "correspondence.csv").read_bytes(), "text/csv")},
+        headers={"x-csrf-token": csrf(user)},
+    )
+    assert upload.status_code == 200
+    app.state.llm = RedactingClient(
+        FakeClient(classify=lambda _: {
+            "label": "MISSING_DELIVERY_NOTE", "confidence": 0.9, "invoice_numbers": ["INV-009"],
+            "po_numbers": [], "amounts_mentioned": [], "dates_mentioned": [],
+            "promised_payment_date": None, "evidence_quote": "delivery note",
+            "summary_en": "No delivery note."}),
+        redact_before_send=True, pseudonymize_customer_names=True,
+        customer_names=customer_names(engine),
+    )  # fmt: skip
+    token = {"x-csrf-token": csrf(user)}
+    assert user.post("/api/correspondence/M-02/classify", headers=token).status_code == 200
+    clock.advance(timedelta(days=1))
+    assert login(user) == 303
+    token = {"x-csrf-token": csrf(user)}
+    assert user.post("/api/classifications/M-02/accept", headers=token).status_code == 200
+    on_the_day = text_of(section(report(user, "2026-10-31").text, "disputes"))
+    assert "0 classified and accepted by a person, 0 rejected by a person, 1 awaiting review" in (
+        on_the_day
+    )
+    assert "Label (accepted)" not in on_the_day
+    after = text_of(section(report(user, "2026-11-01").text, "disputes"))
+    assert "1 classified and accepted by a person" in after and "MISSING_DELIVERY_NOTE 1" in after
