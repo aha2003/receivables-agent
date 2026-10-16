@@ -30,14 +30,14 @@ jobs:
       - name: Progress files up to date
         run: uv run python scripts/progress.py --check
       - name: Test report by test ID up to date, nothing missing or failing (C1.01)
-        run: uv run python scripts/test_report.py --check
+        run: uv run python scripts/test_report.py --check --write-to "$RUNNER_TEMP/TEST_REPORT.md"
       - name: Keep the test report and JUnit output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-report
           path: |
-            docs/TEST_REPORT.md
+            ${{ runner.temp }}/TEST_REPORT.md
             junit.xml
           if-no-files-found: warn
 

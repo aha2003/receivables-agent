@@ -39,9 +39,11 @@ SPEC = """
 
 PLAN = """
 - [x] **S1.01** First step
-  - Tests: T-ABC-01, T-CI-01
+  - Tests: T-ABC-01 (smoke gate only), T-CI-01
 - [ ] **S2.01** Later step
-  - Tests: T-ABC-02; T-POL-01 to T-POL-03, T-INJ-01..02 and T-IMP-04/05
+  - Tests: T-ABC-02; T-POL-01 to T-POL-03 (except one), T-INJ-01..02 and T-IMP-04/05
+- [ ] **S3.01** Optional extras
+  - Tests: T-DEMO-03 (T-PERF-01 optional)
 """
 
 
@@ -76,7 +78,9 @@ def test_the_real_spec_has_every_catalogue_id_once() -> None:
 
 def test_plan_owners_expand_every_range_form() -> None:
     owners = TR.plan_owners(PLAN)
-    assert owners["T-ABC-01"] == TR.Owner("S1.01", True)
+    assert owners["T-ABC-01"] == TR.Owner("S1.01", True, "smoke gate only")
+    assert owners["T-POL-03"].scope == ""  # a note after a range end is not one ID's scope
+    assert "T-PERF-01" not in owners  # only mentioned in brackets, not owned
     assert {i for i, o in owners.items() if o.step == "S2.01"} == {
         "T-ABC-02", "T-POL-01", "T-POL-02", "T-POL-03", "T-INJ-01", "T-INJ-02", "T-IMP-04",
         "T-IMP-05",
@@ -99,6 +103,7 @@ def test_junit_outcomes_per_id_and_overall() -> None:
         ("T-ABC-01", TR.Owner("S1.01", True), Counter(passed=3), "passed"),
         ("T-ABC-01", TR.Owner("S1.01", True), Counter(passed=2, failed=1), "FAILED"),
         ("T-ABC-01", TR.Owner("S1.01", True), Counter(skipped=2), "skipped"),
+        ("T-ABC-01", TR.Owner("S1.01", True), Counter(passed=2, skipped=1), "passed (1 skipped)"),
         ("T-ABC-01", TR.Owner("S1.01", True), None, "MISSING"),
         ("T-ABC-02", TR.Owner("S2.01", False), None, "planned (S2.01)"),
         ("T-ABC-02", TR.Owner("S2.01", False), Counter(passed=1), "passed"),
@@ -110,6 +115,11 @@ def test_status_rules(test_id: str, owner: object, outcomes: object, expected: s
     assert TR.status(test_id, owner, outcomes) == expected
 
 
+def test_a_manual_test_that_passed_is_labelled_as_its_automated_check() -> None:
+    owner = TR.Owner("S1.13", True)
+    assert TR.status("T-UI-02", owner, Counter(passed=2), "Manual") == "passed (automated check)"
+
+
 def test_render_is_deterministic_and_makes_no_value_claim() -> None:
     catalogue = TR.spec_catalogue(SPEC)
     owners = TR.plan_owners(PLAN)
@@ -117,7 +127,7 @@ def test_render_is_deterministic_and_makes_no_value_claim() -> None:
     first = TR.render(catalogue, owners, by_id, totals)
     assert first == TR.render(catalogue, owners, by_id, totals)
     assert TR.CLAIM in first and "not evidence of business value" in first
-    assert "| T-ABC-01 |  | the first input | S1.01 | passed |" in first
+    assert "| T-ABC-01 |  | the first input | S1.01 (smoke gate only) | passed |" in first
     assert "| T-ABC-02 |  | a `piped / cell` | S2.01 | planned (S2.01) |" in first  # no stray |
     assert "| T-UI-01 | Manual | Upload a bad file |  | not planned |" in first
     assert "time" not in first.lower()  # no durations or timestamps
@@ -170,6 +180,29 @@ def test_check_fails_on_a_missing_or_failing_implemented_id(
     assert "T-ABC-01: MISSING" in err  # S1.01 is ticked but nothing carries the ID
     assert "T-ABC-02: FAILED" in err
     assert "T-ZZZ-09: marker names an ID that is not in SPEC.md" in err
+
+
+def test_check_fails_when_a_done_ids_test_is_skipped(
+    small_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A skip (or xfail) on a done step's test would hide a weakened test.
+    out = small_repo / "TEST_REPORT.md"
+    xml = write_inputs(
+        small_repo, junit(("a", "passed", ["T-ABC-01"]), ("b", "skipped", ["T-ABC-01"]))
+    )
+    assert TR.main(["--junit", str(xml), "--out", str(out)]) == 1
+    assert "T-ABC-01: 1 marked test(s) skipped" in capsys.readouterr().err
+    later = write_inputs(small_repo, junit(("a", "passed", ["T-ABC-01"]),
+                                           ("b", "skipped", ["T-ABC-02"])))  # fmt: skip
+    assert TR.main(["--junit", str(later), "--out", str(out)]) == 0  # S2.01 is not done
+
+
+def test_check_can_write_the_runs_report_for_an_artifact(small_repo: Path) -> None:
+    xml = write_inputs(small_repo, junit(("a", "passed", ["T-ABC-01"])))
+    out, artifact = small_repo / "TEST_REPORT.md", small_repo / "artifact.md"
+    assert TR.main(["--junit", str(xml), "--out", str(out), "--check",
+                    "--write-to", str(artifact)]) == 1  # fmt: skip
+    assert artifact.read_text().startswith("# Test report by test ID")
 
 
 def test_no_junit_file_is_a_usage_error(tmp_path: Path) -> None:

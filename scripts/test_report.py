@@ -57,6 +57,7 @@ class SpecTest:
 class Owner:
     step: str
     done: bool
+    scope: str = ""  # a PLAN.md note in brackets right after the ID, e.g. a narrower scope
 
 
 def spec_catalogue(text: str) -> dict[str, SpecTest]:
@@ -92,7 +93,9 @@ def _expand(text: str) -> list[str]:
 
 
 def plan_owners(text: str) -> dict[str, Owner]:
-    """The first PLAN.md step whose "Tests:" line lists each ID."""
+    """The first PLAN.md step whose "Tests:" line lists each ID. A bracketed note right after an
+    ID is its scope ("T-LLM-01 (15-message smoke gate)"); IDs inside brackets are only
+    mentioned, not owned ("T-DEMO-03 (T-PERF-01 optional)")."""
     owners: dict[str, Owner] = {}
     step: Owner | None = None
     for line in text.splitlines():
@@ -100,8 +103,10 @@ def plan_owners(text: str) -> dict[str, Owner]:
         if head:
             step = Owner(head.group(2), head.group(1) == "x")
         elif step and line.strip().startswith("- Tests:"):
-            for test_id in _expand(line):
-                owners.setdefault(test_id, step)
+            scopes = {m.group(1): m.group(2).strip()
+                      for m in re.finditer(rf"(?<!to )({_ID})\s*\(([^)]*)\)", line)}  # fmt: skip
+            for test_id in _expand(re.sub(r"\([^)]*\)", "", line)):
+                owners.setdefault(test_id, Owner(step.step, step.done, scopes.get(test_id, "")))
     return owners
 
 
@@ -123,13 +128,19 @@ def junit_results(xml: bytes) -> tuple[dict[str, Counter[str]], Counter[str]]:
     return by_id, totals
 
 
-def status(test_id: str, owner: Owner | None, outcomes: Counter[str] | None) -> str:
+def status(
+    test_id: str, owner: Owner | None, outcomes: Counter[str] | None, kind: str | None = None
+) -> str:
     if test_id in WORKFLOW_IDS:
         return "CI workflow"
     if outcomes:
         if outcomes["failed"]:
             return "FAILED"
-        return "passed" if outcomes["passed"] else "skipped"
+        if not outcomes["passed"]:
+            return "skipped"
+        state = "passed" if not outcomes["skipped"] else f"passed ({outcomes['skipped']} skipped)"
+        # The spec types some UI tests as manual; what passed here is their automated check.
+        return f"{state} (automated check)" if kind == "Manual" and state == "passed" else state
     if owner is None:
         return "not planned"
     return "MISSING" if owner.done else f"planned ({owner.step})"
@@ -146,12 +157,10 @@ def render(
     for test_id, spec in catalogue.items():
         owner = owners.get(test_id)
         outcomes = by_id.get(test_id)
-        state = status(test_id, owner, outcomes)
+        state = status(test_id, owner, outcomes, spec.kind)
         counts[state.split(" (")[0]] += 1
-        rows.append(
-            f"| {test_id} | {spec.kind or ''} | {spec.summary} | "
-            f"{owner.step if owner else ''} | {state} |"
-        )
+        step = "" if owner is None else owner.step + (f" ({owner.scope})" if owner.scope else "")
+        rows.append(f"| {test_id} | {spec.kind or ''} | {spec.summary} | {step} | {state} |")
     summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
     if totals["failed"]:  # a failure anywhere is reported, whether or not it has an ID
         summary += f"; {totals['failed']} failing test(s) in the run"
@@ -166,8 +175,10 @@ def render(
         f"- Spec test IDs: {len(catalogue)} ({summary}).",
         "- `planned` IDs belong to PLAN.md steps not done yet; `not planned` IDs are in no "
         "step; `CI workflow` is verified by the CI run itself, not by a pytest test. "
-        "`passed` means every test marked with the ID passed; CI regenerates this file from "
-        "its own run and fails if it differs.",
+        "`passed` means every test marked with the ID ran and passed; a `Manual` test that "
+        "passed is its automated check, not a person's; a bracketed note after the step is "
+        "PLAN.md's scope for that ID. CI regenerates this file from its own run and fails if "
+        "it differs, or if an ID of a done step is missing, failing or skipped.",
         "",
         "| ID | Type | Test (summary from SPEC.md) | Step | Status |",
         "|---|---|---|---|---|",
@@ -186,10 +197,14 @@ def build(junit: Path) -> tuple[str, list[str]]:
                 if i not in catalogue]  # fmt: skip
     if totals["failed"]:
         problems.append(f"{totals['failed']} failing test(s) in the run")
-    for test_id in catalogue:
-        state = status(test_id, owners.get(test_id), by_id.get(test_id))
+    for test_id, spec in catalogue.items():
+        owner, outcomes = owners.get(test_id), by_id.get(test_id)
+        state = status(test_id, owner, outcomes, spec.kind)
         if state in {"MISSING", "FAILED"}:
             problems.append(f"{test_id}: {state}")
+        elif owner and owner.done and outcomes and outcomes["skipped"]:
+            # A done step's test may not be skipped (or xfail): a weakened test would hide.
+            problems.append(f"{test_id}: {outcomes['skipped']} marked test(s) skipped")
     return render(catalogue, owners, by_id, totals), problems
 
 
@@ -198,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--junit", type=Path, default=JUNIT)
     parser.add_argument("--out", type=Path, default=REPORT)
     parser.add_argument("--check", action="store_true", help="fail if stale, missing or failing")
+    parser.add_argument("--write-to", type=Path, help="with --check: also write the report here")
     args = parser.parse_args(argv)
     if not args.junit.exists():
         print(
@@ -209,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     for problem in problems:
         print(problem, file=sys.stderr)
     if args.check:
+        if args.write_to:  # the report of this run, e.g. for a CI artifact
+            args.write_to.write_text(report, encoding="utf-8")
         current = args.out.read_text(encoding="utf-8") if args.out.exists() else ""
         if current != report:
             print(f"{args.out.name} is out of date: run scripts/test_report.py", file=sys.stderr)
