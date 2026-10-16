@@ -177,3 +177,26 @@ def test_the_amount_difference_is_formatted(user: TestClient, app: FastAPI, engi
     )
     form(user, "/inbox/M-01/classify")
     assert "AED 3,000.00 (invoice minus PO" in card(user.get("/inbox").text, "M-01")  # §10 format
+
+
+def test_inj_01_the_attempt_is_shown_for_review_even_without_a_model(
+    user: TestClient, engine: Engine
+) -> None:
+    # Default fake mode: the classifier falls back to "unclear", yet the deterministic warning
+    # (D-039) shows in plain language, on the inbox card and the invoice page.
+    hostile = FIXTURES.parent / "tests" / "fixtures" / "injection" / "correspondence.csv"
+    upload = user.post(
+        "/api/imports/correspondence",
+        files={"file": ("x.csv", hostile.read_bytes(), "text/csv")},
+        headers={"x-csrf-token": csrf(user)},
+    )
+    assert upload.status_code == 200
+    assert form(user, "/inbox/X-01/classify").status_code == 303
+    x01 = card(user.get("/inbox").text, "X-01")
+    assert "Needs review before accepting." in x01
+    assert "text that tries to give the system new instructions" in x01
+    assert "a request to send information to an address that is not the customer&#39;s" in x01
+    assert "INSTRUCTION_INJECTION_SUSPECTED" not in x01  # never the bare code
+    assert (
+        "text that tries to give the system new instructions" in user.get("/invoices/INV-003").text
+    )
