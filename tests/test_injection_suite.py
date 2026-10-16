@@ -22,6 +22,7 @@ from injection_support import (
     behind_redaction,
     case_of,
     classify_as_told,
+    classify_cleanly,
     draft_to_attacker,
     import_hostile,
     ledger_snapshot,
@@ -63,8 +64,10 @@ def db(tmp_path: Path) -> Iterator[Engine]:
     engine.dispose()
 
 
-def classify(db: Engine, message_id: str) -> tuple[dict[str, Any], FakeClient]:
-    fake = FakeClient(classify=classify_as_told)
+def classify(
+    db: Engine, message_id: str, script: Any = classify_as_told
+) -> tuple[dict[str, Any], FakeClient]:
+    fake = FakeClient(classify=script)
     classify_stored(
         db, message_id, client=behind_redaction(db, fake), review_threshold=THRESHOLD,
         clock=CLOCK, actor="reviewer",
@@ -121,6 +124,24 @@ def test_inj_01_the_classifier_obeying_the_message_only_flags_it(
     assert rows(db, "SELECT * FROM agent_steps") == []
     assert rows(db, "SELECT * FROM mail_outbox") == []
     assert stored["status"] == "pending"
+
+
+@pytest.mark.parametrize(
+    ("message_id", "flagged"),
+    [
+        ("X-01", True),  # the attack, answered "cleanly" by the model
+        ("X-05", True),  # the attack in the subject line
+        ("X-04", False),  # a send to the customer's own stored address is ordinary
+    ],
+)
+def test_inj_01_the_flag_does_not_depend_on_the_models_answer(
+    db: Engine, message_id: str, flagged: bool
+) -> None:
+    stored, _ = classify(db, message_id, classify_cleanly)
+    codes = [f["code"] for f in flags(stored)]
+    assert ("INSTRUCTION_INJECTION_SUSPECTED" in codes) is flagged
+    assert [c for c in codes if c != "INSTRUCTION_INJECTION_SUSPECTED"] == []
+    assert stored["needs_review"] == int(flagged)
 
 
 @pytest.mark.parametrize("plan", [plan_send_to_attacker, plan_email_ledger])

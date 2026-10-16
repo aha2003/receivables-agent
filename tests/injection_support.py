@@ -85,6 +85,21 @@ def classify_as_told(request: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def classify_cleanly(request: Mapping[str, Any]) -> dict[str, Any]:
+    """A confident, verifiable answer that raises no verification flag of its own."""
+    return {
+        "label": "NO_ACTION_NEEDED",
+        "confidence": 0.95,
+        "invoice_numbers": [],
+        "po_numbers": [],
+        "amounts_mentioned": [],
+        "dates_mentioned": [],
+        "promised_payment_date": None,
+        "evidence_quote": str(request["text"])[:12],
+        "summary_en": "Acknowledgement.",
+    }
+
+
 def case_of(request: Mapping[str, Any]) -> str:
     return str(request["observation"]["case"]["invoice_number"])
 
