@@ -106,7 +106,7 @@ async def approval_form(request: Request, approval_id: str, decision: str) -> Re
     )  # fmt: skip
 
 
-@router.post("/unallocated/{payment_id:path}/allocate", response_class=HTMLResponse)
+@router.post("/unallocated/{payment_id}/allocate", response_class=HTMLResponse)
 async def allocate_form(
     request: Request, payment_id: str, invoice_number: Annotated[str, Form()] = ""
 ) -> Response:

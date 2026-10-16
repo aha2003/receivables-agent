@@ -201,7 +201,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §18.9
   - Tests: T-INJ-01, T-INJ-02, T-INJ-03
   - Done when: Gate D3 demonstrable.
-- [ ] **S3.11** Payment allocation and unallocated-cash screen
+- [x] **S3.11** Payment allocation and unallocated-cash screen
   - Goal: Allocation endpoint and page with the 409 rules.
   - Spec: §6.7, §9
   - Tests: T-API-09, T-API-10

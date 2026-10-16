@@ -344,6 +344,13 @@ def test_a_later_dated_allocation_from_a_file_leaves_no_room(
     assert (response.status_code, response.json()["reason"]) == (409, "EXCEEDS_OPEN_AMOUNT")
 
 
-def test_a_payment_id_with_a_slash(user: TestClient, engine: Engine) -> None:
-    assert upload_payments(user, b"P/2026/1,,CUST-C,2026-10-29,100.00,payment\n").status_code == 200
-    assert allocate(user, "P/2026/1", "INV-008").status_code == 200
+@pytest.mark.parametrize("payment_id", ["P/2026/1", "X/../P-005", "..", ".", "P 1", "P?1"])
+def test_a_payment_id_that_a_url_would_change_is_refused_at_import(
+    user: TestClient, payment_id: str
+) -> None:
+    # Ids appear in allocation URLs: "/" or a dot segment could make a click allocate another
+    # payment (D-040), so the import refuses them as it does for message ids.
+    row = f"{payment_id},,CUST-C,2026-10-29,100.00,payment\n".encode()
+    response = upload_payments(user, row)
+    assert response.status_code == 422
+    assert {"line": 2, "code": "E_BAD_ENUM", "field": "payment_id"} in response.json()["errors"]

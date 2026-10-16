@@ -275,3 +275,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-039 (options 1a, 2a, 3a; `INSTRUCTION_INJECTION_SUSPECTED` as a routing aid, not a defence; review fixes, including the regex stall)
 - Unverified: the DEMO.md injection walkthrough is covered by automated page tests, not run by hand; live model behaviour on hostile messages (not recorded, by design: option 2a)
 - Next step: S3.11 Payment allocation and unallocated-cash screen
+
+## 2026-10-16 — [S3.11] Payment allocation and unallocated-cash screen
+- PR: see branch | Branch: s3-11-payment-allocation | Commit: see PR head
+- Tests: `uv run pytest -q` → 2261 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; every mutation of the allocation rules, the import guard, the approval path and the page killed (31 in total; four branches with no observable effect were removed)
+- Spec / test IDs covered: §6.7, §9, §10, §18.2, §18.3 / T-API-09 (P-005 to INV-008: open amount 0.00, unallocated total 0.00, audit row; another customer's invoice 409), T-API-10 (larger than the open amount: 409, payments table unchanged, still unallocated, refusal audit row); already allocated, not yet received, one fils over, an invoice dated after today, later-dated allocations counted, 404s, session and CSRF; a fully paid case resolves at once; the agent's allocation proposals confirmed by the same rules; the Unallocated cash page (checked by hand in the browser on a throwaway copy of the synthetic data: allocation, dashboard total, refused cross-customer request)
+- Deviations or decisions (link docs/DECISIONS.md): D-040 (options 1a, 2a, 3a; refusal reasons; kept allocations validated as written; URL-safe payment ids; review fixes; the as_of limit of allocations)
+- Unverified: none beyond the stated limit (an allocation applies from the payment's own date in earlier as_of views)
+- Next step: S3.12 Receivables Health Audit (synthetic demo report)
