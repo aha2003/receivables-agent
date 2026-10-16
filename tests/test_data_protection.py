@@ -43,15 +43,21 @@ def test_every_piece_of_evidence_exists() -> None:
         assert missing == [], (row[:6], missing)
 
 
-@pytest.mark.parametrize(
-    "path", ["README.md", "docs/DEMO.md", "docs/ARCHITECTURE.md", "docs/DATA_PROTECTION.md"]
-)
-def test_no_document_claims_redaction_makes_real_data_safe(path: str) -> None:
+DOCS = ["README.md", "docs/DEMO.md", "docs/ARCHITECTURE.md", "docs/DATA_PROTECTION.md"]
+
+
+def prose_sentences(path: str) -> list[str]:
+    """The prose of a document as sentences (code blocks and diagrams left out)."""
     raw = re.sub(r"```.*?```", "", (ROOT / path).read_text(encoding="utf-8"), flags=re.S)
-    text = re.sub(r"\s+", " ", raw)  # prose only: diagrams are not sentences
-    for sentence in re.split(r"(?<=[.!?])\s", text):
+    return re.split(r"(?<=[.!?])\s", re.sub(r"\s+", " ", raw))
+
+
+@pytest.mark.parametrize("path", DOCS)
+def test_no_document_claims_redaction_makes_real_data_safe(path: str) -> None:
+    for sentence in prose_sentences(path):
         if re.search(r"redact", sentence, re.I) and re.search(r"\bsafe\b", sentence, re.I):
-            assert re.search(r"\b(?:not|never)\b", sentence, re.I), sentence
+            # The negation must govern "safe": "does not make … safe", "never … safe".
+            assert re.search(r"\b(?:not|never)\b[^.]*\bsafe\b", sentence, re.I), sentence
 
 
 def test_provenance_lists_every_locked_package_at_its_locked_version() -> None:
@@ -59,28 +65,48 @@ def test_provenance_lists_every_locked_package_at_its_locked_version() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     locked = {p["name"]: p["version"] for p in lock["package"] if p["name"] != project["name"]}
     listed = dict(re.findall(r"^\| ([a-z0-9][a-z0-9._-]*) \| ([0-9][^ |]*) \|", PROVENANCE, re.M))
-    # A locked package for another platform only may be named in a note instead of a row.
-    unlisted = {name for name in locked if name not in listed}
-    assert all(f"`{name}`" in PROVENANCE for name in unlisted), unlisted
+    # A locked package for another platform only may be named in the platform note instead of
+    # a row, and only if every dependency on it in uv.lock carries a platform marker.
+    note = next(line for line in PROVENANCE.splitlines() if line.startswith("Locked but not"))
+    for name in (n for n in locked if n not in listed):
+        assert f"`{name}`" in note, name
+        uses = [d for p in lock["package"] for d in p.get("dependencies", []) if d["name"] == name]
+        assert uses and all("sys_platform" in d.get("marker", "") for d in uses), name
     assert sorted(set(listed) - set(locked)) == []  # no row for a package that is not locked
     assert {n: (listed[n], locked[n]) for n in listed if listed[n] != locked[n]} == {}
 
 
-def test_provenance_has_a_licence_for_every_row() -> None:
+SPDX_USED = {"MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "MPL-2.0", "PSF-2.0"}
+
+
+def test_provenance_has_an_spdx_licence_for_every_row() -> None:
     rows = re.findall(r"^\| ([a-z0-9][a-z0-9._-]*) \| [0-9][^ |]* \| ([^|]+?) \|", PROVENANCE, re.M)
     assert len(rows) >= 80
-    assert all(re.match(r"[A-Z][\w.-]*(?:\s+(?:OR|AND)\s+[A-Z][\w.-]*)*", lic) for _, lic in rows)
+    for name, licence in rows:
+        expression = licence.split(" (", 1)[0]  # a bracketed note may follow
+        assert set(re.split(r"\s+(?:OR|AND)\s+", expression)) <= SPDX_USED, (name, licence)
+
+
+OVERCLAIM = (
+    r"(?:every|all)\b[^.;]{0,40}?\b(?:actions?|side[- ]effects?|steps?)\b[^.;]*?"
+    r"(?:pass(?:es)?|go(?:es)? through|run through)[^.;]*?policy engine"
+    r"|policy engine[^.;]*?between[^.;]*?every (?:side[- ]effect|action|step)"
+)
+
+
+@pytest.mark.parametrize("path", DOCS)
+def test_no_document_claims_every_action_passes_the_policy_engine(path: str) -> None:
+    # Only the messages the agent sends pass evaluate_send (SPEC §18.5, §18.6 step 5; D-046).
+    assert [s for s in prose_sentences(path) if re.search(OVERCLAIM, s, re.I)] == []
 
 
 @pytest.mark.parametrize(
-    "path", ["README.md", "docs/DEMO.md", "docs/ARCHITECTURE.md", "docs/DATA_PROTECTION.md"]
-)
-def test_no_document_claims_every_action_passes_the_policy_engine(path: str) -> None:
-    # Only messages to customers pass evaluate_send (SPEC §18.5, §18.6 step 5; D-046).
-    raw = re.sub(r"```.*?```", "", (ROOT / path).read_text(encoding="utf-8"), flags=re.S)
-    text = re.sub(r"\s+", " ", raw)
-    overclaim = (
-        r"every (?:action|side effect|step)[^.;]*pass(?:es)?(?: through)? "
-        r"(?:the|a) (?:deterministic )?policy engine"
-    )
-    assert not re.search(overclaim, text, re.I)
+    "claim",
+    ["Every action passes a deterministic policy engine.",
+     "every agent action passes the policy engine",
+     "All actions pass through the policy engine.",
+     "every side effect goes through the policy engine",
+     "A policy engine sits between the LLM and every side effect."],
+)  # fmt: skip
+def test_the_overclaim_check_catches_the_known_phrasings(claim: str) -> None:
+    assert re.search(OVERCLAIM, claim, re.I)
