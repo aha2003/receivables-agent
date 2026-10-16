@@ -318,3 +318,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-044 (options 1a, 2a, 3a; review fixes; a demo-readiness gap for the maintainer: a live L2 sandbox delivery and a disputed-invoice denial depend on today's date and the live planner, to be resolved in Slice 4 or 5)
 - Unverified: browsers other than Chromium-based; the demo in `live` mode end to end through the UI (the live gates are covered by `scripts/live_e2e.py`)
 - Next step: C1.03 Architecture and agent-flow diagram
+
+## 2026-10-17 — [C1.03] Architecture and agent-flow diagram
+- PR: see branch | Branch: c1-03-architecture | Commit: see PR head
+- Tests: `uv run pytest -q` → 2357 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/test_architecture_doc.py` (6 tests: the dependency table equals the real import graph, every cited module, name and path exists, each Mermaid diagram connects only declared nodes)
+- Spec / test IDs covered: §20.1 (one-page architecture and agent-flow diagram)
+- Manual review: the three diagrams rendered with Mermaid 11 in the browser without errors; every claim checked against the orchestrator, policy, LLM and adapter code by the spec reviewer
+- Deviations or decisions (link docs/DECISIONS.md): D-045 (options 1a, 2a; review fixes)
+- Unverified: rendering on GitHub itself (it uses its own Mermaid version)
+- Next step: C1.04 Provenance and data-protection statement
