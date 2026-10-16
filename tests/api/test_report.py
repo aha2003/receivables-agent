@@ -4,6 +4,9 @@ Golden synthetic data as of 2026-10-31 unless a test says otherwise.
 """
 
 import re
+from decimal import Decimal
+from fractions import Fraction
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,7 @@ from receivables.adapters.clock import SimulatedClock
 from receivables.adapters.db.repo import customer_names
 from receivables.adapters.llm.fake import FakeClient
 from receivables.adapters.llm.redacting import RedactingClient
+from receivables.core.scoring import round_half_up
 from receivables.seed import seed
 
 from .conftest import csrf, login
@@ -42,7 +46,7 @@ def section(page: str, name: str) -> str:
 
 
 def text_of(html: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html)))
 
 
 # --- T-RPT-01 -----------------------------------------------------------------------------------
@@ -85,14 +89,15 @@ def test_the_numbers_match_the_dashboard(user: TestClient) -> None:
     assert f"({dash['overdue_pct']}% of the total)" in headline
     assert f"{dash['estimated_dso']} days" in headline
     aging = text_of(section(page, "aging"))
-    total = sum(float(v) for v in dash["buckets"].values())
-    assert total == 193000.0
-    for name, amount in dash["buckets"].items():
-        pct = f"{round(100 * float(amount) / total + 1e-9, 1):.1f}%"
-        assert f"{name} AED {float(amount):,.2f} {pct}" in aging
+    amounts = {name: Decimal(v) for name, v in dash["buckets"].items()}
+    total = sum(amounts.values())
+    assert total == Decimal("193000.00")
+    for name, amount in amounts.items():
+        pct = round_half_up(Fraction(100 * amount) / Fraction(total), 1)
+        assert f"{name} AED {amount:,} {pct}%" in aging
     risk = text_of(section(page, "risk"))
     for band, amount in dash["exposure_by_band"].items():
-        assert f"{band} AED {float(amount):,.2f}" in risk
+        assert f"{band} AED {Decimal(amount):,}" in risk
 
 
 def test_top_customers_have_cumulative_shares_and_unallocated_cash(user: TestClient) -> None:
@@ -133,7 +138,11 @@ def test_definitions_state_every_formula_the_caveat_and_what_was_not_measured(
     definitions = text_of(section(report(user).text, "definitions"))
     for term in ("Aging buckets", "Risk score", "Priority value", "Estimated DSO", "Open amount"):
         assert term in definitions
-    assert "raw = 0.4 x min(days overdue, 90) / 90 + 0.25 x" in definitions
+    assert "raw = 0.4 x min(days overdue, 90) / 90 + 0.25 x history + 0.15 x size" in definitions
+    assert ("otherwise the portfolio's late rate; 0.5 if no invoice settled in that window"
+            in definitions)  # fmt: skip
+    assert "divided by the number of open invoices less 1 (0 if only one is open)" in definitions
+    assert "unallocated payments reduce no invoice" in definitions
     assert "Compare it with the finance team's own DSO" in definitions
     assert "What was not measured" in definitions
     assert "it is not expected cash loss" in definitions
@@ -159,24 +168,27 @@ def test_messages_count_only_accepted_classifications(
         customer_names=customer_names(engine),
     )  # fmt: skip
     token = {"x-csrf-token": csrf(user)}
-    for message_id in ("M-02", "M-11"):
+    for message_id in ("M-02", "M-11", "M-12"):
         assert (
             user.post(f"/api/correspondence/{message_id}/classify", headers=token).status_code
             == 200
         )
     assert user.post("/api/classifications/M-02/accept", headers=token).status_code == 200
+    assert user.post("/api/classifications/M-12/reject", headers=token).status_code == 200
     messages = text_of(section(report(user).text, "disputes"))
     assert (
-        "15 inbound messages on or before 2026-10-31: 1 classified and accepted by a person, "
-        in messages
+        "15 inbound messages on or before 2026-10-31: as of that date, 1 classified and "
+        "accepted by a person, 1 rejected by a person, " in messages
     )
-    assert "1 awaiting review, 13 not classified." in messages
+    assert "1 awaiting review, 12 not classified." in messages  # 15 in all
     assert "MISSING_DELIVERY_NOTE 1" in messages
-    # As of the day before M-02 was sent, it is neither counted nor its acceptance.
-    earlier = text_of(section(report(user, "2026-10-12").text, "disputes"))
-    # M-01 (12 Oct) and M-06 (8 Oct) only.
-    assert "2 inbound messages on or before 2026-10-12: 0 classified and accepted" in earlier
-    assert "MISSING_DELIVERY_NOTE" not in earlier
+    # The day before they were classified and decided (31 Oct, the test clock), M-02 (sent
+    # 13 Oct) counts as sent but not classified: statuses are as of the report's date.
+    earlier = text_of(section(report(user, "2026-10-30").text, "disputes"))
+    assert ("15 inbound messages on or before 2026-10-30: as of that date, 0 classified and "
+            "accepted by a person, 0 rejected by a person, 0 awaiting review, 15 not "
+            "classified.") in earlier  # fmt: skip
+    assert "Label (accepted)" not in earlier  # no accepted labels yet
 
 
 def test_import_warnings_and_data_warnings(user: TestClient) -> None:
@@ -196,6 +208,18 @@ def test_import_warnings_and_data_warnings(user: TestClient) -> None:
     assert "AED 12,000.00 of unallocated cash is on account" in observations
     customers = text_of(section(page, "customers"))
     assert "(CUST-C) AED 26,000.00 17.7% 87.1% AED 12,000.00" in customers
+    assert (
+        "Unallocated cash by customer Customer Unallocated cash Overdue exposure Gamma "
+        "Facilities Services LLC (CUST-C) AED 12,000.00 AED 26,000.00" in customers
+    )
+    queue = section(page, "queue")
+    flagged = re.findall(
+        r'<td class="id">(INV-\d+)</td>(?:(?!</tr>).)*'
+        r"This customer has AED 12,000.00 of unallocated cash",
+        queue,
+        re.S,
+    )
+    assert sorted(flagged) == ["INV-008", "INV-009", "INV-012"]  # T-UNA-01's flagged items
 
 
 def test_an_empty_ledger_says_n_a(client: TestClient) -> None:
@@ -239,3 +263,17 @@ def test_names_are_escaped(user: TestClient) -> None:
     page = report(user).text
     assert "<script>alert(1)</script>" not in page
     assert "&lt;script&gt;alert(1)&lt;/script&gt; Trading" in page
+
+
+def test_the_golden_report_has_no_stale_no_payments_warning(user: TestClient) -> None:
+    # The seed imports invoices before payments; that import's "no payments yet" is stale.
+    page = report(user).text
+    assert "W_NO_PAYMENTS" not in page
+    assert "None." in text_of(section(page, "definitions"))
+
+
+def test_one_overdue_customer_reads_in_the_singular(user: TestClient) -> None:
+    dash = user.get("/api/dashboard", params={"as_of": "2026-07-15"}).json()
+    assert len(dash["top_overdue_customers"]) == 1
+    headline = text_of(section(report(user, "2026-07-15").text, "headline"))
+    assert "Top 1 customer accounts for 100.0% of overdue exposure." in headline

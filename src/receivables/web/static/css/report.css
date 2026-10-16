@@ -17,6 +17,7 @@ th.num { white-space: normal; }
 td.id { white-space: nowrap; }
 .note { color: #555; font-size: 0.85rem; }
 .heuristic { color: #6b4400; }
+.flag { color: #8a1c1c; margin: 0; }
 dt { font-weight: 600; margin-top: 0.5rem; }
 dd { margin: 0.1rem 0 0 1rem; }
 

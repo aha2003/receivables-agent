@@ -16,13 +16,13 @@ from typing import Any
 from sqlalchemy import Engine, func, select
 
 from receivables.adapters.clock import DUBAI
-from receivables.adapters.db.models import Classification, Correspondence, Import
+from receivables.adapters.db.models import AuditLog, Correspondence, Import
 from receivables.api.snapshot import TOP_CUSTOMERS, Snapshot, data_quality, dso_formula
 from receivables.core.aging import BUCKETS, aging_summary
 from receivables.core.config import EngineConfig
 from receivables.core.kpis import DSO_LABEL
 from receivables.core.money import from_fils
-from receivables.core.queue import HEURISTIC_NOTE
+from receivables.core.queue import HEURISTIC_NOTE, unallocated_cash_message
 from receivables.core.scoring import round_half_up
 
 __all__ = ["QUEUE_IN_REPORT", "report_context"]
@@ -50,34 +50,56 @@ def _aed(fils: int) -> str:
 
 
 def _messages_by_label(engine: Engine, as_of: date) -> dict[str, Any] | None:
-    """Accepted classifications per label for messages sent on or before ``as_of`` (Dubai
-    dates, as elsewhere); None when no correspondence was supplied."""
+    """Inbound messages sent on or before ``as_of`` and, for each, its classification status as
+    of that date, read from the append-only audit log (classified, then accepted or rejected
+    by a person). Labels are counted only for accepted ones (option 1a). None when no
+    correspondence was supplied. Dates are Asia/Dubai, as elsewhere."""
     with engine.connect() as conn:
         if not conn.execute(select(func.count()).select_from(Correspondence)).scalar_one():
             return None
-        rows = conn.execute(
-            select(Correspondence.sent_at, Classification.label, Classification.status)
-            .join(Classification, Classification.message_id == Correspondence.message_id)
-            .where(Correspondence.direction == "inbound")
-        ).all()
         inbound = conn.execute(
-            select(Correspondence.sent_at).where(Correspondence.direction == "inbound")
-        ).scalars()
-        sent = [s for s in inbound if _sent_on(s, as_of)]
-    dated = [r for r in rows if _sent_on(r.sent_at, as_of)]
-    accepted = Counter(r.label for r in dated if r.status == "accepted")
+            select(Correspondence.message_id, Correspondence.sent_at).where(
+                Correspondence.direction == "inbound"
+            )
+        ).all()
+        events = conn.execute(
+            select(AuditLog.entity_id, AuditLog.action, AuditLog.ts, AuditLog.after_json)
+            .where(
+                AuditLog.entity_type == "message",
+                AuditLog.action.in_(
+                    ("classification.created", "classification.accepted",
+                     "classification.rejected")
+                ),
+            )
+            .order_by(AuditLog.audit_id)
+        ).all()  # fmt: skip
+    status: dict[str, str] = {}
+    labels: dict[str, str] = {}
+    for e in events:
+        if not _on_or_before(e.ts, as_of):
+            continue
+        if e.action == "classification.created":
+            status[e.entity_id] = "pending"  # re-classifying is only possible while pending
+        else:
+            status[e.entity_id] = e.action.removeprefix("classification.")
+            if e.action == "classification.accepted":
+                labels[e.entity_id] = json.loads(e.after_json or "{}").get("label", "")
+    sent = [m.message_id for m in inbound if _on_or_before(m.sent_at, as_of)]
+    states = Counter(status.get(m, "not_classified") for m in sent)
+    accepted = Counter(labels[m] for m in sent if status.get(m) == "accepted")
     return {
         "inbound": len(sent),
         "accepted": sorted(accepted.items(), key=lambda kv: (-kv[1], kv[0])),
-        "accepted_total": sum(accepted.values()),
-        "awaiting_review": sum(1 for r in dated if r.status == "pending"),
-        "not_classified": len(sent) - len(dated),
+        "accepted_total": states["accepted"],
+        "rejected": states["rejected"],
+        "awaiting_review": states["pending"],
+        "not_classified": states["not_classified"],
     }
 
 
-def _sent_on(sent_at: str, as_of: date) -> bool:
+def _on_or_before(timestamp: str, as_of: date) -> bool:
     try:
-        return datetime.fromisoformat(sent_at).astimezone(DUBAI).date() <= as_of
+        return datetime.fromisoformat(timestamp).astimezone(DUBAI).date() <= as_of
     except ValueError:
         return False
 
@@ -100,7 +122,13 @@ def _import_warnings(engine: Engine) -> list[dict[str, Any]]:
         ).all()
     out = []
     for r in rows:
-        warnings = json.loads(r.report_json or "{}").get("warnings", [])
+        warnings = [
+            w
+            for w in json.loads(r.report_json or "{}").get("warnings", [])
+            # Whether payments exist is a fact of the data as of as_of, reported with the data
+            # warnings; an import's "no payments yet" would contradict it once payments arrive.
+            if w.get("code") != "W_NO_PAYMENTS"
+        ]
         out.extend({"file_kind": r.file_kind, "imported_at": r.created_at, **w} for w in warnings)
     return out
 
@@ -113,7 +141,8 @@ def _observations(snap: Snapshot, disputes: dict[str, Any]) -> list[str]:
     if k.overdue_total and top3:
         share = _pct(sum(c.amount for c in top3), k.overdue_total)
         lines.append(
-            f"Top {len(top3)} customer{'s' if len(top3) > 1 else ''} account for {share}% of "
+            f"Top {len(top3)} customer{'s account' if len(top3) > 1 else ' accounts'} for "
+            f"{share}% of "
             "overdue exposure."
         )
     over_90 = aging_summary(snap.rows).bucket_totals["90+"]
@@ -164,6 +193,7 @@ def report_context(engine: Engine, snap: Snapshot) -> dict[str, Any]:
             for label, amounts in sorted(by_label.items(), key=lambda kv: (-len(kv[1]), kv[0]))
         ],
     }
+    overdue = {c.customer_id: c.amount for c in k.overdue_by_customer}
     dates = [r.invoice_date for r in snap.rows]
     quality = data_quality(snap)
     return {
@@ -199,6 +229,16 @@ def report_context(engine: Engine, snap: Snapshot) -> dict[str, Any]:
             for b in BANDS
         ],
         "disputes": disputes,
+        "unallocated_by_customer": [  # §6.7: listed next to the customer's overdue exposure
+            {
+                "customer_id": cid,
+                "customer_name": snap.customer_name(cid),
+                "unallocated": amount,
+                "overdue": overdue.get(cid, 0),
+            }
+            for cid, amount in sorted(k.unallocated.by_customer.items())
+            if amount > 0
+        ],
         "messages": _messages_by_label(engine, snap.as_of),
         "queue": [
             {
@@ -211,6 +251,7 @@ def report_context(engine: Engine, snap: Snapshot) -> dict[str, Any]:
                 "band": item.scored.band,
                 "priority_value": str(item.scored.priority_value),
                 "action": item.action,
+                "flags": [unallocated_cash_message(f.amount) for f in item.flags],  # §6.7
             }
             for item in snap.queue.items[:QUEUE_IN_REPORT]
         ],
@@ -232,8 +273,9 @@ def _formulas(c: EngineConfig) -> list[tuple[str, str]]:
     return [
         (
             "Open amount",
-            "invoice amount less payments, credit notes and write-offs dated on or "
-            "before as_of, never below 0 (§2).",
+            "invoice amount less the payments, credit notes and write-offs applied to it and "
+            "dated on or before as_of, never below 0; unallocated payments reduce no invoice, "
+            "and invoices dated after as_of are left out (§2).",
         ),
         (
             "Aging buckets",
@@ -243,13 +285,16 @@ def _formulas(c: EngineConfig) -> list[tuple[str, str]]:
         (
             "Risk score",
             f"raw = {_num(c.weight_overdue)} x min(days overdue, "
-            f"{c.overdue_cap_days}) / {c.overdue_cap_days} + {_num(c.weight_history)} x the "
-            f"customer's late rate (portfolio rate if fewer than {c.min_history_invoices} settled "
-            f"invoices in {c.history_window_days} days, else {_num(c.no_history_fallback_rate)}) + "
-            f"{_num(c.weight_size)} x size rank among open invoices + {_num(c.weight_dispute)} x "
+            f"{c.overdue_cap_days}) / {c.overdue_cap_days} + {_num(c.weight_history)} x "
+            f"history + {_num(c.weight_size)} x size + {_num(c.weight_dispute)} x "
             f"active dispute + {_num(c.weight_promise)} x broken promise; risk score = raw x 100, "
             f"one decimal. Bands: High {_num(c.band_high)} or more, Medium "
-            f"{_num(c.band_medium)} or more, Low below.",
+            f"{_num(c.band_medium)} or more, Low below. History: the customer's late rate over "
+            f"invoices settled in the {c.history_window_days} days to as_of if it has at least "
+            f"{c.min_history_invoices} of them; otherwise the portfolio's late rate; "
+            f"{_num(c.no_history_fallback_rate)} if no invoice settled in that window. Size: the "
+            "number of open invoices with a strictly smaller open amount divided by the number "
+            "of open invoices less 1 (0 if only one is open).",
         ),
         (
             "Priority value",
