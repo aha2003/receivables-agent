@@ -59,6 +59,7 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+markers = ["spec(*ids): the SPEC.md test IDs this test proves (scripts/test_report.py, D-043)"]
 
 [tool.coverage.run]
 source = ["receivables.core", "receivables.agent"]

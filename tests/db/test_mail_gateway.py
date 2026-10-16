@@ -55,6 +55,7 @@ def drafts_from_a_run(db: Engine) -> list[dict[str, Any]]:
 # --- T-MAIL-01 ------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-MAIL-01")
 def test_mail_01_an_allowed_l2_send_lands_in_the_sandbox(db: Engine) -> None:
     run_agent_tick(db, CLOCK, l2(), as_of=AS_OF, autonomy_level=2)
     (mail,) = rows(db, "SELECT * FROM mail_outbox")
@@ -72,6 +73,7 @@ _NETWORK = ("socket", "ssl", "http", "urllib", "smtplib", "imaplib", "poplib", "
             "anthropic", "asyncio", "subprocess")  # fmt: skip
 
 
+@pytest.mark.spec("T-MAIL-01")
 def test_mail_01_the_sandbox_imports_no_network_client() -> None:
     tree = ast.parse(SANDBOX.read_text(encoding="utf-8"))
     imported: set[str] = set()
@@ -90,6 +92,7 @@ def test_mail_01_the_sandbox_imports_no_network_client() -> None:
 # --- T-MAIL-02 ------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-MAIL-02")
 @pytest.mark.parametrize("to", ["someone@else.example", "ap@alpha.example.evil", "", "ap"])
 def test_mail_02_another_address_is_rejected(db: Engine, to: str) -> None:
     draft = next(d for d in drafts_from_a_run(db) if d["customer_id"] == "CUST-A")

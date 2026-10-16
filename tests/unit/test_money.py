@@ -9,6 +9,7 @@ from hypothesis import strategies as st
 from receivables.core.money import MAX_FILS_DIGITS, from_fils, parse_written_amount, to_fils
 
 
+@pytest.mark.spec("T-MONEY-01")
 class TestMoney01:
     def test_decimal_to_fils(self) -> None:
         assert to_fils(Decimal("50000.00")) == 5000000

@@ -39,6 +39,7 @@ def facts(make_agent_facts: MakeFacts) -> AgentFacts:
     return make_agent_facts()
 
 
+@pytest.mark.spec("T-AGT-08")
 def test_t_agt_08_tool_sequences_for_the_golden_queue(facts: AgentFacts) -> None:
     assert set(facts.queue_items) == set(EXPECTED_T_AGT_08)
     assert {n: plan_case(facts, n).tools for n in facts.queue_items} == EXPECTED_T_AGT_08

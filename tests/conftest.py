@@ -2,6 +2,7 @@
 suite-wide guards: no network (``tests/network_guard.py``) and no LLM environment (D-029)."""
 
 import csv
+import importlib.util
 import json
 from collections.abc import Callable
 from datetime import date
@@ -25,6 +26,32 @@ ROOT = Path(__file__).resolve().parents[1]
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Block the network before any test module is collected or imported (D-029)."""
     network_guard.install()
+
+
+def _spec_ids() -> frozenset[str]:
+    """The spec's test IDs, read by the report script's own parser (D-043)."""
+    spec = importlib.util.spec_from_file_location(
+        "test_report", ROOT / "scripts" / "test_report.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return frozenset(module.spec_catalogue((ROOT / "docs" / "SPEC.md").read_text(encoding="utf-8")))
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """``@pytest.mark.spec("T-…")`` links a test to spec test IDs: each must exist in SPEC.md,
+    and each becomes a ``spec_id`` property in the JUnit XML that scripts/test_report.py reads."""
+    known = _spec_ids()
+    for item in items:
+        for marker in item.iter_markers("spec"):
+            if not marker.args:
+                raise pytest.UsageError(f"{item.nodeid}: @pytest.mark.spec needs a test ID")
+            for test_id in marker.args:
+                if test_id not in known:
+                    raise pytest.UsageError(f"{item.nodeid}: {test_id!r} is not a SPEC test ID")
+                if ("spec_id", test_id) not in item.user_properties:
+                    item.user_properties.append(("spec_id", test_id))
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

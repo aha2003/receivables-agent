@@ -122,6 +122,7 @@ def test_a_retried_request_keeps_the_response_that_was_used(tmp_path: Path) -> N
     assert evaluate(behind_redaction(ReplayClient(path)), MESSAGES[:1]) == first
 
 
+@pytest.mark.spec("T-LLM-01")
 def test_llm_01_smoke_gate_on_the_recorded_run() -> None:
     # The maintainer's live run, committed (D-035); a missing file fails, it does not skip.
     # Re-record with `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py

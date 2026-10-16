@@ -24,6 +24,7 @@ def _by_number(rows: list[LedgerRow]) -> dict[str, LedgerRow]:
     return {r.invoice_number: r for r in rows}
 
 
+@pytest.mark.spec("T-LED-01")
 class TestLed01:
     def test_open_invoices_and_amounts(
         self, golden_ledger_inputs: Inputs, golden_results: dict[str, Any]
@@ -46,6 +47,7 @@ class TestLed01:
         assert len(rows) == 14
 
 
+@pytest.mark.spec("T-LED-02")
 class TestLed02:
     def test_time_travel(self, golden_ledger_inputs: Inputs) -> None:
         rows = _by_number(build_ledger(*golden_ledger_inputs, as_of=date(2026, 9, 30)))

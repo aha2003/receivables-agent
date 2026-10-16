@@ -39,6 +39,7 @@ def score(
     return {s.invoice_number: s for s in scored}
 
 
+@pytest.mark.spec("T-RSK-01")
 class TestRsk01:
     def test_default_config_matches_golden_table(
         self,
@@ -73,6 +74,7 @@ class TestRsk01:
                 assert s.band == default[number].band, number
 
 
+@pytest.mark.spec("T-RSK-02")
 class TestRsk02:
     @pytest.mark.parametrize("config", [EngineConfig(), MIN_HISTORY_2])
     def test_exposure_by_band(

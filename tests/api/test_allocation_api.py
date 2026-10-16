@@ -75,6 +75,7 @@ def open_amount(client: TestClient, invoice: str) -> str:
 # --- T-API-09 ---------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-09")
 def test_api_09_allocate_p005_to_inv008(user: TestClient, engine: Engine) -> None:
     assert user.get("/api/dashboard").json()["unallocated_total"] == "12000.00"
     response = allocate(user, "P-005", "INV-008")
@@ -94,6 +95,7 @@ def test_api_09_allocate_p005_to_inv008(user: TestClient, engine: Engine) -> Non
     assert audit["after"]["invoice_open_amount"] == "0.00"
 
 
+@pytest.mark.spec("T-API-09")
 def test_api_09_an_invoice_of_another_customer_is_409(user: TestClient, engine: Engine) -> None:
     before = payments(engine)
     response = allocate(user, "P-005", "INV-003")  # CUST-A
@@ -107,6 +109,7 @@ def test_api_09_an_invoice_of_another_customer_is_409(user: TestClient, engine: 
 # --- T-API-10 ---------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-10")
 def test_api_10_a_payment_larger_than_the_open_amount_is_409(
     user: TestClient, engine: Engine
 ) -> None:

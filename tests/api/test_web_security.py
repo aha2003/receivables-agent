@@ -31,6 +31,7 @@ def _assert_security_headers(response: object, where: str) -> None:
         assert headers.get(name) == value, (where, name)
 
 
+@pytest.mark.spec("T-SEC-09")
 class TestSec09:
     def test_post_without_then_wrong_then_right_token(self, client: TestClient) -> None:
         assert login(client) == 303
@@ -109,6 +110,7 @@ def test_forms_carry_the_hidden_token(client: TestClient) -> None:
     assert f'name="csrf_token" value="{csrf(client)}"' in home
 
 
+@pytest.mark.spec("T-SEC-11")
 class TestSec11:
     def test_headers_on_pages_and_api(self, app: FastAPI, client: TestClient) -> None:
         _assert_security_headers(client.get("/login"), "login page")

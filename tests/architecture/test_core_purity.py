@@ -138,6 +138,7 @@ def _check(files: list[Path], checker: Callable[[str], list[str]]) -> list[str]:
     return problems
 
 
+@pytest.mark.spec("T-ARCH-01")
 class TestArch01:
     def test_core_has_no_forbidden_imports(self) -> None:
         problems = _check(_sources("core"), lambda s: import_violations(s, CORE_FORBIDDEN_MODULES))

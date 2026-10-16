@@ -4,6 +4,7 @@ Golden data as of 2026-10-31, fake LLM mode (template drafts) unless a test scri
 Nothing can be sent: L0 and L1 never touch mail_outbox.
 """
 
+import dataclasses
 import json
 from collections.abc import Mapping
 from datetime import date
@@ -52,6 +53,7 @@ def new_draft(client: TestClient, *invoices: str, **extra: Any) -> dict[str, Any
 # --- T-API-06 -------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-06")
 def test_api_06_create_and_approve(user: TestClient, engine: Engine) -> None:
     draft = new_draft(user, "INV-003")
     assert (draft["status"], draft["generator"], draft["violations"]) == ("draft", "template", [])
@@ -64,6 +66,26 @@ def test_api_06_create_and_approve(user: TestClient, engine: Engine) -> None:
     assert rows(engine, "SELECT * FROM mail_outbox") == []  # at L1 nothing is sent
 
 
+@pytest.mark.spec("T-API-06")
+def test_api_06_at_l0_nothing_is_sent_either(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    # L0 (shadow): drafts, approvals, a marked-sent draft and an agent run send nothing.
+    config = app.state.config
+    app.state.config = dataclasses.replace(
+        config, agent=dataclasses.replace(config.agent, autonomy_level=0)
+    )
+    draft = new_draft(user, "INV-003")
+    assert post(user, f"/api/drafts/{draft['draft_id']}/approve").status_code == 200
+    sent = post(user, f"/api/drafts/{draft['draft_id']}/mark-sent",
+                {"sent_at": "2026-10-31T05:00:00Z"})  # fmt: skip
+    assert sent.status_code == 200
+    run = post(user, "/api/agent/run", {"as_of": "2026-10-31"})
+    assert (run.status_code, run.json()["autonomy_level"]) == (200, 0)
+    assert rows(engine, "SELECT * FROM mail_outbox") == []
+
+
+@pytest.mark.spec("T-API-06")
 def test_api_06_a_model_draft_with_violations_is_409(user: TestClient, engine: Engine) -> None:
     draft = new_draft(user, "INV-003")
     with engine.begin() as c:  # the loop never saves one; an older or edited row could exist

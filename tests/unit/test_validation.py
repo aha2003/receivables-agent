@@ -38,6 +38,7 @@ def _golden_refs(fixture_text: Any) -> References:
     )
 
 
+@pytest.mark.spec("T-IMP-01")
 class TestImp01:
     def test_bad_invoices_errors_exactly(self, fixture_text: Any) -> None:
         result = validate_csv(
@@ -71,6 +72,7 @@ class TestImp01:
         }
 
 
+@pytest.mark.spec("T-IMP-02")
 class TestImp02:
     CSV = (
         "customer_id,customer_name,trn\n"
@@ -109,6 +111,7 @@ class TestImp02:
         )
 
 
+@pytest.mark.spec("T-IMP-03")
 class TestImp03:
     def test_golden_customers_and_invoices_have_no_errors(self, fixture_text: Any) -> None:
         customers = validate_csv("customers", fixture_text("customers.csv"), References(), TODAY)
@@ -134,6 +137,7 @@ class TestImp03:
         assert events.records[0].label == "PO_AMOUNT_MISMATCH"
 
 
+@pytest.mark.spec("T-UNA-02")
 class TestUna02:
     CSV = (
         "payment_id,invoice_number,customer_id,payment_date,amount,payment_type\n"

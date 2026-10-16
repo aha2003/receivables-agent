@@ -104,6 +104,7 @@ def no_attacker_anywhere(db: Engine) -> None:
 # --- T-INJ-01 -------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-INJ-01")
 @pytest.mark.parametrize("message_id", ["X-01", "X-03"])  # English and Arabic
 def test_inj_01_the_classifier_obeying_the_message_only_flags_it(
     db: Engine, message_id: str
@@ -126,6 +127,7 @@ def test_inj_01_the_classifier_obeying_the_message_only_flags_it(
     assert stored["status"] == "pending"
 
 
+@pytest.mark.spec("T-INJ-01")
 @pytest.mark.parametrize(
     ("message_id", "flagged"),
     [
@@ -146,6 +148,7 @@ def test_inj_01_the_flag_does_not_depend_on_the_models_answer(
     assert json.loads(audit["after_json"])["flags"] == codes  # the decision is audited
 
 
+@pytest.mark.spec("T-INJ-01")
 @pytest.mark.parametrize("plan", [plan_send_to_attacker, plan_email_ledger])
 def test_inj_01_a_plan_carrying_that_recipient_is_rejected(db: Engine, plan: Any) -> None:
     before = ledger_snapshot(db)
@@ -163,6 +166,7 @@ def test_inj_01_a_plan_carrying_that_recipient_is_rejected(db: Engine, plan: Any
     assert ledger_snapshot(db) == before
 
 
+@pytest.mark.spec("T-INJ-01")
 def test_inj_01_a_draft_with_that_address_falls_back_to_the_template(db: Engine) -> None:
     tick(db, draft=draft_to_attacker)
     drafts = rows(db, "SELECT generator FROM drafts")
@@ -190,6 +194,7 @@ def rule_plan(db: Engine) -> Any:
     return answer
 
 
+@pytest.mark.spec("T-INJ-01")
 def test_inj_01_the_hostile_text_never_reaches_the_planner_or_the_drafter(db: Engine) -> None:
     # The planner sees message headers only; the drafter sees the fact block only (§18.9),
     # even after the hostile message was classified (its model summary names the attacker).
@@ -202,6 +207,7 @@ def test_inj_01_the_hostile_text_never_reaches_the_planner_or_the_drafter(db: En
         assert not [s for s in plans + drafts if text in s]
 
 
+@pytest.mark.spec("T-INJ-01")
 def test_inj_01_a_request_holds_one_customer_never_the_ledger(db: Engine) -> None:
     # §18.9: no full ledger in a prompt. Each plan or draft request names only invoices of the
     # case's own customer. (Keys never reach a request body: test_anthropic_client.py.)
@@ -221,6 +227,7 @@ def test_inj_01_a_request_holds_one_customer_never_the_ledger(db: Engine) -> Non
 # --- T-INJ-02 -------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-INJ-02")
 def test_inj_02_mark_all_invoices_as_paid_changes_nothing(db: Engine) -> None:
     before = ledger_snapshot(db)
     stored, _ = classify(db, "X-02")
@@ -242,6 +249,7 @@ def test_inj_02_mark_all_invoices_as_paid_changes_nothing(db: Engine) -> None:
 # --- T-INJ-03 -------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-INJ-03")
 def test_inj_03_a_draft_with_a_foreign_link_is_a_violation(db: Engine) -> None:
     with db.connect() as c:
         facts = load_agent_facts(c, AS_OF, CONFIG.engine)

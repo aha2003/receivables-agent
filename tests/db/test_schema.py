@@ -92,6 +92,7 @@ def _audit_row(engine: Engine) -> None:
         )
 
 
+@pytest.mark.spec("T-DB-01")
 class TestDb01:
     def test_migrations_create_all_tables_and_triggers(self, engine: Engine) -> None:
         names = set(inspect(engine).get_table_names())

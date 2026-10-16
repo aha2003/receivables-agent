@@ -57,6 +57,7 @@ def test_route_discovery_finds_the_public_routes_too(app: FastAPI) -> None:
     assert {("GET", "/healthz"), ("GET", "/login"), ("POST", "/login")} <= found
 
 
+@pytest.mark.spec("T-SEC-03")
 class TestSec03:
     def test_every_protected_route_rejects_without_session(
         self, app: FastAPI, client: TestClient
@@ -95,6 +96,7 @@ class TestSec03:
         assert "SYNTHETIC DEMO DATA" in page.text
 
 
+@pytest.mark.spec("T-SEC-10")
 class TestSec10:
     def test_sixth_failed_login_within_a_minute_is_429(self, client: TestClient) -> None:
         codes = [login(client, password="wrong-password") for _ in range(6)]

@@ -47,6 +47,7 @@ def _load(engine: Engine, fixture_text: Callable[[str], str], *kinds: str) -> li
     ]
 
 
+@pytest.mark.spec("T-IMP-04")
 class TestImp04:
     def test_bad_invoices_file_rejected_and_nothing_written(
         self, db: Engine, fixture_text: Callable[[str], str]
@@ -105,6 +106,7 @@ class TestImp04:
         assert _counts(db) == before
 
 
+@pytest.mark.spec("T-IMP-05")
 class TestImp05:
     def test_same_file_twice_is_duplicate(
         self, db: Engine, fixture_text: Callable[[str], str]

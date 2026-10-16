@@ -38,6 +38,7 @@ def _unallocated(
     )
 
 
+@pytest.mark.spec("T-UNA-01")
 class TestUna01:
     def test_ledger_totals_and_buckets_unchanged(self, golden_ledger_inputs: Inputs) -> None:
         invoices, payments = golden_ledger_inputs

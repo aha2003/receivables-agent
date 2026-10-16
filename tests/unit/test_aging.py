@@ -15,6 +15,7 @@ Inputs = tuple[list[InvoiceRecord], list[PaymentRecord]]
 AS_OF = date(2026, 10, 31)
 
 
+@pytest.mark.spec("T-AGE-01")
 class TestAge01:
     def test_totals_and_bucket_totals(
         self, golden_ledger_inputs: Inputs, golden_results: dict[str, Any]
@@ -27,6 +28,7 @@ class TestAge01:
         }
 
 
+@pytest.mark.spec("T-AGE-02")
 class TestAge02:
     def test_days_and_bucket_per_invoice(
         self, golden_ledger_inputs: Inputs, golden_results: dict[str, Any]

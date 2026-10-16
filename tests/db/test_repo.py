@@ -51,6 +51,7 @@ def seeded(db: Engine) -> Engine:
     return db
 
 
+@pytest.mark.spec("T-AUD-01")
 class TestAud01:
     def test_import_writes_audit_row_with_actor_entity_before_and_after(self, db: Engine) -> None:
         raw = (FIXTURES / "customers.csv").read_bytes()

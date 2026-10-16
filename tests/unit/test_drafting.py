@@ -74,6 +74,7 @@ def draft(writer: Any, *, regenerations: int = 2, facts: FactBlock = FACTS) -> A
     )
 
 
+@pytest.mark.spec("T-DRF-03")
 def test_drf_03_three_violating_drafts_give_the_template() -> None:
     writer = Script(VIOLATING, VIOLATING, VIOLATING)
     outcome = draft(writer)

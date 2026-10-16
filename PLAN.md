@@ -221,7 +221,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
 
 Confirm the exact date with the organisers. Exit: submission pack complete, demo video synthetic-only.
 
-- [ ] **C1.01** Test report by test ID
+- [x] **C1.01** Test report by test ID
   - Goal: `scripts/test_report.py` turning JUnit output into `docs/TEST_REPORT.md` (pass/fail per ID, no value claims).
   - Spec: §20.1
   - Tests: test report generated in CI

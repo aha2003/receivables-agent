@@ -58,6 +58,7 @@ def demo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient
     app.state.engine.dispose()
 
 
+@pytest.mark.spec("T-API-01")
 def test_seeded_dashboard_matches_the_golden_numbers(
     demo: TestClient, golden_results: dict[str, Any]
 ) -> None:
@@ -115,6 +116,7 @@ def test_login_page_says_synthetic(demo: TestClient) -> None:
     assert BANNER.search(demo.get("/login").text)
 
 
+@pytest.mark.spec("T-UI-05")
 @pytest.mark.parametrize("path", ["/", "/queue", "/invoices/INV-004"])  # INV-004 heads the queue
 def test_scores_are_labelled_heuristic(demo: TestClient, path: str) -> None:
     assert HEURISTIC in demo.get(path).text

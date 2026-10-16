@@ -44,6 +44,7 @@ def block(facts: AgentFacts, *numbers: str, tone: int, label: str | None = None)
     )
 
 
+@pytest.mark.spec("T-DRF-04")
 @pytest.mark.parametrize(("days", "tone"), [(30, 1), (31, 2), (60, 2), (61, 3)])
 def test_t_drf_04_tone_mapping(days: int, tone: int) -> None:
     assert draft_tone(days) == tone

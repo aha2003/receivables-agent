@@ -68,6 +68,7 @@ def rows(engine: Engine, sql: str) -> list[dict[str, Any]]:
 # --- T-API-04 ---------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-04")
 def test_t_api_04_invoice_detail(user: TestClient) -> None:
     body = user.get("/api/invoices/INV-004").json()  # as_of defaults to today (2026-10-31)
     assert body["as_of"] == "2026-10-31"

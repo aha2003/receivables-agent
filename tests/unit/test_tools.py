@@ -84,6 +84,7 @@ def run(name: str, args: dict[str, Any], facts: AgentFacts) -> ToolResult:
 # --- T-AGT-03 -------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AGT-03")
 class TestAgt03:
     def test_registry_names_are_exactly_the_eleven_spec_tools(self) -> None:
         names = _spec_tool_names()
