@@ -243,3 +243,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-036 (options 1a, 2a, 3a; `UNKNOWN_CONTACT_OR_URL` and `UNFILLED_PLACEHOLDER`; review fixes and limits)
 - Unverified: live drafting quality until a live agent run (`LLM_MODE=live`); the model calls hold the tick's database transaction (a known limit)
 - Next step: S3.08 LLM planner with rule fallback
+
+## 2026-10-16 — [S3.08] LLM planner with rule fallback
+- PR: see branch | Branch: s3-08-llm-planner | Commit: see PR head
+- Tests: `uv run pytest -q` → 2083 passed, 2 skipped (the network-guard probe, and the committed-recording replay test until plans and drafts are recorded); ruff check and format clean; pyright 0 errors; every mutation of the planner, its audit row, the mode wiring, the live prompt table, the schema generator and the recording script killed; every spec-review regression test fails on the earlier code
+- Spec / test IDs covered: §18.6 / T-AGT-01 (an LLM plan with `wire_transfer` is rejected, the rule planner runs), T-AGT-06 (a timeout, then invalid JSON twice: rule planner, `fallback = true`, the whole queue processed), T-AGT-07 (the top 20 by priority value; a 6-step LLM plan rejected), all with the LLM planner via FakeClient; T-AGT-02, 04, 05 unchanged; per-call `agent.plan_received` (model role, prompt version, attempts, latency); prompt and schema generated from the tool registry; combined recording `scripts/record_demo.py` → `tests/cassettes/live_demo.json`, replay round trip tested offline
+- Deviations or decisions (link docs/DECISIONS.md): D-037 (planner prompt written, no spec text; options 1a and 2a; plan timeout without transport retries; dry runs never call a model; combined recording; review fixes)
+- Unverified: live plans and drafts, and whether the API accepts the generated plan schema, until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py --record`
+- Next step: S3.09 Human approval and sandbox outbox

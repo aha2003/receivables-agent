@@ -186,7 +186,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §8.2, §8.3, §18.9
   - Tests: T-DRF-03
   - Done when: After three violating drafts the template is used and passes.
-- [ ] **S3.08** LLM planner with rule fallback
+- [x] **S3.08** LLM planner with rule fallback
   - Goal: Plan schema validation, step and case budgets, timeout and invalid-JSON fallback to the rule planner.
   - Spec: §18.6
   - Tests: T-AGT-01, T-AGT-06, T-AGT-07 (with the LLM planner via FakeClient)

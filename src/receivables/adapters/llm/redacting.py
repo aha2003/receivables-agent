@@ -48,6 +48,10 @@ class RedactingClient:
     def model(self) -> str:
         return str(getattr(self.inner, "model", "unknown"))
 
+    def model_for(self, kind: str) -> str:
+        model_for = getattr(self.inner, "model_for", None)
+        return str(model_for(kind)) if callable(model_for) else self.model
+
     def _clean(self, value: Any, names: tuple[str, ...]) -> Any:
         if isinstance(value, str):
             return prepare_for_llm(

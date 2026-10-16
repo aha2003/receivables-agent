@@ -1,9 +1,9 @@
 """T-LLM-01: the classifier smoke gate over the 15 synthetic §6.10 messages (D-034).
 
-The live run is manual (``scripts/eval_classifier.py``). Its ``--record`` option wrote
-``tests/cassettes/t_llm_01.json`` (committed, D-035); the gate test below replays that recording
-and enforces accuracy >= 0.80. Everything else here uses FakeClient; nothing reaches the
-network.
+The live runs are manual (``scripts/eval_classifier.py``, ``scripts/record_demo.py``). The
+recording is ``tests/cassettes/live_demo.json`` (committed, D-035, D-037); the gate test below
+replays it and enforces accuracy >= 0.80. Everything else here uses FakeClient; nothing reaches
+the network.
 """
 
 import json
@@ -36,8 +36,8 @@ from receivables.core.verify import verify_extraction
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures"
-RECORDED = ROOT / "tests" / "cassettes" / "t_llm_01.json"
-SCRIPT = ROOT / "scripts" / "eval_classifier.py"
+RECORDED = ROOT / "tests" / "cassettes" / "live_demo.json"
+SCRIPTS = (ROOT / "scripts" / "eval_classifier.py", ROOT / "scripts" / "record_demo.py")
 MESSAGES = labelled_messages(FIXTURES)
 NAMES = fixture_customer_names(FIXTURES)
 EXPECTED = {m.body: m.expected for m in MESSAGES}
@@ -124,8 +124,8 @@ def test_a_retried_request_keeps_the_response_that_was_used(tmp_path: Path) -> N
 
 def test_llm_01_smoke_gate_on_the_recorded_run() -> None:
     # The maintainer's live run, committed (D-035); a missing file fails, it does not skip.
-    # Re-record with `LLM_MODE=live uv run --env-file .env python scripts/eval_classifier.py
-    # --record` whenever the prompt version changes.
+    # Re-record with `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py
+    # --record` whenever a prompt version changes.
     result = evaluate(behind_redaction(ReplayClient(RECORDED)), MESSAGES)
     misses = [r for r in result.results if r[1] != r[2]]
     assert result.passes_smoke_gate, f"accuracy {float(result.accuracy):.3f}; misses {misses}"
@@ -134,9 +134,10 @@ def test_llm_01_smoke_gate_on_the_recorded_run() -> None:
 # --- the manual script --------------------------------------------------------------------------
 
 
-def _run(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run(script: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    args = [sys.executable, str(script)] + (["--record"] if script.name == "record_demo.py" else [])
     return subprocess.run(  # noqa: S603 - a fixed command: this interpreter and the script
-        [sys.executable, str(SCRIPT), "--record"],
+        args,
         env={**os.environ, **env},
         cwd=ROOT,
         capture_output=True,
@@ -146,6 +147,7 @@ def _run(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.stem)
 @pytest.mark.parametrize(
     ("env", "reason"),
     [
@@ -154,16 +156,20 @@ def _run(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         ({"LLM_MODE": "live"}, "ANTHROPIC_API_KEY"),
     ],
 )
-def test_the_script_refuses_without_live_settings(env: dict[str, str], reason: str) -> None:
-    existed = RECORDED.exists()
-    done = _run(env)
+def test_the_scripts_refuse_without_live_settings(
+    script: Path, env: dict[str, str], reason: str
+) -> None:
+    before = RECORDED.read_bytes()
+    done = _run(script, env)
     assert done.returncode == 2 and reason in done.stderr
-    assert RECORDED.exists() is existed  # a refused run records nothing
+    assert RECORDED.read_bytes() == before  # a refused run records nothing
 
 
-def test_ci_never_runs_the_script() -> None:
+def test_ci_never_runs_the_scripts() -> None:
     for workflow in (ROOT / ".github" / "workflows").glob("*.y*ml"):
-        assert "eval_classifier" not in workflow.read_text(encoding="utf-8"), workflow.name
+        content = workflow.read_text(encoding="utf-8")
+        for script in SCRIPTS:
+            assert script.stem not in content, (workflow.name, script.name)
 
 
 def test_the_recorded_m01_answer_now_verifies(

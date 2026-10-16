@@ -194,10 +194,13 @@ def test_plans_check_shape_only() -> None:
     assert (
         parse_response("plan", json.dumps(unknown), PlanResponse).steps[0].tool == "wire_transfer"
     )
+    # 21 steps parse, so validate_plan rejects them as PLAN_REJECTED / TOO_MANY_STEPS (§18.6).
+    many = {**PLAN, "steps": [{"tool": "x", "args": {}, "reason": "r"}] * 21}
+    assert len(parse_response("plan", json.dumps(many), PlanResponse).steps) == 21
     for bad in (
         {**PLAN, "steps": [{"tool": "x", "args": [], "reason": "r"}]},
         {**PLAN, "steps": [{"tool": "x", "args": {}}]},
-        {**PLAN, "steps": [{"tool": "x", "args": {}, "reason": "r"}] * 21},
+        {**PLAN, "steps": [{"tool": "x", "args": {}, "reason": "r"}] * 101},  # a shape cap only
         {"steps": PLAN["steps"]},
     ):
         with pytest.raises(LLMResponseInvalid):

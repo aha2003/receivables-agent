@@ -391,8 +391,9 @@ def run_agent_tick(
                 now_local=now,
                 autonomy_level=level,
                 config=dataclasses.replace(tick_config(config), l2=l2),
-                planner=planner,
-                # A dry run drafts from the template only: a preview never spends model calls.
+                # A dry run plans by rules and drafts from the templates: a preview never spends
+                # model calls (D-036, D-037).
+                planner=None if dry_run else planner,
                 drafter=None if dry_run else drafter,
             )
             if requested_by is not None:  # who started the run, with the values they chose

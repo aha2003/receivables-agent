@@ -99,6 +99,10 @@ class RawLLMClient(ABC):
         """Input and output tokens of the last call, when the client knows them (S3.04)."""
         return None, None
 
+    def model_for(self, kind: str) -> str:
+        """The model (a role, never an id) this client uses for calls of ``kind``."""
+        return str(getattr(self, "model", "unknown"))
+
     @staticmethod
     def _parse[M: Classification | PlanResponse | DraftResponse](
         kind: str, payload: Mapping[str, Any], raw: str, model: type[M]

@@ -11,8 +11,8 @@ raw text then goes through the same Pydantic validation as every other client.
   schema retry of §7.2 is ``classify_message``'s job.
 - This SDK has no temperature setting, so none is sent (§3.2 "where supported").
 - Logs carry the model's role (``anthropic:classifier``), never its id.
-- Classify (§7.3) and draft (§8.3) have live prompts. The planner prompt arrives in S3.08;
-  until then plan calls fail as ``LLMCallFailed`` and callers use the rule planner.
+- Classify (§7.3), draft (§8.3) and plan (§18.6, D-037) have live prompts; any call that fails
+  is an ``LLMCallFailed`` and callers take their fallback.
 """
 
 import json
@@ -30,6 +30,8 @@ from receivables.adapters.llm.prompts import (
     CLASSIFIER_SYSTEM,
     DRAFT_SCHEMA,
     DRAFTER_SYSTEM,
+    PLAN_SCHEMA,
+    PLANNER_SYSTEM,
 )
 from receivables.adapters.llm.schemas import LLMCallFailed, LLMResponseInvalid
 
@@ -38,10 +40,11 @@ __all__ = ["API_BASE_URL", "AnthropicClient", "LLMUnavailable", "PromptNotAvaila
 API_BASE_URL = "https://api.anthropic.com"
 MAX_TOKENS = {"classify": 1024, "plan": 2048, "draft": 1024}
 ROLES = {"classify": "classifier", "plan": "planner", "draft": "drafter"}
-# Live prompts per call kind: (system prompt, output schema). The planner's arrives in S3.08.
+# Live prompts per call kind: (system prompt, output schema).
 PROMPTS: dict[str, tuple[str, dict[str, Any]]] = {
     "classify": (CLASSIFIER_SYSTEM, CLASSIFICATION_SCHEMA),
     "draft": (DRAFTER_SYSTEM, DRAFT_SCHEMA),
+    "plan": (PLANNER_SYSTEM, PLAN_SCHEMA),
 }
 
 
@@ -61,6 +64,7 @@ class AnthropicClient(RawLLMClient):
         models: Mapping[str, str],
         timeout_seconds: float,
         max_retries: int,
+        plan_timeout_seconds: float | None = None,
         http_client: httpx2.Client | None = None,
     ) -> None:
         missing = sorted(role for role in ROLES.values() if not models.get(role))
@@ -74,6 +78,12 @@ class AnthropicClient(RawLLMClient):
             max_retries=max_retries,
             http_client=http_client,
         )
+        # §18.6 step 7: a plan that takes longer than this falls back to the rule planner; no
+        # transport retry, so one timeout costs at most this long (D-037).
+        self._plan_options: dict[str, Any] = (
+            {} if plan_timeout_seconds is None
+            else {"timeout": float(plan_timeout_seconds), "max_retries": 0}
+        )  # fmt: skip
         # Per-call state is per thread: one client serves concurrent requests (threadpool).
         self._call = threading.local()
 
@@ -85,17 +95,21 @@ class AnthropicClient(RawLLMClient):
         """The model's role in this thread's last call (never its id)."""
         return getattr(self._call, "model", "anthropic")
 
+    def model_for(self, kind: str) -> str:
+        return f"anthropic:{ROLES[kind]}"
+
     def usage(self) -> tuple[int | None, int | None]:
         return getattr(self._call, "usage", (None, None))
 
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
         self._call.usage = (None, None)
-        self._call.model = f"anthropic:{ROLES[kind]}"
         if kind not in PROMPTS:
-            raise PromptNotAvailable(f"no live {kind} prompt yet")
+            raise PromptNotAvailable(f"no live {kind} prompt")
+        self._call.model = f"anthropic:{ROLES[kind]}"
         system, schema = PROMPTS[kind]
+        sdk = self._client.with_options(**self._plan_options) if kind == "plan" else self._client
         try:
-            message = self._client.messages.create(
+            message = sdk.messages.create(
                 model=self._models[ROLES[kind]],
                 max_tokens=MAX_TOKENS[kind],
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
@@ -122,6 +136,9 @@ def _user_turn(kind: str, payload: Mapping[str, Any]) -> str:
     """The data as one JSON document, kept apart from the instructions (§7.3, §8.3)."""
     if kind == "draft":
         return "FACTS " + json.dumps(payload.get("facts", {}), ensure_ascii=False, sort_keys=True)
+    if kind == "plan":
+        observation = payload.get("observation", {})
+        return "OBSERVATION " + json.dumps(observation, ensure_ascii=False, sort_keys=True)
     return json.dumps(
         {"language_hint": payload.get("language_hint"), "message": payload.get("text", "")},
         ensure_ascii=False,
