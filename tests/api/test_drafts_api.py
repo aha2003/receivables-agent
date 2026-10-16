@@ -6,6 +6,7 @@ Nothing can be sent: L0 and L1 never touch mail_outbox.
 
 import json
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from receivables.adapters.clock import SimulatedClock
+from receivables.adapters.db.agent_store import DbAgentStore
 from receivables.adapters.db.repo import customer_names
 from receivables.adapters.llm.fake import FakeClient
 from receivables.adapters.llm.redacting import RedactingClient
@@ -217,6 +219,31 @@ def test_approving_a_draft_settles_the_agents_pending_send(
         a=pending["approval_id"],
     )
     assert settled == [{"status": "approved", "decided_by": USERNAME}]
+
+
+def test_marking_sent_moves_the_case_and_counts_as_recent_contact(
+    user: TestClient, engine: Engine, clock: SimulatedClock
+) -> None:
+    # §18.2: marked sent (L1) moves ASSESSED to AWAITING_REPLY; §18.5: it is recent contact.
+    assert post(user, "/api/agent/run", {"as_of": "2026-10-31"}).status_code == 200
+    state = "SELECT state FROM cases WHERE invoice_number = 'INV-003'"
+    assert rows(engine, state) == [{"state": "ASSESSED"}]
+    draft = new_draft(user, "INV-003")
+    post(user, f"/api/drafts/{draft['draft_id']}/approve")
+    sent = post(user, f"/api/drafts/{draft['draft_id']}/mark-sent",
+                {"sent_at": "2026-10-31T05:00:00Z"})  # fmt: skip
+    assert sent.status_code == 200
+    assert rows(engine, state) == [{"state": "AWAITING_REPLY"}]
+    moved = rows(engine, "SELECT actor, after_json FROM audit_log WHERE action = 'case.transition'"
+                 " AND entity_id = 'INV-003' ORDER BY audit_id DESC LIMIT 1")  # fmt: skip
+    assert moved[0]["actor"] == USERNAME
+    after = json.loads(moved[0]["after_json"])
+    assert (after["state"], after["trigger"], after["draft_id"]) == (
+        "AWAITING_REPLY", "MessageSent", draft["draft_id"],
+    )  # fmt: skip
+    with engine.connect() as c:
+        dates = DbAgentStore(c, clock).outbound_dates("CUST-A", "Asia/Dubai")
+    assert date(2026, 10, 31) in dates
 
 
 def test_the_routes_need_a_session_and_csrf(client: TestClient) -> None:

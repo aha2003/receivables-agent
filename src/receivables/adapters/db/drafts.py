@@ -4,8 +4,9 @@
 clock's today), drafts with the drafting loop (the LLM in replay or live mode, else the §8.4
 template) and saves it as ``draft``. A person then approves it (never possible for an ``llm``
 draft with violations, §9), rejects it, or marks an approved draft as sent from their own email
-(L0 and L1: nothing is sent by the system, §18.4). Every change writes one audit row with
-before and after; the actor is always the signed-in user (D-038 option 1a). Approving or
+(L0 and L1: nothing is sent by the system, §18.4), which moves its ``ASSESSED`` cases to
+``AWAITING_REPLY`` (§18.2) and counts as recent contact (§18.5). Every change writes one audit
+row with before and after; the actor is always the signed-in user (D-038 option 1a). Approving or
 rejecting a draft also decides the agent's pending ``send_email`` approval items for it.
 """
 
@@ -19,7 +20,7 @@ from sqlalchemy import Connection, Engine, select, update
 from receivables.adapters.clock import Clock, utc_timestamp, utc_timestamp_of
 from receivables.adapters.config import Config
 from receivables.adapters.db.agent_store import DbAgentStore
-from receivables.adapters.db.models import Approval, Draft
+from receivables.adapters.db.models import Approval, Draft, MailOutbox
 from receivables.adapters.db.repo import load_agent_facts, write_audit
 from receivables.agent.drafting import DraftWriter, generate_draft
 from receivables.core.drafts import build_fact_block
@@ -72,6 +73,18 @@ def _load(conn: Connection, draft_id: str) -> Any:
     if row is None:
         raise DraftError(404, "not_found", "No draft with that id.")
     return row
+
+
+def _refuse_if_delivered(conn: Connection, draft_id: str) -> None:
+    """A draft the sandbox delivered stays as delivered: it is neither rejected nor marked
+    sent by hand (that would record a second send)."""
+    delivered = conn.execute(
+        select(MailOutbox.mail_id).where(
+            MailOutbox.draft_id == draft_id, MailOutbox.status == "delivered_sandbox"
+        )
+    ).first()
+    if delivered is not None:
+        raise DraftError(409, "conflict", "The draft was delivered through the sandbox.")
 
 
 def _summary(row: Any) -> dict[str, Any]:
@@ -230,6 +243,7 @@ def reject_draft(
         row = _load(conn, draft_id)
         if row.status not in ("draft", "approved"):
             raise DraftError(409, "conflict", f"The draft is {row.status}.")
+        _refuse_if_delivered(conn, draft_id)
         conn.execute(update(Draft).where(Draft.draft_id == draft_id).values(status="rejected"))
         after = _load(conn, draft_id)
         write_audit(
@@ -253,6 +267,7 @@ def mark_draft_sent(
             raise DraftError(
                 409, "conflict", f"Only an approved draft is sent; it is {row.status}."
             )
+        _refuse_if_delivered(conn, draft_id)
         if row.approved_at and utc_timestamp_of(sent_at) < row.approved_at:
             raise DraftError(422, "invalid_request", "sent_at is before the approval.")
         conn.execute(
@@ -265,4 +280,7 @@ def mark_draft_sent(
             conn, clock, actor=actor, action="draft.sent_manually", entity_type="draft",
             entity_id=draft_id, before=_summary(row), after=_summary(after),
         )  # fmt: skip
+        DbAgentStore(conn, clock).message_sent(
+            json.loads(row.invoice_numbers_json), actor=actor, draft_id=draft_id
+        )  # §18.2: marked sent (L1) moves ASSESSED to AWAITING_REPLY
         return draft_json(after)

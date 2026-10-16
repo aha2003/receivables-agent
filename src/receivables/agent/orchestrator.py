@@ -47,6 +47,7 @@ __all__ = [
     "RunSummary",
     "StepRecord",
     "TickConfig",
+    "recheck_draft",
     "run_tick",
 ]
 
@@ -604,15 +605,14 @@ _EFFECTS: dict[str, Callable[[_Tick, str, dict[str, Any], Any], dict[str, Any]]]
 }
 
 
-def _recheck(tick: _Tick, draft: DraftRecord) -> tuple[str, ...]:
-    """The draft's violations against today's facts, not those saved when it was made."""
-    facts = tick.facts
+def recheck_draft(facts: AgentFacts, draft: DraftRecord, config: TickConfig) -> tuple[str, ...]:
+    """The draft's violations against ``facts``, not those saved when it was made."""
     try:
         rows = [facts.rows[n] for n in draft.invoice_numbers]
         block = build_fact_block(
             rows,
             customer_name=facts.customers[draft.customer_id].customer_name,
-            sender_name=tick.config.sender_name,
+            sender_name=config.sender_name,
             as_of=facts.as_of,
             tone=draft.tone,
             dispute_label=draft.dispute_label,
@@ -623,10 +623,10 @@ def _recheck(tick: _Tick, draft: DraftRecord) -> tuple[str, ...]:
         draft.subject,
         draft.body,
         block,
-        max_words=tick.config.max_words,
-        invoice_regex=tick.config.invoice_regex,
+        max_words=config.max_words,
+        invoice_regex=config.invoice_regex,
         recipient=facts.customers[draft.customer_id].contact_email,
-        sender_domain=tick.config.sender_domain,
+        sender_domain=config.sender_domain,
     )
     return tuple(sorted({*draft.violations, *found}))
 
@@ -663,7 +663,7 @@ def _send_email(
             invoice_numbers=draft.invoice_numbers,
             tone=draft.tone,
             recipient=recipient,
-            violations=_recheck(tick, draft),
+            violations=recheck_draft(tick.facts, draft, tick.config),
         ),
         tick.now_local,
         l2,

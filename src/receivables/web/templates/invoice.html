@@ -87,14 +87,15 @@
       </form>
       {% endif %}
     {% endif %}
-    {% if d.status == "approved" %}
+    {% if d.delivered_sandbox %}<p class="note">Delivered to the sandbox outbox; nothing left this machine.</p>{% endif %}
+    {% if d.status == "approved" and not d.delivered_sandbox %}
     <form method="post" action="/drafts/{{ d.draft_id|urlencode }}/mark-sent" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Sent from your email at <input type="datetime-local" name="sent_at" value="{{ now_local }}" step="1" required></label>
       <button type="submit">Mark sent</button>
     </form>
     {% endif %}
-    {% if d.status in ("draft", "approved") %}
+    {% if d.status in ("draft", "approved") and not d.delivered_sandbox %}
     <form method="post" action="/drafts/{{ d.draft_id|urlencode }}/reject" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Reason <input type="text" name="reason" maxlength="500" required></label>

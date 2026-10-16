@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from receivables.adapters.clock import SimulatedClock
+from receivables.adapters.db.controls import carry_kill_switch
 from receivables.seed import seed
 
 from .conftest import USERNAME, csrf, login
@@ -104,7 +105,75 @@ def test_l2_approve_overrides_the_denial_through_the_sandbox(
     assert audit[0]["actor"] == USERNAME
     assert json.loads(audit[0]["before_json"])["reasons"] == ["POLICY_OUTSIDE_HOURS"]
     assert json.loads(audit[0]["after_json"])["override"] is True
+    assert json.loads(audit[0]["after_json"])["mail"]["reasons_now"] == ["POLICY_OUTSIDE_HOURS"]
     assert draft_of(engine, item)["status"] == "approved"
+    # §18.2: the sent message moves the case; the draft change has its own audit row.
+    assert rows(engine, "SELECT state FROM cases WHERE invoice_number = 'INV-003'") == [
+        {"state": "AWAITING_REPLY"}
+    ]
+    moved = rows(engine, "SELECT actor, before_json, after_json FROM audit_log"
+                 " WHERE action = 'case.transition' AND entity_id = 'INV-003'"
+                 " ORDER BY audit_id DESC LIMIT 1")  # fmt: skip
+    assert moved[0]["actor"] == USERNAME
+    assert json.loads(moved[0]["before_json"]) == {"state": "ASSESSED"}
+    assert json.loads(moved[0]["after_json"])["trigger"] == "MessageSent"
+    approved = rows(engine, "SELECT actor FROM audit_log WHERE action = 'draft.approved'"
+                    " AND entity_id = :d", d=draft_of(engine, item)["draft_id"])  # fmt: skip
+    assert approved == [{"actor": USERNAME}]
+
+
+def test_a_delivered_draft_is_neither_rejected_nor_marked_sent(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    at_level(app, 2)
+    item = run_and_items(user, engine)["INV-003"]
+    post(user, f"/api/agent/approvals/{item['approval_id']}/approve")
+    draft_id = draft_of(engine, item)["draft_id"]
+    assert post(user, f"/api/drafts/{draft_id}/reject", {"reason": "x"}).status_code == 409
+    sent_at = {"sent_at": "2026-10-31T05:00:00Z"}
+    assert post(user, f"/api/drafts/{draft_id}/mark-sent", sent_at).status_code == 409
+    page = user.get("/invoices/INV-003").text
+    assert "Delivered to the sandbox outbox" in page
+    assert ">Mark sent</button>" not in page and ">Reject</button>" not in page
+    detail = user.get("/api/invoices/INV-003").json()
+    assert [d["delivered_sandbox"] for d in detail["drafts"]] == [True]
+
+
+def test_an_item_from_an_l1_run_is_only_marked_approved_even_at_l2(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    at_level(app, 2)
+    body = {"as_of": "2026-10-31", "autonomy_level": 1}
+    assert post(user, "/api/agent/run", body).status_code == 200
+    (item,) = rows(engine, "SELECT a.* FROM approvals a JOIN agent_steps s USING (step_id)"
+                   " WHERE s.invoice_number = 'INV-003'")  # fmt: skip
+    response = post(user, f"/api/agent/approvals/{item['approval_id']}/approve")
+    assert (response.status_code, response.json()["mail"]) == (200, None)
+    assert rows(engine, "SELECT * FROM mail_outbox") == []
+    assert draft_of(engine, item)["status"] == "approved"
+
+
+def test_an_l2_item_is_only_marked_approved_once_l2_is_off(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    at_level(app, 2)
+    item = run_and_items(user, engine)["INV-003"]
+    at_level(app, 1)
+    assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").json()["mail"] is None
+    assert rows(engine, "SELECT * FROM mail_outbox") == []
+
+
+def test_l2_no_override_once_the_draft_no_longer_matches_today(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    at_level(app, 2)
+    item = run_and_items(user, engine)["INV-003"]
+    with engine.begin() as c:  # the due date moved: the invoice is no longer overdue
+        c.execute(text("UPDATE invoices SET due_date = '2026-12-31'"
+                       " WHERE invoice_number = 'INV-003'"))  # fmt: skip
+    assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
+    assert rows(engine, "SELECT * FROM mail_outbox") == []
+    assert draft_of(engine, item)["status"] == "draft"
 
 
 @pytest.mark.parametrize("reason", ["POLICY_KILL_SWITCH", "POLICY_RECIPIENT_NOT_ALLOWED"])
@@ -130,6 +199,17 @@ def test_l2_nothing_is_overridden_while_the_kill_switch_is_on(
     at_level(app, 2)
     item = run_and_items(user, engine)["INV-003"]
     at_level(app, 2, kill_switch=True)  # switched on after the run
+    assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
+    assert rows(engine, "SELECT * FROM mail_outbox") == []
+
+
+def test_l2_nothing_is_overridden_after_the_runtime_kill_switch(
+    user: TestClient, app: FastAPI, engine: Engine, clock: SimulatedClock
+) -> None:
+    at_level(app, 2)
+    item = run_and_items(user, engine)["INV-003"]
+    with engine.begin() as c:
+        carry_kill_switch(c, clock, actor=USERNAME, reason="test")  # on at runtime
     assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
     assert rows(engine, "SELECT * FROM mail_outbox") == []
 
