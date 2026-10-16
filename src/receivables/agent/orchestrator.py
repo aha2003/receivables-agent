@@ -328,10 +328,13 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
     """The plan to run and whether the rule planner replaced the planner's output."""
     if planner is None or tick.kill_switch:  # no planner call while the switch is on
         return plan_case(tick.facts, invoice), False
+    asked = False
     try:
-        raw = planner.propose(_observation(tick, invoice))
+        observation = _observation(tick, invoice)
+        asked = True
+        raw = planner.propose(observation)
     except Exception as error:  # any planner failure falls back (§18.6 step 7)
-        _plan_received(tick, invoice, planner, "failed")
+        _plan_received(tick, invoice, planner, "failed", asked=asked)
         tick.store.audit(
             "agent.planner_failed",
             "invoice",
@@ -355,13 +358,15 @@ def _plan(tick: _Tick, invoice: str, planner: PlanSource | None) -> tuple[Plan, 
     return checked, False
 
 
-def _plan_received(tick: _Tick, invoice: str, planner: PlanSource, use: str) -> None:
+def _plan_received(
+    tick: _Tick, invoice: str, planner: PlanSource, use: str, *, asked: bool = True
+) -> None:
     """§18.6 step 6: model, latency and what became of the plan, one audit row per call.
 
     The planner reports its own call (``last_call``: model role, prompt version, attempts,
     latency); ``agent/`` reads no clock (D-037).
     """
-    call = getattr(planner, "last_call", None)
+    call = getattr(planner, "last_call", None) if asked else None  # never another case's call
     tick.store.audit(
         "agent.plan_received",
         "invoice",

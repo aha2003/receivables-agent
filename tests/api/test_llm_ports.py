@@ -71,7 +71,7 @@ def test_other_modes_use_the_apps_client(
     assert {kind for kind, _ in fake.calls} == {"plan"}  # no draft step in these plans
 
 
-def test_a_dry_run_in_a_model_mode_still_plans_but_never_drafts(
+def test_a_dry_run_in_a_model_mode_makes_no_model_call(
     user: TestClient, app: FastAPI, engine: Engine
 ) -> None:
     def draft_plan(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -89,4 +89,4 @@ def test_a_dry_run_in_a_model_mode_still_plans_but_never_drafts(
         headers={"x-csrf-token": csrf(user)},
     )
     assert response.status_code == 200
-    assert {kind for kind, _ in fake.calls} == {"plan"}  # dry runs draft from the template
+    assert fake.calls == []  # a preview plans by rules and drafts from templates (D-037)

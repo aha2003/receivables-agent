@@ -227,3 +227,73 @@ def test_no_planner_call_with_the_kill_switch(db: Engine) -> None:
     fake = FakeClient(plan=schedule_only)
     run_agent_tick(db, CLOCK, config, as_of=AS_OF, planner=make_llm_planner(fake))
     assert fake.calls == []
+
+
+# --- spec review of S3.08 -------------------------------------------------------------------------
+
+
+def test_a_plan_over_five_steps_is_plan_rejected_not_failed(db: Engine) -> None:
+    def many(request: Mapping[str, Any]) -> dict[str, Any]:
+        invoice = request["observation"]["case"]["invoice_number"]
+        step = {"tool": "get_case", "args": {"invoice_number": invoice}, "reason": "look"}
+        return {"invoice_number": invoice, "steps": [step] * 21}
+
+    run(db, many)
+    rejected = audits(db, "agent.plan_rejected")
+    assert len(rejected) == 9 and {tuple(r["reasons"]) for r in rejected} == {("TOO_MANY_STEPS",)}
+    assert audits(db, "agent.planner_failed") == []
+
+
+def test_a_case_that_fails_before_the_call_carries_no_other_cases_timing(
+    db: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from receivables.agent import orchestrator
+
+    real = orchestrator._observation  # pyright: ignore[reportPrivateUsage]
+    seen: list[str] = []
+
+    def observation(tick: Any, invoice: str) -> dict[str, Any]:
+        seen.append(invoice)
+        if len(seen) == 2:
+            raise RuntimeError("cannot build this observation")
+        return real(tick, invoice)
+
+    monkeypatch.setattr(orchestrator, "_observation", observation)
+    run(db, schedule_only)
+    received = {r["invoice"]: r for r in audits(db, "agent.plan_received")}
+    broken = received[seen[1]]
+    assert broken["plan"] == "failed"
+    assert "latency_ms" not in broken and "outcome" not in broken  # never the previous case's
+    assert received[seen[0]]["outcome"] == "ok"
+
+
+def test_an_unexpected_planner_error_is_recorded_by_type(db: Engine) -> None:
+    def broken(_: Mapping[str, Any]) -> Any:
+        raise ZeroDivisionError
+
+    run(db, broken)
+    received = audits(db, "agent.plan_received")
+    assert {(r["plan"], r["outcome"]) for r in received} == {("failed", "ZeroDivisionError")}
+
+
+def test_t_agt_07_the_twenty_are_the_top_twenty_by_priority(db: Engine) -> None:
+    from receivables.adapters.db.repo import load_agent_facts
+
+    with db.begin() as c:
+        for i in range(21):
+            c.execute(
+                text(
+                    "INSERT INTO invoices (invoice_number, customer_id, invoice_date, due_date,"
+                    " amount_fils) VALUES (:n, 'CUST-C', '2026-08-01', :due, :amount)"
+                ),
+                {
+                    "n": f"SYN-{i:03d}",
+                    "due": f"2026-09-{i % 28 + 1:02d}",
+                    "amount": 100_000 * (i + 1),
+                },
+            )
+    with db.connect() as c:
+        facts = load_agent_facts(c, AS_OF, CONFIG.engine)
+    top = sorted(facts.scored.values(), key=lambda s: (-s.priority_value, s.invoice_number))[:20]
+    run(db, schedule_only)
+    assert set(tools_by_invoice(db)) == {s.invoice_number for s in top}

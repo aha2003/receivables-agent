@@ -147,7 +147,7 @@ def test_one_recording_holds_all_three_kinds_and_replays_the_demo_run(
 
 
 def test_the_replay_matches_on_any_presentation_day(
-    tmp_path: Path, db: Engine, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Recorded on one day, presented on another: the requests depend on as_of, not on the
     # server's clock, so the run as of 2026-10-31 is still served from the recording.
@@ -168,7 +168,14 @@ def test_the_replay_matches_on_any_presentation_day(
     monkeypatch.setattr(module, "CASSETTE", cassette)
     assert module.main(["--record"]) == 0
     later = FixedClock(datetime(2026, 12, 7, 15, 30, tzinfo=DUBAI))
-    replayed = replay_run(db, cassette, later)
+    url = f"sqlite:///{tmp_path / 'later.db'}"  # reset (seeded) on the presentation day too
+    upgrade_to_head(url)
+    presented = make_engine(url)
+    try:
+        seed(presented, FIXTURES, later)
+        replayed = replay_run(presented, cassette, later)
+    finally:
+        presented.dispose()
     assert replayed["plans"] == ["used"] * 9 and replayed["generators"] == ["llm"] * 9
 
 

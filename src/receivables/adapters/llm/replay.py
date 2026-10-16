@@ -157,6 +157,9 @@ class RecordingClient(RawLLMClient):
     def usage(self) -> tuple[int | None, int | None]:
         return self.inner.usage()
 
+    def model_for(self, kind: str) -> str:
+        return self.inner.model_for(kind)
+
     def complete(self, kind: str, payload: Mapping[str, Any]) -> str:
         raw = self.inner.complete(kind, payload)
         self._recorded[request_key(kind, payload)] = interaction(kind, payload, raw, self.model)

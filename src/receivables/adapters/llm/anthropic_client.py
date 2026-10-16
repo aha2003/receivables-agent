@@ -64,6 +64,7 @@ class AnthropicClient(RawLLMClient):
         models: Mapping[str, str],
         timeout_seconds: float,
         max_retries: int,
+        plan_timeout_seconds: float | None = None,
         http_client: httpx2.Client | None = None,
     ) -> None:
         missing = sorted(role for role in ROLES.values() if not models.get(role))
@@ -77,6 +78,12 @@ class AnthropicClient(RawLLMClient):
             max_retries=max_retries,
             http_client=http_client,
         )
+        # §18.6 step 7: a plan that takes longer than this falls back to the rule planner; no
+        # transport retry, so one timeout costs at most this long (D-037).
+        self._plan_options: dict[str, Any] = (
+            {} if plan_timeout_seconds is None
+            else {"timeout": float(plan_timeout_seconds), "max_retries": 0}
+        )  # fmt: skip
         # Per-call state is per thread: one client serves concurrent requests (threadpool).
         self._call = threading.local()
 
@@ -88,6 +95,9 @@ class AnthropicClient(RawLLMClient):
         """The model's role in this thread's last call (never its id)."""
         return getattr(self._call, "model", "anthropic")
 
+    def model_for(self, kind: str) -> str:
+        return f"anthropic:{ROLES[kind]}"
+
     def usage(self) -> tuple[int | None, int | None]:
         return getattr(self._call, "usage", (None, None))
 
@@ -97,8 +107,9 @@ class AnthropicClient(RawLLMClient):
             raise PromptNotAvailable(f"no live {kind} prompt")
         self._call.model = f"anthropic:{ROLES[kind]}"
         system, schema = PROMPTS[kind]
+        sdk = self._client.with_options(**self._plan_options) if kind == "plan" else self._client
         try:
-            message = self._client.messages.create(
+            message = sdk.messages.create(
                 model=self._models[ROLES[kind]],
                 max_tokens=MAX_TOKENS[kind],
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],

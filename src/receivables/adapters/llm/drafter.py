@@ -31,7 +31,13 @@ class _LlmDraftWriter:
 
     @property
     def model(self) -> str:
-        return str(getattr(self._client, "model", "unknown"))
+        """The drafter's model role (never an id), whatever the client did last (D-037)."""
+        model_for = getattr(self._client, "model_for", None)
+        return (
+            str(model_for("draft"))
+            if callable(model_for)
+            else str(getattr(self._client, "model", "unknown"))
+        )
 
     def __call__(self, facts: Mapping[str, Any]) -> tuple[str, str]:
         if isinstance(self._client, RedactingClient) and any(

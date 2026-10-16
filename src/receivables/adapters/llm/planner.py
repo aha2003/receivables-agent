@@ -28,12 +28,19 @@ class LlmPlanner:
 
     @property
     def model(self) -> str | None:
-        return str(getattr(self._client, "model", "unknown"))
+        """The planner's model role (never an id), whatever the client did last (D-037)."""
+        model_for = getattr(self._client, "model_for", None)
+        return (
+            str(model_for("plan"))
+            if callable(model_for)
+            else str(getattr(self._client, "model", "unknown"))
+        )
 
     def propose(self, observation: Mapping[str, Any]) -> object:
         started = time.perf_counter()
+        self.last_call = None
         attempts = 0
-        outcome = "ok"
+        outcome = "error"
         try:
             for _ in (1, 2):  # §18.6 step 7: invalid JSON twice falls back
                 attempts += 1
@@ -48,6 +55,11 @@ class LlmPlanner:
         except LLMCallFailed as error:
             outcome = type(error).__name__
             raise PlannerError(outcome) from None
+        except PlannerError:
+            raise
+        except Exception as error:  # anything else is recorded by type, then falls back
+            outcome = type(error).__name__
+            raise
         finally:
             self.last_call = {
                 "model": self.model,

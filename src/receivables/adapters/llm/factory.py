@@ -59,4 +59,5 @@ def _raw_client(settings: Settings, config: Config) -> LLMClient:
         models={role: model for role, model in models.items() if model},
         timeout_seconds=config.llm.timeout_seconds,
         max_retries=config.llm.max_retries,
+        plan_timeout_seconds=config.agent.llm_timeout_seconds,  # §18.6 step 7, D-037
     )

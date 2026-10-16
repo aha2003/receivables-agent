@@ -125,7 +125,8 @@ class PlanResponse(_Strict):
     """§18.6 plan shape; tools, arguments and budgets are checked by ``validate_plan``."""
 
     invoice_number: ShortText
-    steps: list[PlanStepResponse] = Field(max_length=20)
+    # Generous on purpose: more than 5 steps is PLAN_REJECTED by validate_plan (§18.6 step 4).
+    steps: list[PlanStepResponse] = Field(max_length=100)
 
 
 class DraftResponse(_Strict):
