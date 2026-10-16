@@ -190,3 +190,34 @@ def test_allocation_needs_a_session_and_csrf(client: TestClient) -> None:
     assert client.post("/api/payments/P-005/allocate", json=body).status_code == 401
     assert login(client) == 303
     assert client.post("/api/payments/P-005/allocate", json=body).status_code == 403
+
+
+# --- a later import (D-040 option 1a) -----------------------------------------------------------
+
+
+def test_a_later_import_keeps_a_persons_allocation(user: TestClient, engine: Engine) -> None:
+    allocate(user, "P-005", "INV-008")
+    # The accounting file still lists P-005 as unallocated, with a corrected date.
+    response = upload_payments(user, b"P-005,,CUST-C,2026-10-27,12000.00,payment\n")
+    assert response.status_code == 200
+    assert {"line": 0, "code": "W_ALLOCATION_KEPT", "field": "invoice_number",
+            "detail": "P-005"} in response.json()["warnings"]  # fmt: skip
+    (row,) = rows(engine, "SELECT * FROM payments WHERE payment_id = 'P-005'")
+    assert (row["invoice_number"], row["customer_id"], row["payment_date"]) == (
+        "INV-008", "CUST-C", "2026-10-27",
+    )  # fmt: skip
+    assert open_amount(user, "INV-008") == "0.00"
+
+
+def test_a_later_import_that_agrees_or_other_payments_import_as_written(
+    user: TestClient, engine: Engine
+) -> None:
+    allocate(user, "P-005", "INV-008")
+    agreed = upload_payments(user, b"P-005,INV-008,,2026-10-28,12000.00,payment\n")
+    assert not [w for w in agreed.json()["warnings"] if w["code"] == "W_ALLOCATION_KEPT"]
+    # An allocation that came from a file (not a person) is the file's to change.
+    moved = upload_payments(user, b"P-001,INV-003,,2026-08-10,10000.00,payment\n")
+    assert not [w for w in moved.json()["warnings"] if w["code"] == "W_ALLOCATION_KEPT"]
+    assert rows(engine, "SELECT invoice_number FROM payments WHERE payment_id = 'P-001'") == [
+        {"invoice_number": "INV-003"}
+    ]

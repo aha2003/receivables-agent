@@ -5,6 +5,10 @@ then either rejects the file (HTTP 422, nothing written), reports a duplicate (s
 bytes and mapping hash; nothing written) or, in one transaction, upserts the rows and writes
 the ``imports`` record and one ``audit_log`` row with timestamps from the injected clock.
 The upload route arrives in S1.13 (docs/DECISIONS.md D-013).
+
+A payment a person allocated in the app (S3.11) keeps that allocation: a later payments file
+that gives it another invoice or customer, or none, does not undo it; the row's other fields
+are updated and the import warns ``W_ALLOCATION_KEPT`` naming the payment (D-040 option 1a).
 """
 
 import hashlib
@@ -19,6 +23,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import Clock, utc_timestamp
 from receivables.adapters.db.models import (
+    AuditLog,
     Classification,
     Correspondence,
     Customer,
@@ -120,8 +125,12 @@ def import_csv(
                     errors=result.errors,
                     warnings=result.warnings,
                 )
-            _upsert(conn, kind, result)
-            warnings = result.warnings
+            kept = _kept_allocations(conn, result) if kind == "payments" else {}
+            _upsert(conn, kind, result, kept)
+            warnings = (*result.warnings, *(
+                Issue(0, "W_ALLOCATION_KEPT", "invoice_number", payment_id)
+                for payment_id in sorted(kept)
+            ))  # fmt: skip
             if kind in {"invoices", "payments"} and _payment_count(conn) == 0:
                 warnings = (*warnings, Issue(0, "W_NO_PAYMENTS", "payment_id"))
             import_id = uuid.uuid4().hex
@@ -321,13 +330,55 @@ _TARGETS: dict[str, tuple[Any, str]] = {
 }
 
 
-def _upsert(conn: Connection, kind: str, result: ValidationResult) -> None:
+def _kept_allocations(
+    conn: Connection, result: ValidationResult
+) -> dict[str, tuple[str | None, str | None]]:
+    """Payments a person allocated (a ``payment.allocated`` audit row) whose incoming row names
+    another invoice, or none: their stored invoice and customer, which the import keeps. A row
+    that agrees on the invoice is imported as written."""
+    allocated = set(
+        conn.execute(
+            select(AuditLog.entity_id).where(
+                AuditLog.action == "payment.allocated", AuditLog.entity_type == "payment"
+            )
+        ).scalars()
+    )
+    if not allocated:
+        return {}
+    stored = {
+        r.payment_id: (r.invoice_number, r.customer_id)
+        for r in conn.execute(
+            select(Payment.payment_id, Payment.invoice_number, Payment.customer_id).where(
+                Payment.payment_id.in_(allocated)
+            )
+        )
+    }
+    kept: dict[str, tuple[str | None, str | None]] = {}
+    for record in result.records:
+        if (
+            isinstance(record, PaymentRecord)
+            and record.payment_id in stored
+            and record.invoice_number != stored[record.payment_id][0]
+        ):
+            kept[record.payment_id] = stored[record.payment_id]
+    return kept
+
+
+def _upsert(
+    conn: Connection,
+    kind: str,
+    result: ValidationResult,
+    kept: dict[str, tuple[str | None, str | None]],
+) -> None:
     """Insert or replace by primary key; ON CONFLICT DO UPDATE never deletes, so FKs hold."""
     if not result.records:
         return
     model, key = _TARGETS[kind]
     table: Table = model.__table__
     rows = [_row(r) for r in result.records]
+    for row in rows:
+        if row.get("payment_id") in kept:  # a person's allocation stands (D-040 option 1a)
+            row["invoice_number"], row["customer_id"] = kept[row["payment_id"]]
     stmt = sqlite_insert(table).values(rows)
     update = {name: stmt.excluded[name] for name in rows[0] if name != key}
     conn.execute(stmt.on_conflict_do_update(index_elements=[key], set_=update))
