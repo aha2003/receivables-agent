@@ -3,6 +3,7 @@ T-AUD-01 (D-038). Golden data, fake LLM mode, autonomy L1 unless a test says oth
 
 import json
 import re
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,25 @@ def test_create_approve_and_mark_sent_from_the_page(user: TestClient, engine: En
     panel = drafts_section(user.get("/invoices/INV-003").text)
     assert "Marked sent at 2026-10-31T05:00:00Z" in panel
     assert ">Approve</button>" not in panel and ">Mark sent</button>" not in panel
+
+
+def test_the_default_sent_time_is_accepted_right_after_approving(
+    user: TestClient, engine: Engine, clock: SimulatedClock
+) -> None:
+    # Found in the manual T-UI-03 check: a minute-precision default fell before approved_at.
+    clock.advance(timedelta(seconds=37))
+    form(user, "/drafts/new", invoice_number="INV-003")
+    (draft,) = rows(engine, "SELECT draft_id FROM drafts")
+    form(user, f"/drafts/{draft['draft_id']}/approve")
+    panel = drafts_section(user.get("/invoices/INV-003").text)
+    match = re.search(r'name="sent_at" value="([^"]+)"', panel)
+    assert match and match.group(1) == "2026-10-31T09:00:37"
+    assert 'step="1"' in panel
+    assert (
+        form(user, f"/drafts/{draft['draft_id']}/mark-sent", sent_at=match.group(1)).status_code
+        == 303
+    )
+    assert rows(engine, "SELECT sent_at FROM drafts") == [{"sent_at": "2026-10-31T05:00:37Z"}]
 
 
 def test_reject_from_the_page_and_a_refusal_shows_why(user: TestClient, engine: Engine) -> None:

@@ -164,7 +164,7 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
         "runs": runs,
         "decisions": decisions,
         # Default for the "Mark sent" field: now, in Dubai.
-        "now_local": state.clock.now().astimezone(DUBAI).strftime("%Y-%m-%dT%H:%M"),
+        "now_local": state.clock.now().astimezone(DUBAI).strftime("%Y-%m-%dT%H:%M:%S"),
     }
     return await render(request, "invoice.html", context)
 
