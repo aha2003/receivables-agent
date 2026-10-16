@@ -26,7 +26,7 @@ from receivables.adapters.clock import Clock, utc_timestamp
 from receivables.adapters.config import Config
 from receivables.adapters.db.agent_store import DbAgentStore, tick_config
 from receivables.adapters.db.controls import kill_switch_on
-from receivables.adapters.db.models import AgentRun, AgentStep, Approval, Draft
+from receivables.adapters.db.models import AgentRun, AgentStep, Approval, Draft, MailOutbox
 from receivables.adapters.db.repo import load_agent_facts, write_audit
 from receivables.adapters.mail.sandbox import DELIVERED, SandboxMailGateway
 from receivables.agent.orchestrator import recheck_draft
@@ -40,11 +40,14 @@ NEVER_OVERRIDDEN = frozenset({"POLICY_KILL_SWITCH", "POLICY_RECIPIENT_NOT_ALLOWE
 class ApprovalError(Exception):
     """A refusal with its HTTP status and error code."""
 
-    def __init__(self, status: int, code: str, detail: str) -> None:
+    def __init__(
+        self, status: int, code: str, detail: str, context: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(detail)
         self.status = status
         self.code = code
         self.detail = detail
+        self.context = context  # for the audit row of a refused override
 
 
 def _approval(conn: Connection, approval_id: str) -> Any:
@@ -105,22 +108,30 @@ def decide_approval(
             raise ApprovalError(
                 409, "conflict", "A model draft with violations cannot be approved."
             )
+        delivered = conn.execute(
+            select(MailOutbox.mail_id).where(
+                MailOutbox.draft_id == draft.draft_id, MailOutbox.status == DELIVERED
+            )
+        ).first()
+        if delivered is not None:  # never a second delivery of the same draft
+            raise ApprovalError(409, "conflict", "The draft was delivered through the sandbox.")
         mail = None
-        refused = False
+        refusal: ApprovalError | None = None
         override = (
             config.agent.autonomy_level == 2
             and _run_level(conn, item.step_id) == 2
             and payload.get("policy_allowed") is False
         )
         if override:
-            mail = _override(conn, approval_id, draft, payload, config=config, clock=clock)
-            # Never expected (the address is the stored one): the gateway's rejected row is
-            # kept (option 2a), the item stays pending and the refusal is raised after commit.
-            refused = mail["status"] != DELIVERED
-            if refused:  # pragma: no cover
+            try:
+                mail = _override(conn, approval_id, draft, payload, config=config, clock=clock)
+            except ApprovalError as error:
+                # Audited and committed (with any rejected outbox row, option 2a); the item
+                # stays pending and the refusal is raised after the commit.
+                refusal = error
                 _audit(conn, clock, actor, approval_id, "approval.override_refused", item,
-                       payload, mail)  # fmt: skip
-        if not refused:
+                       payload, {"refused": error.detail, **(error.context or {})})  # fmt: skip
+        if refusal is None:
             if draft.status == "draft":
                 _approve_draft(conn, draft, clock=clock, actor=actor, approval_id=approval_id)
             if mail is not None:  # §18.2: a sent message moves ASSESSED to AWAITING_REPLY
@@ -130,7 +141,7 @@ def decide_approval(
             _settle(conn, approval_id, "approved", clock=clock, actor=actor)
             _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, mail)
             return result | {"status": "approved", "decided_by": actor, "mail": mail}
-    raise ApprovalError(409, "conflict", "The gateway refused the recipient.")  # pragma: no cover
+    raise refusal
 
 
 def _approve_draft(
@@ -193,17 +204,21 @@ def _override(
     reasons = set(payload.get("reasons") or []) | set(reasons_now)
     if reasons & NEVER_OVERRIDDEN:
         raise ApprovalError(
-            409, "conflict", "The kill switch or the recipient rule can never be overridden."
-        )
+            409, "conflict", "The kill switch or the recipient rule can never be overridden.",
+            {"reasons_now": list(reasons_now)},
+        )  # fmt: skip
     sent = SandboxMailGateway(conn).send(
         mail_id=f"{approval_id}-M", draft_id=draft.draft_id, to=to, at=now
     )
-    return {
+    mail = {
         "mail_id": sent.mail_id,
         "status": sent.status,
         "gateway": "sandbox",
         "reasons_now": list(reasons_now),
     }
+    if not sent.delivered:  # pragma: no cover - the address is the stored one
+        raise ApprovalError(409, "conflict", "The gateway refused the recipient.", mail)
+    return mail
 
 
 def _audit(

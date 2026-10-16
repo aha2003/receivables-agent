@@ -212,6 +212,31 @@ def test_l2_nothing_is_overridden_after_the_runtime_kill_switch(
         carry_kill_switch(c, clock, actor=USERNAME, reason="test")  # on at runtime
     assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
     assert rows(engine, "SELECT * FROM mail_outbox") == []
+    # The refused attempt is audited with the reasons of now; the item stays pending.
+    (refused,) = rows(engine, "SELECT actor, after_json FROM audit_log"
+                      " WHERE action = 'approval.override_refused'")  # fmt: skip
+    assert refused["actor"] == USERNAME
+    assert "POLICY_KILL_SWITCH" in json.loads(refused["after_json"])["mail"]["reasons_now"]
+    status = rows(engine, "SELECT status FROM approvals WHERE approval_id = :a",
+                  a=item["approval_id"])  # fmt: skip
+    assert status == [{"status": "pending"}]
+
+
+def test_an_item_whose_draft_was_already_delivered_is_not_approved(
+    user: TestClient, app: FastAPI, engine: Engine
+) -> None:
+    # A later tick may deliver the same draft; approving the old item must not send it again.
+    at_level(app, 2)
+    item = run_and_items(user, engine)["INV-003"]
+    draft_id = draft_of(engine, item)["draft_id"]
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO mail_outbox (mail_id, draft_id, to_address, subject, body,"
+                       " status, gateway, created_at) VALUES ('M-EARLIER', :d, 'ap@alpha.example',"
+                       " 's', 'b',"
+                       " 'delivered_sandbox', 'sandbox', '2026-10-31T05:00:00Z')"),
+                  {"d": draft_id})  # fmt: skip
+    assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
+    assert len(rows(engine, "SELECT * FROM mail_outbox")) == 1
 
 
 # --- refusals -------------------------------------------------------------------------------------

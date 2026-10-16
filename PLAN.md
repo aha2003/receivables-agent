@@ -191,7 +191,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §18.6
   - Tests: T-AGT-01, T-AGT-06, T-AGT-07 (with the LLM planner via FakeClient)
   - Done when: Failure never stops the tick; fallback is recorded.
-- [ ] **S3.09** Human approval and sandbox outbox
+- [x] **S3.09** Human approval and sandbox outbox
   - Goal: Approve, reject and mark-sent; SandboxMailGateway writing only to the outbox; L2 policy-gated sends; recipient must equal the customer's stored address.
   - Spec: §18.4, §18.8, §9
   - Tests: T-API-06, T-MAIL-01, T-MAIL-02, T-UI-03, T-AUD-01
