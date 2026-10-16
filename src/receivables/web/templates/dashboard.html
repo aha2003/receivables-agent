@@ -3,6 +3,7 @@
 {% block content %}
 {% set as_of = snap.as_of.isoformat() %}
 <h1>Receivables dashboard</h1>
+<p><a href="/api/report?as_of={{ as_of|urlencode }}">Receivables Health Audit report (printable)</a></p>
 {% include "_run_form.html" %}
 {% include "_as_of.html" %}
 

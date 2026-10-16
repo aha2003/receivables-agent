@@ -1,0 +1,23 @@
+/* The Receivables Health Audit: one printable page set (SPEC §11). Self-hosted, no CDN. */
+body { font-family: system-ui, sans-serif; margin: 0; color: #1b1b1b; background: #fff; font-size: 0.95rem; }
+.banner { background: #7a1f1f; color: #fff; font-weight: 600; padding: 0.4rem 1rem; text-align: center; }
+main { max-width: 56rem; margin: 1.5rem auto; padding: 0 1rem; }
+h1 { margin-bottom: 0.25rem; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.2rem; margin-top: 2rem; }
+table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }
+th, td { border-bottom: 1px solid #e3e3e3; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.kv th { width: 16rem; }
+.note { color: #555; font-size: 0.85rem; }
+.heuristic { color: #6b4400; }
+dt { font-weight: 600; margin-top: 0.5rem; }
+dd { margin: 0.1rem 0 0 1rem; }
+
+@media print {
+  body { font-size: 9.5pt; }
+  main { max-width: none; margin: 0; }
+  .banner { background: none; color: #000; border: 1px solid #000; }
+  section { break-inside: avoid-page; }
+  #queue, #definitions { break-before: page; }
+  tr { break-inside: avoid; }
+}
