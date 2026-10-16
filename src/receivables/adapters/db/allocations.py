@@ -8,8 +8,9 @@ the payment's ``invoice_number`` when all of these hold, else it changes nothing
 - the payment has no invoice yet (``ALREADY_ALLOCATED``);
 - it is dated on or before today (``NOT_YET_RECEIVED``, D-040 option 2a);
 - the invoice is of the payment's customer (``CUSTOMER_MISMATCH``);
-- the invoice is in today's ledger and the payment is not larger than its open amount today
-  (``EXCEEDS_OPEN_AMOUNT``; no splitting, no remainder, §6.7).
+- the invoice is in today's ledger and the payment is not larger than its open amount today,
+  nor than the invoice amount less every payment applied to it whatever its date (a later-dated
+  allocation from a file counts) (``EXCEEDS_OPEN_AMOUNT``; no splitting, no remainder, §6.7).
 
 An allocation writes ``payment.allocated`` with before and after; a refusal writes
 ``payment.allocation_refused`` with its reason and is committed although the request fails
@@ -19,7 +20,7 @@ option 3a). The actor is the signed-in user.
 
 from typing import Any
 
-from sqlalchemy import Connection, Engine, select, update
+from sqlalchemy import Connection, Engine, func, select, update
 
 from receivables.adapters.clock import Clock
 from receivables.adapters.db.agent_store import DbAgentStore
@@ -83,9 +84,23 @@ def _check(conn: Connection, payment: Any, invoice_number: str, clock: Clock) ->
     row = ledger.get(invoice_number)
     if row is None:
         raise refuse("NOT_IN_LEDGER")
-    if payment.amount_fils > row.open_amount:
+    if payment.amount_fils > min(row.open_amount, _room(conn, invoice_number)):
         raise refuse("EXCEEDS_OPEN_AMOUNT")
     return row.open_amount - payment.amount_fils
+
+
+def _room(conn: Connection, invoice_number: str) -> int:
+    """The invoice amount less every payment applied to it, whatever its date: a payment dated
+    after today that a file already allocated counts, so nothing is over-allocated later."""
+    amount = conn.execute(
+        select(Invoice.amount_fils).where(Invoice.invoice_number == invoice_number)
+    ).scalar_one()
+    applied = conn.execute(
+        select(func.coalesce(func.sum(Payment.amount_fils), 0)).where(
+            Payment.invoice_number == invoice_number
+        )
+    ).scalar_one()
+    return max(0, amount - applied)
 
 
 def allocate_in(

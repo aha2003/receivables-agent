@@ -219,8 +219,12 @@ def test_a_later_import_keeps_a_persons_allocation(user: TestClient, engine: Eng
     # The accounting file still lists P-005 as unallocated, with a corrected date.
     response = upload_payments(user, b"P-005,,CUST-C,2026-10-27,12000.00,payment\n")
     assert response.status_code == 200
-    assert {"line": 0, "code": "W_ALLOCATION_KEPT", "field": "invoice_number",
+    assert {"line": 2, "code": "W_ALLOCATION_KEPT", "field": "invoice_number",
             "detail": "P-005"} in response.json()["warnings"]  # fmt: skip
+    # Nothing is unallocated any more, so the import does not say so.
+    assert not [w for w in response.json()["warnings"] if w["code"] == "W_UNALLOCATED"]
+    last_import = audits(engine, "import.accepted")[-1]
+    assert last_import["after"]["allocations_kept"] == ["P-005"]
     (row,) = rows(engine, "SELECT * FROM payments WHERE payment_id = 'P-005'")
     assert (row["invoice_number"], row["customer_id"], row["payment_date"]) == (
         "INV-008", "CUST-C", "2026-10-27",
@@ -281,6 +285,13 @@ def test_approving_a_proposal_allocates_by_the_same_rules(user: TestClient, engi
     assert rows(engine, status) == [{"status": "approved", "decided_by": USERNAME}]
 
 
+def test_a_proposal_for_a_gone_payment_is_audited(user: TestClient, engine: Engine) -> None:
+    approval_id = proposal(user, engine, "INV-404")
+    assert decide(user, approval_id, "approve").status_code == 409
+    (refused,) = audits(engine, "approval.allocation_refused")
+    assert (refused["actor"], refused["after"]["reason"]) == (USERNAME, "not_found")
+
+
 def test_a_refused_proposal_stays_pending_and_is_audited(user: TestClient, engine: Engine) -> None:
     approval_id = proposal(user, engine, "INV-012")  # more than INV-012's open amount
     before = payments(engine)
@@ -293,3 +304,46 @@ def test_a_refused_proposal_stays_pending_and_is_audited(user: TestClient, engin
     status = "SELECT status FROM approvals WHERE approval_id = 'A-ALLOC'"
     assert rows(engine, status) == [{"status": "pending"}]
     assert decide(user, approval_id, "reject").status_code == 200
+
+
+def test_a_later_import_that_raises_a_kept_payment_warns_it_overpays(
+    user: TestClient, engine: Engine
+) -> None:
+    # Validation sees the kept allocation, so a larger amount is an overpayment of INV-008.
+    allocate(user, "P-005", "INV-008")
+    response = upload_payments(user, b"P-005,,CUST-C,2026-10-28,20000.00,payment\n")
+    codes = {(w["code"], w.get("detail")) for w in response.json()["warnings"]}
+    assert ("W_OVERPAID", "INV-008") in codes and ("W_ALLOCATION_KEPT", "P-005") in codes
+    assert not [c for c, _ in codes if c == "W_UNALLOCATED"]
+
+
+def test_a_later_import_naming_another_invoice_keeps_the_allocation(
+    user: TestClient, engine: Engine
+) -> None:
+    allocate(user, "P-005", "INV-008")
+    response = upload_payments(user, b"P-005,INV-009,,2026-10-28,12000.00,payment\n")
+    codes = {(w["code"], w.get("detail")) for w in response.json()["warnings"]}
+    assert ("W_ALLOCATION_KEPT", "P-005") in codes
+    assert ("W_OVERPAID", "INV-009") not in codes  # INV-009 never receives it
+    assert rows(engine, "SELECT invoice_number FROM payments WHERE payment_id = 'P-005'") == [
+        {"invoice_number": "INV-008"}
+    ]
+
+
+def test_a_later_dated_allocation_from_a_file_leaves_no_room(
+    user: TestClient, engine: Engine
+) -> None:
+    # A file allocates AED 9,000.00 dated after today to INV-012 (9,000.00): today it is still
+    # open, but allocating more cash to it would over-allocate it once that payment is dated.
+    upload_payments(
+        user,
+        b"P-020,INV-012,,2026-11-05,9000.00,payment\nP-010,,CUST-C,2026-10-29,9000.00,payment\n",
+    )
+    assert open_amount(user, "INV-012") == "9000.00"
+    response = allocate(user, "P-010", "INV-012")
+    assert (response.status_code, response.json()["reason"]) == (409, "EXCEEDS_OPEN_AMOUNT")
+
+
+def test_a_payment_id_with_a_slash(user: TestClient, engine: Engine) -> None:
+    assert upload_payments(user, b"P/2026/1,,CUST-C,2026-10-29,100.00,payment\n").status_code == 200
+    assert allocate(user, "P/2026/1", "INV-008").status_code == 200

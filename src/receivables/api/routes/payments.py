@@ -22,7 +22,7 @@ class _Allocate(BaseModel):
     invoice_number: str = Field(min_length=1, max_length=64)
 
 
-@router.post("/api/payments/{payment_id}/allocate")
+@router.post("/api/payments/{payment_id:path}/allocate")  # an id may contain "/"
 async def allocate(request: Request, payment_id: str) -> Response:
     try:
         body = _Allocate.model_validate_json((await request.body()) or b"{}")

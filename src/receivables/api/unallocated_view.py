@@ -25,7 +25,13 @@ def unallocated_view(engine: Engine, today: date) -> list[dict[str, Any]]:
             .order_by(Payment.customer_id, Payment.payment_date, Payment.payment_id)
         ).all()
         names = dict(conn.execute(select(Customer.customer_id, Customer.customer_name)).all())
-        ledger = build_ledger(load_invoices(conn), load_payments(conn), today)
+        invoices, payments = load_invoices(conn), load_payments(conn)
+        ledger = build_ledger(invoices, payments, today)
+    amounts = {i.invoice_number: i.amount for i in invoices}
+    applied: dict[str, int] = {}  # every payment, whatever its date (as allocations.py checks)
+    for pay in payments:
+        if pay.invoice_number is not None:
+            applied[pay.invoice_number] = applied.get(pay.invoice_number, 0) + pay.amount
     customers: dict[str, dict[str, Any]] = {}
     for p in waiting:
         open_rows = [r for r in ledger if r.customer_id == p.customer_id and r.open_amount > 0]
@@ -53,7 +59,11 @@ def unallocated_view(engine: Engine, today: date) -> list[dict[str, Any]]:
                         "invoice_number": r.invoice_number,
                         "open_amount": r.open_amount,
                         "days_overdue": r.days_overdue,
-                        "fits": p.amount_fils <= r.open_amount,
+                        "fits": p.amount_fils
+                        <= min(
+                            r.open_amount,
+                            amounts[r.invoice_number] - applied.get(r.invoice_number, 0),
+                        ),
                     }
                     for r in open_rows
                 ],

@@ -180,8 +180,10 @@ async def approvals_page(request: Request) -> Response:
 async def unallocated_page(request: Request) -> Response:
     """§10: unallocated payments by customer, each with an Allocate action (§6.7)."""
     state = request.app.state
-    customers = await run_in_threadpool(unallocated_view, state.engine, state.clock.today())
-    return await render(request, "unallocated.html", {"customers": customers})
+    today = state.clock.today()
+    customers = await run_in_threadpool(unallocated_view, state.engine, today)
+    context = {"customers": customers, "as_of": today.isoformat()}
+    return await render(request, "unallocated.html", context)
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)

@@ -149,6 +149,9 @@ class References:
     existing_payments: Mapping[str, tuple[str | None, int]] = field(default_factory=dict)
     # Messages that already have a classification, as stored: their text may not change.
     classified_messages: Mapping[str, "MessageRecord"] = field(default_factory=dict)
+    # Payments a person allocated in the app: payment id -> (invoice, customer) as stored. A
+    # file row that names another invoice, or none, keeps them (D-040 option 1a).
+    kept_allocations: Mapping[str, tuple[str | None, str | None]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,6 +350,11 @@ def _payment(line: int, row: Mapping[str, str], ctx: _Context) -> PaymentRecord:
     ):
         raise _RowError("E_CUSTOMER_MISMATCH", "customer_id")
 
+    kept = ctx.refs.kept_allocations.get(row["payment_id"])
+    if kept is not None and invoice_number != kept[0]:
+        # A person's allocation stands; the checks below see the row as it will be written.
+        invoice_number, customer_id = kept
+        ctx.warnings.append(Issue(line, "W_ALLOCATION_KEPT", "invoice_number", row["payment_id"]))
     ctx.future(line, "payment_date", payment_date)
     if invoice_number is None:  # unallocated; a write-off was already rejected above
         ctx.unallocated_count += 1

@@ -52,9 +52,24 @@ def test_the_page_lists_payments_by_customer_with_their_choices(user: TestClient
     # INV-007 is paid; INV-009 (5,000.00) and INV-012 (9,000.00) are smaller than the payment.
     assert options(page, "P-005") == {"INV-008": True, "INV-009": False, "INV-012": False}
     assert "(payment is larger)" in page
+    assert "Amounts and days overdue as of 2026-10-31 (today)." in page
     assert "Dated after today: it can be allocated once received." in page
     assert 'action="/unallocated/P-009/allocate"' not in page
     assert '<a href="/unallocated">Unallocated cash</a>' in user.get("/").text  # nav and dashboard
+
+
+def test_a_later_dated_allocation_from_a_file_is_counted(user: TestClient) -> None:
+    # INV-012 is AED 9,000.00 open today, but a file already allocated 8,500.00 dated after
+    # today to it: a 1,000.00 payment would over-allocate it, so it is not offered.
+    rows = b"P-020,INV-012,,2026-11-05,8500.00,payment\nP-010,,CUST-C,2026-10-29,1000.00,payment\n"
+    user.post(
+        "/api/imports/payments",
+        files={"file": ("p.csv", HEADER + rows, "text/csv")},
+        headers={"x-csrf-token": csrf(user)},
+    )
+    assert options(user.get("/unallocated").text, "P-010") == {
+        "INV-008": True, "INV-009": True, "INV-012": False,
+    }  # fmt: skip
 
 
 def test_allocating_from_the_page(user: TestClient, engine: Engine) -> None:

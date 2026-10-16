@@ -127,8 +127,10 @@ def _approve_allocation(
             context={"approval_id": approval_id},
         )  # fmt: skip
     except AllocationError as error:
-        # Raised after the commit: a refusal's audit row is kept; a payment or invoice that is
-        # gone wrote nothing. The item stays pending either way.
+        # Audited and raised after the commit; the item stays pending. (A 409 also left its
+        # ``payment.allocation_refused`` row; a payment or invoice that is gone wrote nothing.)
+        _audit(conn, clock, actor, approval_id, "approval.allocation_refused", item, payload,
+               None, {"refused": error.detail, "reason": error.reason or error.code})  # fmt: skip
         return ApprovalError(409, "conflict", error.detail)
     _settle(conn, approval_id, "approved", clock=clock, actor=actor)
     _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, None,

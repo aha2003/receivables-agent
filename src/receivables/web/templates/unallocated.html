@@ -3,6 +3,7 @@
 {% block content %}
 <h1>Unallocated cash</h1>
 <p class="note">Payments received without an invoice. They do not reduce any invoice's open amount until you allocate them. Allocate the whole payment to one invoice of the same customer; a payment larger than an invoice's open amount cannot go to that invoice (splitting is not supported). Every allocation, and every refused attempt, is audited.</p>
+<p class="as-of-note">Amounts and days overdue as of {{ as_of }} (today).</p>
 {% if customers %}
 {% for c in customers %}
 <section id="cust-{{ c.customer_id }}">
