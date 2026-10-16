@@ -112,13 +112,14 @@ def allocate_payment(
         try:
             open_after = _check(conn, payment, invoice_number, clock)
         except AllocationError as error:
+            # Committed with the refusal (T-API-10); the error is raised after the commit.
             refusal = error
             write_audit(
                 conn, clock, actor=actor, action=REFUSED_ACTION, entity_type="payment",
                 entity_id=payment_id, before=before,
                 after={"requested_invoice": invoice_number, "reason": error.reason},
             )  # fmt: skip
-        if refusal is None:
+        else:
             conn.execute(
                 update(Payment)
                 .where(Payment.payment_id == payment_id)
@@ -142,4 +143,6 @@ def allocate_payment(
                 "amount": _aed(payment.amount_fils),
                 "invoice_open_amount": _aed(open_after),
             }
+    if refusal is None:  # pragma: no cover - the else branch returned
+        raise RuntimeError("unreachable")
     raise refusal
