@@ -16,11 +16,11 @@ STATEMENT = (
     "require or contain real company ledgers or customer correspondence. Financial "
     "calculations are deterministic; LLM output cannot change ledger amounts. Agent actions "
     "are limited to a fixed tool registry, an autonomy level and a kill switch; every message "
-    "the agent sends to a customer also passes a deterministic policy engine. Outbound messages are written to "
-    "a local sandbox outbox only. Inbound message content is treated as untrusted input and "
-    "tested against instruction-injection attempts. Logs and demo artefacts are designed to "
-    "exclude secrets and personal data. Simulator outcomes are illustrative and are not "
-    "presented as evidence of real-world collections improvement."
+    "the agent sends to a customer also passes a deterministic policy engine. Outbound "
+    "messages are written to a local sandbox outbox only. Inbound message content is treated "
+    "as untrusted input and tested against instruction-injection attempts. Logs and demo "
+    "artefacts are designed to exclude secrets and personal data. Simulator outcomes are "
+    "illustrative and are not presented as evidence of real-world collections improvement."
 )
 
 
