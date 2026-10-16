@@ -80,4 +80,11 @@ class SimulatedClock:
 
 def utc_timestamp(clock: Clock) -> str:
     """ISO-8601 UTC timestamp (seconds, ``Z`` suffix) for database rows (SPEC §5)."""
-    return clock.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return utc_timestamp_of(clock.now())
+
+
+def utc_timestamp_of(moment: datetime) -> str:
+    """``moment`` (timezone-aware) as the database's ISO-8601 UTC timestamp."""
+    if moment.tzinfo is None:
+        raise ValueError("a database timestamp needs a timezone-aware moment")
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

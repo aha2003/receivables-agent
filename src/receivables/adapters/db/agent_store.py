@@ -31,6 +31,7 @@ from receivables.adapters.db.models import (
     Task,
 )
 from receivables.adapters.db.repo import load_agent_facts, write_audit
+from receivables.adapters.mail.sandbox import SandboxMailGateway
 from receivables.agent.cases import CaseState
 from receivables.agent.drafting import DraftWriter
 from receivables.agent.facts import AgentFacts
@@ -299,21 +300,20 @@ class DbAgentStore:
             )
         )
 
-    def add_sandbox_mail(self, mail_id: str, *, fields: Mapping[str, Any]) -> None:
-        """Sandbox only: a row in ``mail_outbox``; no network connection is ever opened."""
-        draft = self.conn.execute(select(Draft).where(Draft.draft_id == fields["draft_id"])).one()
-        self.conn.execute(
-            insert(MailOutbox).values(
-                mail_id=mail_id,
-                draft_id=draft.draft_id,
-                to_address=fields["to"],
-                subject=draft.subject,
-                body=draft.body,
-                gateway="sandbox",
-                status="delivered_sandbox",
-                created_at=_utc(fields["at"]),  # the tick's now_local, as the daily cap counts
-            )
+    def deliver_draft(self, mail_id: str, *, draft_id: str, to: str, at: datetime) -> bool:
+        """An allowed L2 send through the sandbox gateway (§18.8): a ``mail_outbox`` row, no
+        network. Delivered drafts become ``approved`` by ``agent`` (D-038); ``at`` is the
+        tick's now_local, as the daily cap counts."""
+        result = SandboxMailGateway(self.conn).send(
+            mail_id=mail_id, draft_id=draft_id, to=to, at=at
         )
+        if result.delivered:
+            self.conn.execute(
+                update(Draft)
+                .where(Draft.draft_id == draft_id, Draft.status == "draft")
+                .values(status="approved", approved_by="agent", approved_at=_utc(at))
+            )
+        return result.delivered
 
     def sends_on(self, local_date: date, timezone: str) -> int:
         stamps = self.conn.execute(

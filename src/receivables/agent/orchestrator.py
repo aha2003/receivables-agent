@@ -158,7 +158,7 @@ class AgentStore(Protocol):
     def get_draft(self, draft_id: str) -> DraftRecord | None: ...
     def add_task(self, task_id: str, *, fields: Mapping[str, Any]) -> None: ...
     def add_approval(self, approval_id: str, *, step_id: str, kind: str, payload: Any) -> None: ...
-    def add_sandbox_mail(self, mail_id: str, *, fields: Mapping[str, Any]) -> None: ...
+    def deliver_draft(self, mail_id: str, *, draft_id: str, to: str, at: datetime) -> bool: ...
     def sends_on(self, local_date: date, timezone: str) -> int: ...
     def outbound_dates(self, customer_id: str, timezone: str) -> tuple[date, ...]: ...
     def audit(self, action: str, entity_type: str, entity_id: str, after: Any) -> None: ...
@@ -670,9 +670,15 @@ def _send_email(
     )
     if decision.allowed and tick.autonomy == 2:
         mail_id = f"{step_id}-M"
-        tick.store.add_sandbox_mail(
-            mail_id, fields={"draft_id": draft.draft_id, "to": recipient, "at": tick.now_local}
+        delivered = tick.store.deliver_draft(
+            mail_id, draft_id=draft.draft_id, to=recipient, at=tick.now_local
         )
+        if not delivered:  # the gateway refused the recipient (§18.8): nothing left the machine
+            return _record(
+                tick, invoice, step, step_id, "failed",
+                {"error": "RECIPIENT_REJECTED", "mail_id": mail_id, "draft_id": draft.draft_id},
+                allowed=True, reasons=(),
+            )  # fmt: skip
         tick.apply(invoice, MessageSent())
         return _record(
             tick, invoice, step, step_id, "executed",
