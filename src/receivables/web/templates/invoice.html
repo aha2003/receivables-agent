@@ -47,9 +47,16 @@
   {% else %}<p>No case yet: the agent has not worked on this invoice.</p>{% endif %}
   {% include "_run_form.html" %}
 </section>
-<section>
+<section id="drafts">
   <h2>Drafts</h2>
   {% if autonomy_level < 2 %}<p class="notice">Review before sending. Nothing is sent automatically.</p>{% endif %}
+  {% if row.open_amount > 0 and row.days_overdue and row.days_overdue > 0 %}
+  <form method="post" action="/drafts/new" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="invoice_number" value="{{ row.invoice_number }}">
+    <button type="submit">Create a draft</button>
+  </form>
+  {% endif %}
   {% for d in (detail.drafts if detail else []) %}
   <article class="draft">
     <h3>{{ d.subject }}</h3>
@@ -63,7 +70,38 @@
       {% if decision.policy_reasons %}<ul class="reasons">{% for code in decision.policy_reasons %}<li><code>{{ code }}</code>: {{ code|policy_text }}</li>{% endfor %}</ul>{% endif %}
       {% else %}<p class="note">No send has been attempted for this draft.</p>{% endif %}
     {% endif %}
-    <p><button type="button" disabled title="Arrives with S3.09">Approve</button> <button type="button" disabled title="Arrives with S3.09">Reject</button> <button type="button" disabled title="Arrives with S3.09">Copy</button> <button type="button" disabled title="Arrives with S3.09">Mark sent</button></p>
+    {% if d.approved_by %}<p class="note">Approved by {{ d.approved_by }} at {{ d.approved_at }}.{% if d.sent_at %} Marked sent at {{ d.sent_at }}.{% endif %}</p>{% endif %}
+    <details><summary>Copy</summary>
+      <label>Subject and body, to paste into your own email
+        <textarea readonly rows="8" cols="70">{{ d.subject }}
+
+{{ d.body }}</textarea></label>
+    </details>
+    {% if d.status == "draft" %}
+      {% if d.generator == "llm" and d.violations %}
+      <p class="flag">A model draft with violations cannot be approved.</p>
+      {% else %}
+      <form method="post" action="/drafts/{{ d.draft_id|urlencode }}/approve" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Approve</button>
+      </form>
+      {% endif %}
+    {% endif %}
+    {% if d.delivered_sandbox %}<p class="note">Delivered to the sandbox outbox; nothing left this machine.</p>{% endif %}
+    {% if d.status == "approved" and not d.delivered_sandbox %}
+    <form method="post" action="/drafts/{{ d.draft_id|urlencode }}/mark-sent" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Sent from your email at <input type="datetime-local" name="sent_at" value="{{ now_local }}" step="1" required></label>
+      <button type="submit">Mark sent</button>
+    </form>
+    {% endif %}
+    {% if d.status in ("draft", "approved") and not d.delivered_sandbox %}
+    <form method="post" action="/drafts/{{ d.draft_id|urlencode }}/reject" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Reason <input type="text" name="reason" maxlength="500" required></label>
+      <button type="submit">Reject</button>
+    </form>
+    {% endif %}
   </article>
   {% else %}<p>No drafts yet.</p>{% endfor %}
 </section>

@@ -107,7 +107,10 @@ def invoice_detail(
             conn.execute(
                 text(
                     "SELECT draft_id, tone, subject, body, generator, violations_json, status,"
-                    " created_at FROM drafts WHERE EXISTS"
+                    " created_at, approved_by, approved_at, sent_at,"
+                    " EXISTS (SELECT 1 FROM mail_outbox m WHERE m.draft_id = drafts.draft_id"
+                    " AND m.status = 'delivered_sandbox')"
+                    " AS delivered FROM drafts WHERE EXISTS"
                     " (SELECT 1 FROM json_each(invoice_numbers_json) WHERE value = :n)"
                     " ORDER BY created_at, draft_id"
                 ),
@@ -189,6 +192,10 @@ def invoice_detail(
                 "violations": json.loads(d["violations_json"]),
                 "status": d["status"],
                 "created_at": d["created_at"],
+                "approved_by": d["approved_by"],
+                "approved_at": d["approved_at"],
+                "sent_at": d["sent_at"],
+                "delivered_sandbox": bool(d["delivered"]),
             }
             for d in drafts
         ],

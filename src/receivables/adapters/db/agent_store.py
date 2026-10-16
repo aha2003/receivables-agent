@@ -7,7 +7,7 @@ Run starts and finishes, every step, case state changes and plan rejections are 
 
 import dataclasses
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any
@@ -31,7 +31,8 @@ from receivables.adapters.db.models import (
     Task,
 )
 from receivables.adapters.db.repo import load_agent_facts, write_audit
-from receivables.agent.cases import CaseState
+from receivables.adapters.mail.sandbox import SandboxMailGateway
+from receivables.agent.cases import CaseState, MessageSent, transition
 from receivables.agent.drafting import DraftWriter
 from receivables.agent.facts import AgentFacts
 from receivables.agent.orchestrator import (
@@ -106,6 +107,20 @@ class DbAgentStore:
         run_id: str,
         event_id: str | None = None,
     ) -> None:
+        self._store_case(
+            invoice_number, before, after, actor=ACTOR,
+            after_json={"trigger": trigger, "run_id": run_id, "event_id": event_id},
+        )  # fmt: skip
+
+    def _store_case(
+        self,
+        invoice_number: str,
+        before: CaseState | None,
+        after: CaseState,
+        *,
+        actor: str,
+        after_json: Mapping[str, Any],
+    ) -> None:
         now = self._now()
         if before is None:
             self.conn.execute(
@@ -120,18 +135,26 @@ class DbAgentStore:
         write_audit(
             self.conn,
             self.clock,
-            actor=ACTOR,
+            actor=actor,
             action="case.transition",
             entity_type="case",
             entity_id=invoice_number,
             before=None if before is None else {"state": before.value},
-            after={
-                "state": after.value,
-                "trigger": trigger,
-                "run_id": run_id,
-                "event_id": event_id,
-            },
+            after={"state": after.value, **after_json},
         )
+
+    def message_sent(self, invoice_numbers: Iterable[str], *, actor: str, draft_id: str) -> None:
+        """§18.2 for a person's send (marked sent, or an L2 override): ``ASSESSED`` cases of
+        the draft's invoices move to ``AWAITING_REPLY``; other states are unchanged."""
+        states = self.case_states()
+        for invoice in invoice_numbers:
+            before = states.get(invoice)
+            result = transition(before, MessageSent())
+            if result.applied and result.to_state is not None and result.to_state != before:
+                self._store_case(
+                    invoice, before, result.to_state, actor=actor,
+                    after_json={"trigger": "MessageSent", "draft_id": draft_id},
+                )  # fmt: skip
 
     def mark_event(self, invoice_number: str, event_id: str, trigger: str, run_id: str) -> None:
         """Record that an event was applied without changing the state (it is not re-applied)."""
@@ -299,21 +322,26 @@ class DbAgentStore:
             )
         )
 
-    def add_sandbox_mail(self, mail_id: str, *, fields: Mapping[str, Any]) -> None:
-        """Sandbox only: a row in ``mail_outbox``; no network connection is ever opened."""
-        draft = self.conn.execute(select(Draft).where(Draft.draft_id == fields["draft_id"])).one()
-        self.conn.execute(
-            insert(MailOutbox).values(
-                mail_id=mail_id,
-                draft_id=draft.draft_id,
-                to_address=fields["to"],
-                subject=draft.subject,
-                body=draft.body,
-                gateway="sandbox",
-                status="delivered_sandbox",
-                created_at=_utc(fields["at"]),  # the tick's now_local, as the daily cap counts
-            )
+    def deliver_draft(self, mail_id: str, *, draft_id: str, to: str, at: datetime) -> bool:
+        """An allowed L2 send through the sandbox gateway (§18.8): a ``mail_outbox`` row, no
+        network. Delivered drafts become ``approved`` by ``agent`` (D-038); ``at`` is the
+        tick's now_local, as the daily cap counts."""
+        result = SandboxMailGateway(self.conn).send(
+            mail_id=mail_id, draft_id=draft_id, to=to, at=at
         )
+        if result.delivered:
+            changed = self.conn.execute(
+                update(Draft)
+                .where(Draft.draft_id == draft_id, Draft.status == "draft")
+                .values(status="approved", approved_by=ACTOR, approved_at=_utc(at))
+            ).rowcount
+            if changed:
+                write_audit(
+                    self.conn, self.clock, actor=ACTOR, action="draft.approved",
+                    entity_type="draft", entity_id=draft_id, before={"status": "draft"},
+                    after={"status": "approved", "approved_by": ACTOR, "mail_id": mail_id},
+                )  # fmt: skip
+        return result.delivered
 
     def sends_on(self, local_date: date, timezone: str) -> int:
         stamps = self.conn.execute(
@@ -322,7 +350,8 @@ class DbAgentStore:
         return sum(1 for s in stamps if _local_date(s, timezone) == local_date)
 
     def outbound_dates(self, customer_id: str, timezone: str) -> tuple[date, ...]:
-        """Every earlier outbound contact, up to now: sandbox sends and outbound messages."""
+        """Every earlier outbound contact, up to now: sandbox sends, outbound messages and drafts
+        a person marked sent from their own email (S3.09)."""
         sent = self.conn.execute(
             select(MailOutbox.created_at)
             .join(Draft, Draft.draft_id == MailOutbox.draft_id)
@@ -340,7 +369,14 @@ class DbAgentStore:
                 | (Correspondence.customer_id.is_(None) & (invoice_customer == customer_id)),
             )
         ).scalars()
-        dates = {_local_date(s, timezone) for s in [*sent, *written]}
+        by_hand = self.conn.execute(
+            select(Draft.sent_at).where(
+                Draft.status == "sent_manually",
+                Draft.customer_id == customer_id,
+                Draft.sent_at.is_not(None),
+            )
+        ).scalars()
+        dates = {_local_date(s, timezone) for s in [*sent, *written, *by_hand] if s}
         return tuple(sorted(d for d in dates if d is not None))
 
 

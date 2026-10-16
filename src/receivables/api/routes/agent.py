@@ -2,7 +2,7 @@
 
 Run a tick, read its trace, list pending approvals, read or set the kill switch, and re-enter
 a password for admin actions. Every route needs a session; state-changing ones need CSRF.
-Approve/reject (S3.09) and the playbook route (S4.05) come with the features they expose.
+Approve and reject decide approval items (S3.09, D-038); the playbook route comes with S4.05.
 """
 
 import re
@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from receivables.adapters.db.agent_store import run_agent_tick
+from receivables.adapters.db.approvals import ApprovalError, decide_approval
 from receivables.adapters.db.controls import (
     REAUTH_WINDOW,
     AdminActionRefused,
@@ -143,6 +144,38 @@ async def agent_trace(request: Request, run_id: str) -> dict[str, Any]:
 @router.get("/api/agent/approvals")
 async def agent_approvals(request: Request) -> dict[str, Any]:
     return {"items": await run_in_threadpool(pending_approvals, request.app.state.engine)}
+
+
+class _Decision(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    decided_by: str | None = None
+
+
+@router.post("/api/agent/approvals/{approval_id}/{decision}")
+async def decide(request: Request, approval_id: str, decision: str) -> Any:
+    """§18.11 approve or reject; the actor is the signed-in user (D-038 option 1a)."""
+    if decision not in ("approve", "reject"):
+        raise HTTPException(404, "Unknown decision.")
+    user: SessionUser = request.state.user
+    try:
+        body = _Decision.model_validate_json((await request.body()) or b"{}")
+    except ValidationError:
+        return error_response(422, "invalid_request", "Optional field: decided_by.")
+    if body.decided_by is not None and body.decided_by != user.username:
+        return error_response(422, "invalid_request", "decided_by must be the signed-in user.")
+    state = request.app.state
+    try:
+        return await run_in_threadpool(
+            decide_approval,
+            state.engine,
+            approval_id,
+            decision,
+            config=state.config,
+            clock=state.clock,
+            actor=user.username,
+        )
+    except ApprovalError as error:
+        return error_response(error.status, error.code, error.detail)
 
 
 def _switch_state(request: Request) -> dict[str, bool]:
