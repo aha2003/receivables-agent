@@ -6,8 +6,9 @@ instruct the system rather than talk about an invoice:
 
 - ``override``: "ignore previous instructions", "system prompt", "you are now", "developer
   mode" and the like, in English or Arabic;
-- ``recipient``: a request to send, email, forward or export something *to* an email address
-  that is not one of ``allowed_addresses`` (the customer's stored contact address);
+- ``recipient``: a request to send, email, forward or export something to an email address
+  (after "to", "cc", "إلى" or a colon, or as the verb's direct object) that is not one of
+  ``allowed_addresses`` (the customer's stored contact address);
 - ``ledger``: a request to mark or set invoices or accounts as paid, settled or closed.
 
 This is a routing aid only: a signal sends the message to review (``needs_review``). It is not
@@ -45,10 +46,7 @@ _OVERRIDE = [
     re.compile(r"\b(?:jailbreak|prompt injection)\b"),
     # Arabic: "ignore (all) (your/the) instructions", "(your/the) previous instructions",
     # "you are now"; with or without the article and with a possessive suffix.
-    re.compile(
-        r"(?:تجاهل|تجاهلي|تجاهلوا|انس|انسي|اهمل|أهمل) (?:\S{1,30}+ ){0,3}?\S{0,4}?"
-        r"(?:تعليمات|أوامر|اوامر)"
-    ),
+    re.compile(r"(?:تجاهل|تجاهلي|تجاهلوا|انس|انسي|اهمل|أهمل) (?:\S{1,30}+ ){0,3}?\S{0,4}?تعليمات"),
     re.compile(r"(?:تعليمات|أوامر|اوامر)\S{0,3}+ (?:ال)?سابق"),
     re.compile(r"(?:انت|أنت) (?:الان|الآن)"),
 ]
@@ -57,13 +55,15 @@ _SEND = re.compile(
     r"\b(?:send|e-?mail|forward|mail|export|share|transfer|copy|cc|bcc)\b"
     r"|(?:أرسل|ارسل|ارسلوا|أرسلوا|ابعث|إبعث)"
 )
-_TO = re.compile(r"\b(?:to|cc|bcc)\b|إلى|الى")  # a recipient follows the verb
-_ADDRESS = re.compile(r"[\w.+-]{1,64}+@[\w-]{1,63}+(?:\.[\w-]{1,63}+){1,8}+")
+_TO = re.compile(r"\b(?:to|cc|bcc)\b|إلى|الى|:")  # a recipient follows the verb
+_DIRECT = re.compile(r"[\s,]{0,3}+")  # or the address is the verb's direct object
+# The local part takes every RFC 5322 atom character, so "x!ap@…" is not read as "ap@…".
+_ADDRESS = re.compile(r"[\w.+\-!#$%&'*/=?^`{|}~]{1,64}+@[\w-]{1,63}+(?:\.[\w-]{1,63}+){1,8}+")
 _SEND_WINDOW = 120  # characters between the verb and the address, within one message
 
 _LEDGER = re.compile(
     r"\b(?:mark|set|record|update|change|make) (?:\S{1,30}+ ){0,6}?"
-    r"(?:invoices?|accounts?|bills?|balances?)\b(?: \S{1,30}+){0,6}? (?:as|to) "
+    r"(?:invoices?|accounts?|bills?|balances?)\b(?: \S{1,30}+){0,6}? (?:(?:as|to) )?"
     r"(?:paid|settled|closed|cleared|zero)\b"
 )
 
@@ -82,7 +82,13 @@ def _normal(text: str) -> str:
 def _asks_to_send_to(normal: str, address: re.Match[str]) -> bool:
     before = normal[max(0, address.start() - _SEND_WINDOW) : address.start()]
     verbs = list(_SEND.finditer(before))
-    return bool(verbs) and _TO.search(before, verbs[-1].start()) is not None
+    if not verbs:
+        return False
+    last = verbs[-1]
+    return (
+        _TO.search(before, last.start()) is not None
+        or _DIRECT.fullmatch(before, last.end()) is not None
+    )
 
 
 def injection_signals(text: str, *, allowed_addresses: Iterable[str] = ()) -> tuple[str, ...]:
