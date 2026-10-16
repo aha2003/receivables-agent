@@ -6,18 +6,18 @@ A prototype for the Dubai Chamber of Digital Economy AI Agents Championship: an 
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 39/64 steps (61%)** ████████████░░░░░░░░
+**Overall: 40/64 steps (62%)** ████████████░░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
 | Slice 2 — Visible agent loop | 11 | 11 | ████████████████████ 100% |
 | Slice 3 — Claude integration + human approval | 13 | 13 | ████████████████████ 100% |
-| Checkpoint C1 — January 2027 submission pack | 1 | 7 | ███░░░░░░░░░░░░░░░░░ 14% |
+| Checkpoint C1 — January 2027 submission pack | 2 | 7 | ██████░░░░░░░░░░░░░░ 29% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** C1.02 README
+**Next up:** C1.03 Architecture and agent-flow diagram
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · decisions: `docs/DECISIONS.md` · demo: `docs/DEMO.md` · tests: `docs/TEST_REPORT.md`
@@ -106,7 +106,7 @@ The steps follow SPEC §19.4; `docs/DEMO.md` has the clicks and the expected scr
 6. **People in control:** approve a draft (copy it, mark it sent); upload `tests/fixtures/demo/unallocated_payment.csv` and allocate its payment to INV-008 on **Unallocated cash**; turn the kill switch on in `config.yaml` (restart) and show the banner and a run that does nothing.
 7. **Simulator and playbook** (SPEC §19.4 steps 6 and 7): Slice 4, not built yet.
 
-**An L2 delivery to the sandbox** (the second half of §19.4 step 4) needs a real-time run: L2 always uses today's date and sends only Monday to Friday, 09:00 to 17:00 Dubai, a friendly reminder to an allowlisted customer. Set `agent.autonomy_level: 2` and `allowlisted_customers: [CUST-A]` in `config.yaml` and restart. The rule planner sends only for invoices 1 to 30 days overdue, and the synthetic invoices are dated 2026, so after early December 2026 a delivery depends on the live planner choosing a friendly reminder; `tests/test_gate_d3.py` and `scripts/live_e2e.py` show it on a fixed date instead. Likewise the policy refuses a send for a disputed invoice, but the rule planner never plans one (it asks for documents instead), so a dispute denial appears only if the live planner tries to send.
+**An L2 delivery to the sandbox** (the second half of §19.4 step 4) needs a real-time run: L2 always uses today's date and sends only Monday to Friday, 09:00 to 17:00 Dubai, a friendly reminder to an allowlisted customer. Set `agent.autonomy_level: 2` and `allowlisted_customers: [CUST-A]` in `config.yaml` and restart. The rule planner sends only for invoices 1 to 30 days overdue, and the synthetic invoices are dated 2026, so with CUST-A allowlisted, after 30 November 2026 a delivery depends on the live planner choosing a friendly reminder; `tests/test_gate_d3.py` and `scripts/live_e2e.py` show it on a fixed date instead. Likewise the policy refuses a send for a disputed invoice, but the rule planner never plans one (it asks for documents instead), so a dispute denial appears only if the live planner tries to send.
 
 **Replay** serves only what was recorded: the 15 classifications of `fixtures/correspondence.csv`, and one agent run as of 2026-10-31 at L1 made after a fresh `reset` and before any correspondence is uploaded. Anything else falls back to the rules, the templates and "unclear, needs review" without calling the API. `docs/DEMO.md` ("Recorded demo") has the exact order.
 
@@ -121,7 +121,7 @@ The steps follow SPEC §19.4; `docs/DEMO.md` has the clicks and the expected scr
 - **No follow-up gate:** each tick re-plans every case ([D-028](docs/DECISIONS.md)).
 - **Allocations** count from the payment's own date, so an earlier `as_of` view shows them although they were made later ([D-040](docs/DECISIONS.md)).
 - **`reset`** must run with the app stopped ([D-014](docs/DECISIONS.md)).
-- **The demo dates:** the synthetic company is dated 2026, and L2 always uses today, so after early December 2026 a live L2 sandbox delivery depends on the live planner choosing to send; replay covers only the recorded run (see the demo script).
+- **The demo dates:** the synthetic company is dated 2026, and L2 always uses today, so with CUST-A allowlisted, after 30 November 2026 a live L2 sandbox delivery depends on the live planner choosing to send; replay covers only the recorded run (see the demo script).
 - **Not covered by tests:** the mapping layer, the outcomes API, the upload-page manual test and performance (8 spec test IDs are not planned; see `docs/TEST_REPORT.md`).
 
 ## Quality and evidence
