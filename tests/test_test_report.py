@@ -81,6 +81,7 @@ def test_plan_owners_expand_every_range_form() -> None:
     assert owners["T-ABC-01"] == TR.Owner("S1.01", True, "smoke gate only")
     assert owners["T-POL-03"].scope == ""  # a note after a range end is not one ID's scope
     assert "T-PERF-01" not in owners  # only mentioned in brackets, not owned
+    assert owners["T-DEMO-03"].scope == ""  # a bracket naming another ID is not a scope
     assert {i for i, o in owners.items() if o.step == "S2.01"} == {
         "T-ABC-02", "T-POL-01", "T-POL-02", "T-POL-03", "T-INJ-01", "T-INJ-02", "T-IMP-04",
         "T-IMP-05",
@@ -203,6 +204,11 @@ def test_check_can_write_the_runs_report_for_an_artifact(small_repo: Path) -> No
     assert TR.main(["--junit", str(xml), "--out", str(out), "--check",
                     "--write-to", str(artifact)]) == 1  # fmt: skip
     assert artifact.read_text().startswith("# Test report by test ID")
+
+
+def test_write_to_without_check_is_a_usage_error(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        TR.main(["--write-to", str(tmp_path / "x.md")])
 
 
 def test_no_junit_file_is_a_usage_error(tmp_path: Path) -> None:

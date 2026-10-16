@@ -301,3 +301,11 @@ Append one entry per completed step (newest last). Format:
 - Live run by the maintainer (2026-10-16): D1 live 6/6 (9 cases, live planner and drafter, no fallback); replay passes D1 and matches the live shape 4/4; D3 live: 4/4 hostile messages flagged, only registry tools, attacker's address nowhere, ledger as seeded, one sandbox delivery to the stored address; safe fallback: every call refused, rule planner and templates, D3 and D1 held. One check failed: "policy denied something" in pass 3 (the live planner attempted no disallowed send); corrected to require a denial across passes 3 and 4 (pass 4 had one), which that output satisfies (D-042). Observed: the classifier's answers for two hostile messages (X-02, X-03) failed schema validation (`summary_en`) and fell back safely to UNCLEAR; the deterministic flag was set regardless
 - After merge: the maintainer may re-run the script for a clean exit 0, then tags the merge commit `slice-3-complete`
 - Next step: C1.01 Test report by test ID
+
+## 2026-10-16 — [C1.01] Test report by test ID
+- PR: see branch | Branch: c1-01-test-report | Commit: see PR head
+- Tests: `uv run pytest -q` → 2335 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes on the committed report
+- Spec / test IDs covered: §20.1 (test report by test ID, no value claim). `docs/TEST_REPORT.md` lists all 106 spec test IDs: 79 passed (4 manual UI tests as their automated checks), 18 planned for later steps, 8 not planned (T-MAP-01..03, T-IMP-06, T-API-07, T-API-08, T-UI-01, T-PERF-01), T-CI-01 verified by the workflow; no implemented ID missing, failing or skipped. Tests carry `@pytest.mark.spec` (decorators only); CI checks the report and uploads its own run's report with `junit.xml`
+- Deviations or decisions (link docs/DECISIONS.md): D-043 (options 1a, 2a, 3a; review fixes)
+- Unverified: the artifact upload runs on GitHub only (checked in CI on this PR)
+- Next step: C1.02 README

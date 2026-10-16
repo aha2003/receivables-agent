@@ -103,8 +103,10 @@ def plan_owners(text: str) -> dict[str, Owner]:
         if head:
             step = Owner(head.group(2), head.group(1) == "x")
         elif step and line.strip().startswith("- Tests:"):
+            # A note naming another ID is a mention, not a scope.
             scopes = {m.group(1): m.group(2).strip()
-                      for m in re.finditer(rf"(?<!to )({_ID})\s*\(([^)]*)\)", line)}  # fmt: skip
+                      for m in re.finditer(rf"(?<!to )({_ID})\s*\(([^)]*)\)", line)
+                      if not re.search(_ID, m.group(2))}  # fmt: skip
             for test_id in _expand(re.sub(r"\([^)]*\)", "", line)):
                 owners.setdefault(test_id, Owner(step.step, step.done, scopes.get(test_id, "")))
     return owners
@@ -215,6 +217,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="fail if stale, missing or failing")
     parser.add_argument("--write-to", type=Path, help="with --check: also write the report here")
     args = parser.parse_args(argv)
+    if args.write_to and not args.check:
+        parser.error("--write-to is for --check runs; without --check the report goes to --out")
     if not args.junit.exists():
         print(
             f"no JUnit file at {args.junit}: run uv run pytest --junitxml=junit.xml",
