@@ -661,6 +661,7 @@ def test_a_multi_line_body_is_one_row() -> None:
             "customer_id",
         ),
         ("M" * 65 + ",,,inbound,2026-10-12T05:15:00Z,,,", "E_BAD_ENUM", "message_id"),
+        ("..,,,inbound,2026-10-12T05:15:00Z,,,", "E_BAD_ENUM", "message_id"),  # a dot segment
         ("M-1,,,inbound,2026-10-12T05:15:00Z,,," + "b" * 20_001, "E_BAD_ENUM", "body"),
         ("M-1,,,inbound,2026-10-12T05:15:00Z,," + "s" * 501 + ",", "E_BAD_ENUM", "subject"),
     ],

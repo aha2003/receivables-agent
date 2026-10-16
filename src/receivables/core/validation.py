@@ -71,7 +71,9 @@ _AMOUNT = re.compile(r"-?[0-9]+(?:\.[0-9]{1,2})?")  # at most 2 written decimals
 _INTEGER = re.compile(r"[0-9]{1,3}")
 _TRN = re.compile(r"[0-9]{15}")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
-_MESSAGE_ID = re.compile(r"[A-Za-z0-9._-]+")
+# Ids that appear in URLs (messages, payments): no "/", spaces or other characters a path would
+# change, and not "." or "..", which a browser resolves as path segments (D-040).
+_URL_ID = re.compile(r"(?!\.+$)[A-Za-z0-9._-]+")
 
 # Columns per kind: (required in the header, optional in the header).
 _COLUMNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -149,6 +151,9 @@ class References:
     existing_payments: Mapping[str, tuple[str | None, int]] = field(default_factory=dict)
     # Messages that already have a classification, as stored: their text may not change.
     classified_messages: Mapping[str, "MessageRecord"] = field(default_factory=dict)
+    # Payments a person allocated in the app: payment id -> (invoice, customer) as stored. A
+    # file row that names another invoice, or none, keeps them (D-040 option 1a).
+    kept_allocations: Mapping[str, tuple[str | None, str | None]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +337,8 @@ def _payment(line: int, row: Mapping[str, str], ctx: _Context) -> PaymentRecord:
     if invoice_number is None:
         _require(row, "invoice_number" if payment_type == "write_off" else "customer_id")
     ctx.unique(row["payment_id"], "payment_id")
+    if len(row["payment_id"]) > MAX_ID_CHARS or not _URL_ID.fullmatch(row["payment_id"]):
+        raise _RowError("E_BAD_ENUM", "payment_id")  # ids appear in URLs (allocation, S3.11)
     payment_date = _parse_date(row["payment_date"], "payment_date")
     amount = _parse_amount(row["amount"])
     if invoice_number is not None and invoice_number not in ctx.refs.invoice_customers:
@@ -347,6 +354,11 @@ def _payment(line: int, row: Mapping[str, str], ctx: _Context) -> PaymentRecord:
     ):
         raise _RowError("E_CUSTOMER_MISMATCH", "customer_id")
 
+    kept = ctx.refs.kept_allocations.get(row["payment_id"])
+    if kept is not None and invoice_number != kept[0]:
+        # A person's allocation stands; the checks below see the row as it will be written.
+        invoice_number, customer_id = kept
+        ctx.warnings.append(Issue(line, "W_ALLOCATION_KEPT", "invoice_number", row["payment_id"]))
     ctx.future(line, "payment_date", payment_date)
     if invoice_number is None:  # unallocated; a write-off was already rejected above
         ctx.unallocated_count += 1
@@ -408,7 +420,7 @@ def _parse_timestamp(value: str, name: str) -> datetime:
 def _message(line: int, row: Mapping[str, str], ctx: _Context) -> MessageRecord:
     _require(row, "message_id", "direction", "sent_at")
     ctx.unique(row["message_id"], "message_id")
-    if len(row["message_id"]) > MAX_ID_CHARS or not _MESSAGE_ID.fullmatch(row["message_id"]):
+    if len(row["message_id"]) > MAX_ID_CHARS or not _URL_ID.fullmatch(row["message_id"]):
         raise _RowError("E_BAD_ENUM", "message_id")  # ids appear in URLs: no "/" or spaces
     sent_at = _parse_timestamp(row["sent_at"], "sent_at")
     if row["direction"] not in DIRECTIONS:

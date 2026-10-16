@@ -252,7 +252,7 @@ def test_a_model_draft_with_violations_is_never_approved(user: TestClient, engin
     assert post(user, f"/api/agent/approvals/{item['approval_id']}/approve").status_code == 409
 
 
-def test_an_allocation_waits_for_s3_11_but_can_be_rejected(
+def test_an_allocation_for_an_unknown_payment_is_409_and_can_be_rejected(
     user: TestClient, engine: Engine
 ) -> None:
     item = run_and_items(user, engine)["INV-003"]

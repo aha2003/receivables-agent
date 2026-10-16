@@ -32,7 +32,7 @@ from receivables.adapters.db.models import (
 )
 from receivables.adapters.db.repo import load_agent_facts, write_audit
 from receivables.adapters.mail.sandbox import SandboxMailGateway
-from receivables.agent.cases import CaseState, MessageSent, transition
+from receivables.agent.cases import CaseState, CaseTrigger, MessageSent, transition
 from receivables.agent.drafting import DraftWriter
 from receivables.agent.facts import AgentFacts
 from receivables.agent.orchestrator import (
@@ -146,15 +146,23 @@ class DbAgentStore:
     def message_sent(self, invoice_numbers: Iterable[str], *, actor: str, draft_id: str) -> None:
         """§18.2 for a person's send (marked sent, or an L2 override): ``ASSESSED`` cases of
         the draft's invoices move to ``AWAITING_REPLY``; other states are unchanged."""
-        states = self.case_states()
         for invoice in invoice_numbers:
-            before = states.get(invoice)
-            result = transition(before, MessageSent())
-            if result.applied and result.to_state is not None and result.to_state != before:
-                self._store_case(
-                    invoice, before, result.to_state, actor=actor,
-                    after_json={"trigger": "MessageSent", "draft_id": draft_id},
-                )  # fmt: skip
+            self.apply_by_person(
+                invoice, MessageSent(), actor=actor, context={"draft_id": draft_id}
+            )
+
+    def apply_by_person(
+        self, invoice: str, trigger: CaseTrigger, *, actor: str, context: Mapping[str, Any]
+    ) -> None:
+        """One §18.2 trigger caused by a person's action, outside a tick; an invoice without a
+        case, or a row that does not match, is left unchanged."""
+        before = self.case_states().get(invoice)
+        result = transition(before, trigger)
+        if result.applied and result.to_state is not None and result.to_state != before:
+            self._store_case(
+                invoice, before, result.to_state, actor=actor,
+                after_json={"trigger": type(trigger).__name__, **context},
+            )  # fmt: skip
 
     def mark_event(self, invoice_number: str, event_id: str, trigger: str, run_id: str) -> None:
         """Record that an event was applied without changing the state (it is not re-applied)."""

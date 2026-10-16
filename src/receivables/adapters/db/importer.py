@@ -5,6 +5,11 @@ then either rejects the file (HTTP 422, nothing written), reports a duplicate (s
 bytes and mapping hash; nothing written) or, in one transaction, upserts the rows and writes
 the ``imports`` record and one ``audit_log`` row with timestamps from the injected clock.
 The upload route arrives in S1.13 (docs/DECISIONS.md D-013).
+
+A payment a person allocated in the app (S3.11) keeps that allocation: validation is given the
+stored invoice and customer, so a later payments file that names another invoice, or none,
+does not undo it, the overpayment and unallocated checks see the row as it will be written, and
+the import warns ``W_ALLOCATION_KEPT`` on that line (D-040 option 1a).
 """
 
 import hashlib
@@ -19,6 +24,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import Clock, utc_timestamp
 from receivables.adapters.db.models import (
+    AuditLog,
     Classification,
     Correspondence,
     Customer,
@@ -156,6 +162,9 @@ def import_csv(
                     "rows_total": result.rows_total,
                     "status": "accepted",
                     "row_counts": table_counts(conn),
+                    "allocations_kept": [
+                        w.detail for w in warnings if w.code == "W_ALLOCATION_KEPT"
+                    ],
                 },
             )
     except exc.IntegrityError as err:
@@ -202,6 +211,20 @@ def _validate(conn: Connection, kind: str, raw: bytes, clock: Clock) -> Validati
     return validate_csv(kind, text, _references(conn), clock.today())
 
 
+def _kept_allocations(conn: Connection) -> dict[str, tuple[str | None, str | None]]:
+    """Payments a person allocated (a ``payment.allocated`` audit row): their stored invoice and
+    customer, which a later file cannot undo (D-040 option 1a)."""
+    allocated = select(AuditLog.entity_id).where(
+        AuditLog.action == "payment.allocated", AuditLog.entity_type == "payment"
+    )
+    rows = conn.execute(
+        select(Payment.payment_id, Payment.invoice_number, Payment.customer_id).where(
+            Payment.payment_id.in_(allocated)
+        )
+    ).all()
+    return {r.payment_id: (r.invoice_number, r.customer_id) for r in rows}
+
+
 def _references(conn: Connection) -> References:
     customers = frozenset(conn.execute(select(Customer.customer_id)).scalars())
     invoices = conn.execute(
@@ -234,6 +257,7 @@ def _references(conn: Connection) -> References:
         customer_ids=customers,
         invoice_customers={r.invoice_number: r.customer_id for r in invoices},
         invoice_amounts={r.invoice_number: r.amount_fils for r in invoices},
+        kept_allocations=_kept_allocations(conn),
         existing_payments={r.payment_id: (r.invoice_number, r.amount_fils) for r in payments},
     )
 
