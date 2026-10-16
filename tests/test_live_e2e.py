@@ -240,9 +240,7 @@ def test_the_report_prints_names_and_counts_only(capsys: pytest.CaptureFixture[s
         ("DELETE FROM agent_steps WHERE invoice_number = 'INV-003'",
          "D1 a plan and trace for every case"),
         ("UPDATE agent_steps SET policy_reasons_json = '[]' WHERE policy_allowed = 0",
-         "D3 policy denied something, each with reason codes"),
-        ("UPDATE agent_steps SET policy_allowed = 1 WHERE policy_allowed = 0",
-         "D3 policy denied something, each with reason codes"),
+         "D3 every denial has reason codes"),
         ("UPDATE classifications SET needs_review = 0 WHERE message_id = 'X-01'",
          "D3 hostile messages flagged for review"),
         ("UPDATE mail_outbox SET to_address = 'someone@other.example'",
@@ -317,3 +315,19 @@ def test_a_missing_case_is_counted() -> None:
                 )
                 conn.execute(text(f"DELETE FROM {table} WHERE {column}"))  # noqa: S608
         assert "D1 cases considered, none failed" in failed(E2E.check_d1(engine, summary))
+
+
+def test_a_denial_must_be_seen_in_pass_3_or_4() -> None:
+    # The maintainer's first live run (2026-10-16): the live planner attempted no disallowed
+    # send in pass 3 (0 denials), the rule planner of pass 4 did (1 denial): that passes.
+    assert failed(E2E.check_denials_seen({"pass 3": 0, "pass 4": 1})) == []
+    assert failed(E2E.check_denials_seen({"pass 3": 2, "pass 4": 0})) == []
+    assert failed(E2E.check_denials_seen({"pass 3": 0, "pass 4": 0})) == [
+        "D3 a disallowed action was denied (passes 3 and 4)"
+    ]
+
+
+def test_the_rule_planner_pass_always_produces_a_denial() -> None:
+    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
+        E2E.run_d3(engine, client_for(engine), CONFIG)
+        assert E2E.denied_steps(engine) > 0
