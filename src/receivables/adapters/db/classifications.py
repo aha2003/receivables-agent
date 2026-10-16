@@ -22,16 +22,23 @@ from sqlalchemy import Connection, Engine, insert, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import DUBAI, Clock, utc_timestamp
-from receivables.adapters.db.models import Classification, Correspondence, Event, Invoice
+from receivables.adapters.db.models import (
+    Classification,
+    Correspondence,
+    Customer,
+    Event,
+    Invoice,
+)
 from receivables.adapters.db.repo import load_invoices, load_payments, write_audit
 from receivables.adapters.llm.classification import classify_message, to_extraction
 from receivables.adapters.llm.redacting import RedactingClient
 from receivables.adapters.llm.schemas import LLMCallFailed
 from receivables.core.dates import resolve_message_date
+from receivables.core.injection import injection_signals
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
 from receivables.core.validation import DISPUTE_EVENT_LABELS, DISPUTE_LABELS
-from receivables.core.verify import verify_extraction
+from receivables.core.verify import Flag, verify_extraction
 
 __all__ = [
     "ClassificationError",
@@ -123,6 +130,9 @@ def classify_stored(
                 select(Invoice.customer_id).where(Invoice.invoice_number == message.invoice_number)
             ).scalar_one_or_none()
         ledger = build_ledger(load_invoices(conn), load_payments(conn), clock.today())
+        contact = conn.execute(
+            select(Customer.contact_email).where(Customer.customer_id == customer)
+        ).scalar_one_or_none()
 
     # The LLM call holds no database transaction.
     language = message.language if message.language in {"en", "ar"} else None
@@ -141,6 +151,15 @@ def classify_stored(
         message_customer_id=customer,
         review_threshold=review_threshold,
     )
+    # §18.9, D-039: a deterministic warning on the original subject and body, whatever the
+    # model answered. It only routes the message to review; it is not the defence.
+    suspected = tuple(
+        Flag("INSTRUCTION_INJECTION_SUSPECTED", field=signal)
+        for signal in injection_signals(
+            f"{message.subject or ''}\n{message.body}", allowed_addresses=[contact or ""]
+        )
+    )
+    flags = verification.flags + suspected
     promised = (
         resolve_message_date(result.promised_payment_date, sent_on)
         if result.promised_payment_date
@@ -169,9 +188,10 @@ def classify_stored(
         "label": result.label,
         "confidence": result.confidence,
         "extraction_json": json.dumps(extraction, ensure_ascii=False, sort_keys=True),
-        "flags_json": json.dumps([f.as_dict() for f in verification.flags], sort_keys=True),
+        "flags_json": json.dumps([f.as_dict() for f in flags], sort_keys=True),
         "needs_review": int(
             verification.needs_review
+            or bool(suspected)
             or outcome.needs_review
             # §7.4: a promise without a date needs review; a date code cannot read has none.
             or (result.label == "PAYMENT_PROMISED" and promised is None)

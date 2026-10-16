@@ -26,6 +26,12 @@ POLICY_TEXT = {
     "POLICY_RECIPIENT_NOT_ALLOWED": "The recipient is not the customer's stored email address.",
 }
 
+INJECTION_TEXT = {  # D-039: what the deterministic warning found (§18.9)
+    "override": "text that tries to give the system new instructions",
+    "recipient": "a request to send information to an address that is not the customer's",
+    "ledger": "a request to change the ledger, such as marking invoices paid",
+}
+
 STATUS_TEXT = {
     "executed": "done",
     "denied": "denied by policy",
@@ -88,6 +94,12 @@ def flag_text(flag: Any) -> str:
         return "The message names an invoice that belongs to a different customer."
     if code == "E_EVIDENCE_NOT_VERBATIM":
         return "The quoted evidence does not appear word for word in the message. Review it."
+    if code == "INSTRUCTION_INJECTION_SUSPECTED":
+        what = INJECTION_TEXT.get(str(data.get("field")), "instructions to the system")
+        return (
+            f"The message contains {what}. It is treated as data only and nothing was done; "
+            "review it before accepting."
+        )
     if code == "UNVERIFIED_EXTRACTION":
         return "A value read from the message could not be verified against its quote. Review it."
     return code
