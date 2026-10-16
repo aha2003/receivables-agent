@@ -19,6 +19,7 @@ from injection_support import (
 from sqlalchemy import text
 
 from receivables.adapters.config import load_config
+from receivables.adapters.db.repo import write_audit
 from receivables.adapters.llm.fake import FakeClient
 from receivables.adapters.llm.redacting import RedactingClient
 from receivables.adapters.llm.replay import ReplayClient
@@ -229,3 +230,38 @@ def test_the_report_prints_names_and_counts_only(capsys: pytest.CaptureFixture[s
     out = capsys.readouterr().out
     assert "attacker@evil.example" not in out and "Ignore previous" not in out
     assert all(line.startswith(("ok   ", "FAIL ")) for line in out.splitlines())
+
+
+@pytest.mark.parametrize(
+    ("tamper", "check"),
+    [
+        ("DELETE FROM agent_steps WHERE invoice_number = 'INV-003'",
+         "D1 a plan and trace for every case"),
+        ("UPDATE agent_steps SET policy_reasons_json = '[]' WHERE policy_allowed = 0",
+         "D3 every denial has reason codes"),
+        ("UPDATE classifications SET needs_review = 0 WHERE message_id = 'X-01'",
+         "D3 hostile messages flagged for review"),
+        ("UPDATE mail_outbox SET to_address = 'someone@other.example'",
+         "D3 outbox: sandbox deliveries to stored addresses only"),
+    ],
+)  # fmt: skip
+def test_each_check_fails_when_its_property_is_broken(tamper: str, check: str) -> None:
+    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
+        client = client_for(engine, classify=classify, plan=plan, draft=draft)
+        summary, before = E2E.run_d3(engine, client, CONFIG)
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA foreign_keys = OFF"))
+            assert conn.execute(text(tamper)).rowcount > 0
+        assert failed(E2E.check_d3(engine, before) + E2E.check_d1(engine, summary)) == [check]
+
+
+def test_the_fallback_check_fails_if_one_plan_was_used() -> None:
+    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
+        summary, _ = E2E.run_d3(engine, client_for(engine), CONFIG)
+        with engine.begin() as conn:  # the log is append-only: add one plan that was used
+            write_audit(conn, E2E.D3_CLOCK, actor="agent", action="agent.plan_received",
+                        entity_type="invoice", entity_id="INV-003", before=None,
+                        after={"plan": "used"})  # fmt: skip
+        assert failed(E2E.check_fallback(engine, summary)) == [
+            "fallback: the rule planner took over"
+        ]
