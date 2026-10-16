@@ -1,23 +1,23 @@
 # Receivables Collections Agent
 
-A prototype for the Dubai Chamber of Digital Economy AI Agents Championship: an agent that helps a B2B finance team collect overdue invoices. It reads a ledger, ranks what to chase, plans each case with Claude inside a closed set of tools, drafts reminders that are checked against the facts, and lets a person approve, reject or send. Every message to a customer passes a deterministic policy engine, every other action is limited by the autonomy level and the kill switch, and everything is audited.
+A prototype for the Dubai Chamber of Digital Economy AI Agents Championship: an agent that helps a B2B finance team collect overdue invoices. It reads a ledger, ranks what to chase, plans each case with Claude inside a closed set of tools, drafts reminders that are checked against the facts, and lets a person approve, reject or send. Every message the agent sends to a customer passes a deterministic policy engine, its other actions are limited by the autonomy level and the kill switch, a person sends approved drafts from their own email, and everything is audited.
 
 > **Synthetic data only.** Every company, customer, invoice, payment and message in this repository is fictional (`fixtures/`, `tests/fixtures/`). Nothing is ever emailed: messages go to a local sandbox outbox. Do not load real customer data: redaction reduces exposure but does not make real data safe. The simulator of Slice 4 will show **mechanics, not evidence**; no result here is evidence of real-world collection outcomes or business value.
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 41/64 steps (64%)** █████████████░░░░░░░
+**Overall: 42/64 steps (66%)** █████████████░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
 | Slice 2 — Visible agent loop | 11 | 11 | ████████████████████ 100% |
 | Slice 3 — Claude integration + human approval | 13 | 13 | ████████████████████ 100% |
-| Checkpoint C1 — January 2027 submission pack | 3 | 7 | █████████░░░░░░░░░░░ 43% |
+| Checkpoint C1 — January 2027 submission pack | 4 | 7 | ███████████░░░░░░░░░ 57% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** C1.04 Provenance and data-protection statement
+**Next up:** C1.05 Demo video (manual)
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · decisions: `docs/DECISIONS.md` · demo: `docs/DEMO.md` · tests: `docs/TEST_REPORT.md`

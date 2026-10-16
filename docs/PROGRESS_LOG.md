@@ -327,3 +327,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-045 (options 1a, 2a; review fixes)
 - Unverified: rendering on GitHub itself (it uses its own Mermaid version)
 - Next step: C1.04 Provenance and data-protection statement
+
+## 2026-10-17 — [C1.04] Provenance and data-protection statement
+- PR: see branch | Branch: c1-04-provenance-data-protection | Commit: see PR head
+- Tests: `uv run pytest -q` → 2381 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/test_data_protection.py` (17 tests) and a standard-library network fence over `src/` (`tests/architecture/test_llm_fence.py`)
+- Spec / test IDs covered: §20.2 (statement verified sentence by sentence and published in `docs/DATA_PROTECTION.md` with its evidence), §20.1 (PROVENANCE.md: 82 rows equal `uv.lock`, licences match the package metadata)
+- Deviations or decisions (link docs/DECISIONS.md): D-046 (options 1a, 2a, 3a; sentence 3 reworded in SPEC §20.2 to "every message the agent sends to a customer", the maintainer's choice after review; README overclaims corrected; broader spec wording in §1, §3 and §18.6 step 5 left for the maintainer)
+- Unverified: the demo video's content (C1.05) against sentence 6
+- Next step: C1.05 Demo video (manual)
