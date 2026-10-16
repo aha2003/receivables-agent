@@ -267,3 +267,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-038 (options 1a, 2a, 3a; the drafts API; approval decisions use the run's level; the L2 override checks the policy again now; refused overrides audited; review fixes)
 - Unverified: live LLM drafts through `POST /api/drafts` until a live or recorded run; allocation approval arrives with S3.11
 - Next step: S3.10 Prompt-injection suite
+
+## 2026-10-16 — [S3.10] Prompt-injection suite
+- PR: see branch | Branch: s3-10-prompt-injection-suite | Commit: see PR head
+- Tests: `uv run pytest -q` → 2225 passed, 2 skipped (the network-guard probe, and the "awaits plans and drafts" test, superseded by the live recording); ruff check and format clean; pyright 0 errors; every mutation of the detector, its wiring, the audit row, the plain-language text and the plan/argument guards killed (38 in total); a timed test keeps the detector linear on crafted 20,000-character messages
+- Spec / test IDs covered: §18.9, §12 gate D3 / T-INJ-01 (with a classifier, planner and drafter that obey the attacker: flagged for review whatever the model answers, plans with `to` or unknown tools rejected and the rule planner used, drafts with the address fall back to the template, the attacker in no tool call, draft or outbox row, ledger tables unchanged; English and Arabic; the live client keeps the message out of the system prompt), T-INJ-02 (no such tool, accepting "already paid" records no payment, ledger unchanged), T-INJ-03 (`https://evil.example` is `UNKNOWN_CONTACT_OR_URL`); gate D3 at L2 in `tests/test_gate_d3.py` (reason codes and audited denials, no permission, recipient or ledger change, sandbox only to the stored address); no hostile text, other customer or key in any plan or draft request
+- Deviations or decisions (link docs/DECISIONS.md): D-039 (options 1a, 2a, 3a; `INSTRUCTION_INJECTION_SUSPECTED` as a routing aid, not a defence; review fixes, including the regex stall)
+- Unverified: the DEMO.md injection walkthrough is covered by automated page tests, not run by hand; live model behaviour on hostile messages (not recorded, by design: option 2a)
+- Next step: S3.11 Payment allocation and unallocated-cash screen
