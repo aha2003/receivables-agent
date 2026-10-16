@@ -196,7 +196,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §18.4, §18.8, §9
   - Tests: T-API-06, T-MAIL-01, T-MAIL-02, T-UI-03, T-AUD-01
   - Done when: Nothing can leave the machine; denied sends show reason codes.
-- [ ] **S3.10** Prompt-injection suite
+- [x] **S3.10** Prompt-injection suite
   - Goal: Hostile inbound messages cannot add tools, recipients or ledger changes.
   - Spec: §18.9
   - Tests: T-INJ-01, T-INJ-02, T-INJ-03
