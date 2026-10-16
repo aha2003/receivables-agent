@@ -108,6 +108,7 @@ def rows(engine: Engine, sql: str, **params: Any) -> list[dict[str, Any]]:
 # --- T-API-05 ----------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-05")
 def test_api_05_classify_m01_and_accept(
     user: TestClient, app_with_messages: FastAPI, engine: Engine
 ) -> None:

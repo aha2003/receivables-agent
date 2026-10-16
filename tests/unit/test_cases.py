@@ -28,6 +28,7 @@ ALL_STATES: list[CaseState | None] = [None, *CaseState]
 NOT_RESOLVED = [s for s in CaseState if s is not S.RESOLVED]
 
 
+@pytest.mark.spec("T-CASE-01")
 def test_t_case_01_walks_the_full_path() -> None:
     walk: list[CaseTrigger] = [
         BecameOverdue(),

@@ -19,6 +19,7 @@ T_RED_01_IN = (
 T_RED_01_OUT = "Contact [EMAIL] or [PHONE] / [PHONE]. TRN [TRN] applies. IBAN [IBAN]."
 
 
+@pytest.mark.spec("T-RED-01")
 def test_red_01_output_matches_the_spec_exactly() -> None:
     assert redact(T_RED_01_IN) == T_RED_01_OUT
 

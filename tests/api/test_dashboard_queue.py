@@ -43,6 +43,7 @@ def seeded(client: TestClient) -> TestClient:
     return client
 
 
+@pytest.mark.spec("T-API-01")
 class TestApi01:
     def test_dashboard_golden_totals(
         self, seeded: TestClient, golden_results: dict[str, Any]
@@ -82,6 +83,7 @@ class TestApi01:
         assert body["labels"]["heuristic"] == "Heuristic score. Not a probability."
 
 
+@pytest.mark.spec("T-API-02")
 class TestApi02:
     def test_queue_matches_the_golden_table(
         self, seeded: TestClient, golden_results: dict[str, Any]
@@ -125,6 +127,7 @@ class TestApi02:
             assert response.status_code == 422, bad
 
 
+@pytest.mark.spec("T-API-03")
 class TestApi03:
     def test_time_travel(self, seeded: TestClient) -> None:
         body = seeded.get("/api/dashboard", params={"as_of": "2026-09-30"}).json()
@@ -227,6 +230,7 @@ def test_invalid_config_stops_the_app(
 # --- imports over HTTP (T-IMP-04, T-IMP-05) ----------------------------------------------------
 
 
+@pytest.mark.spec("T-IMP-04")
 class TestImp04OverHttp:
     def test_bad_upload_is_422_and_changes_nothing(
         self, client: TestClient, engine: Engine
@@ -249,6 +253,7 @@ class TestImp04OverHttp:
         assert _counts(engine) == before
 
 
+@pytest.mark.spec("T-IMP-05")
 class TestImp05OverHttp:
     def test_repeat_upload_is_duplicate(self, client: TestClient, engine: Engine) -> None:
         assert login(client) == 303

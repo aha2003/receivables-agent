@@ -80,12 +80,14 @@ def assert_nothing_executed(engine: Engine) -> None:
 # --- T-POL-09 end to end ------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-POL-09")
 def test_t_pol_09_kill_switch_in_config_stops_everything(db: Engine) -> None:
     summary = tick(db, config(kill_switch=True))
     assert_nothing_executed(db)
     assert (summary.steps_executed, summary.steps_denied) == (0, count(db, "agent_steps"))
 
 
+@pytest.mark.spec("T-POL-09")
 def test_t_pol_09_kill_switch_set_by_an_admin_stops_everything(db: Engine) -> None:
     set_kill_switch(db, CLOCK, ADMIN, on=True, reauthenticated_at=NOW - timedelta(minutes=1))
     tick(db)
@@ -159,6 +161,7 @@ def _complete(row: dict[str, Any]) -> bool:
     )
 
 
+@pytest.mark.spec("T-AUD-01")
 def test_t_aud_01_kill_switch_changes_have_actor_entity_before_and_after(db: Engine) -> None:
     reauth = NOW - timedelta(minutes=2)
     set_kill_switch(db, CLOCK, ADMIN, on=True, reauthenticated_at=reauth)
@@ -174,6 +177,7 @@ def test_t_aud_01_kill_switch_changes_have_actor_entity_before_and_after(db: Eng
     }
 
 
+@pytest.mark.spec("T-AUD-01")
 def test_t_aud_01_every_step_executed_or_denied_is_audited(db: Engine) -> None:
     tick(db, config(allowlisted_customers=("CUST-A",)))
     steps = rows(db, "SELECT * FROM agent_steps")

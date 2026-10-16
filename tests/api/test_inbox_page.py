@@ -70,6 +70,7 @@ def test_the_inbox_lists_unclassified_messages(user: TestClient) -> None:
     assert 'href="/inbox"' in page  # in the navigation
 
 
+@pytest.mark.spec("T-UI-04")
 def test_ui_04_flags_in_plain_language(user: TestClient, app: FastAPI, engine: Engine) -> None:
     use_llm(
         app,
@@ -179,6 +180,7 @@ def test_the_amount_difference_is_formatted(user: TestClient, app: FastAPI, engi
     assert "AED 3,000.00 (invoice minus PO" in card(user.get("/inbox").text, "M-01")  # §10 format
 
 
+@pytest.mark.spec("T-INJ-01")
 def test_inj_01_the_attempt_is_shown_for_review_even_without_a_model(
     user: TestClient, engine: Engine
 ) -> None:

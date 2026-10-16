@@ -118,6 +118,7 @@ def test_valid_llm_plans_are_used_and_recorded(db: Engine) -> None:
 # --- T-AGT-01 via the LLM planner -----------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AGT-01")
 def test_t_agt_01_an_llm_plan_with_wire_transfer_is_rejected(db: Engine) -> None:
     def wire(request: Mapping[str, Any]) -> dict[str, Any]:
         invoice = request["observation"]["case"]["invoice_number"]
@@ -138,6 +139,7 @@ def test_t_agt_01_an_llm_plan_with_wire_transfer_is_rejected(db: Engine) -> None
 # --- T-AGT-06 via the LLM planner -----------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AGT-06")
 def test_t_agt_06_timeout_then_invalid_json_falls_back_and_the_queue_completes(
     db: Engine,
 ) -> None:
@@ -189,6 +191,7 @@ def test_an_invalid_answer_then_a_valid_one_is_used(db: Engine) -> None:
 # --- T-AGT-07 via the LLM planner -----------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AGT-07")
 def test_t_agt_07_top_20_and_a_six_step_llm_plan_is_rejected(db: Engine) -> None:
     with db.begin() as c:
         for i in range(21):  # 9 golden + 21 = 30 overdue invoices
@@ -276,6 +279,7 @@ def test_an_unexpected_planner_error_is_recorded_by_type(db: Engine) -> None:
     assert {(r["plan"], r["outcome"]) for r in received} == {("failed", "ZeroDivisionError")}
 
 
+@pytest.mark.spec("T-AGT-07")
 def test_t_agt_07_the_twenty_are_the_top_twenty_by_priority(db: Engine) -> None:
     from receivables.adapters.db.repo import load_agent_facts
 

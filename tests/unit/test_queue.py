@@ -27,6 +27,7 @@ def queue_for(inputs: Inputs, events: list[EventRecord], config: EngineConfig) -
     return build_queue(score_overdue_invoices(rows, events, history, AS_OF, config), config)
 
 
+@pytest.mark.spec("T-QUE-01")
 class TestQue01:
     def test_default_config(
         self,
@@ -69,6 +70,7 @@ class TestQue01:
             assert item.action == default[number].action, number
 
 
+@pytest.mark.spec("T-ACT-01")
 class TestAct01:
     def test_golden_actions(
         self,

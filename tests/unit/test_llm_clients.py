@@ -58,6 +58,7 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 # --- T-LLM-04 ----------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-LLM-04")
 class TestLlm04:
     def test_the_same_cassette_gives_byte_identical_results(self, no_network: list[str]) -> None:
         first, second = ReplayClient(CASSETTES), ReplayClient(SYNTHETIC)

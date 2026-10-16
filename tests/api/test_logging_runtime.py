@@ -42,6 +42,7 @@ LLM_FIELDS = {
 }  # fmt: skip
 
 
+@pytest.mark.spec("T-SEC-04")
 class TestSec04:
     def test_processing_m01_logs_no_body_and_no_personal_data(
         self, client: TestClient, engine: Engine, clock: SimulatedClock
@@ -139,6 +140,7 @@ def test_the_server_entry_point_turns_on_scrubbed_json_logs(tmp_path: Path) -> N
     assert "Beta" not in done.stdout + done.stderr
 
 
+@pytest.mark.spec("T-SEC-04")
 def test_sec_04_the_full_classify_path_logs_no_body_or_personal_data(
     client: TestClient, engine: Engine, clock: SimulatedClock
 ) -> None:

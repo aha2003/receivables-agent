@@ -92,6 +92,7 @@ def test_before_any_run_the_case_page_says_so(user: TestClient) -> None:
 # --- T-UI-04: flags in plain language ------------------------------------------------------------
 
 
+@pytest.mark.spec("T-UI-04")
 def test_t_ui_04_flags_are_visible_in_plain_language(user: TestClient, seeded: Engine) -> None:
     with seeded.begin() as c:
         c.execute(

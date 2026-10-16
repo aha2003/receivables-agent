@@ -4,6 +4,8 @@ from dataclasses import replace
 from datetime import date, timedelta
 from fractions import Fraction
 
+import pytest
+
 from receivables.core.config import EngineConfig
 from receivables.core.history import CustomerHistory, customer_history
 from receivables.core.ledger import InvoiceRecord, PaymentRecord, build_ledger
@@ -12,6 +14,7 @@ Inputs = tuple[list[InvoiceRecord], list[PaymentRecord]]
 AS_OF = date(2026, 10, 31)
 
 
+@pytest.mark.spec("T-HIS-01")
 class TestHis01:
     def test_golden_history(self, golden_ledger_inputs: Inputs) -> None:
         result = customer_history(

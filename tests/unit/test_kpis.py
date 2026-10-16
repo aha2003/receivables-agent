@@ -24,6 +24,7 @@ Inputs = tuple[list[InvoiceRecord], list[PaymentRecord]]
 AS_OF = date(2026, 10, 31)
 
 
+@pytest.mark.spec("T-KPI-01")
 class TestKpi01:
     def test_estimated_dso(
         self, golden_ledger_inputs: Inputs, golden_results: dict[str, Any]

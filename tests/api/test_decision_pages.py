@@ -47,6 +47,7 @@ def drafts_section(page: str) -> str:
 # --- T-UI-03 ------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-UI-03")
 def test_ui_03_l1_draft_panel_has_the_notice_and_no_send_button(user: TestClient) -> None:
     form(user, "/drafts/new", invoice_number="INV-003")
     panel = drafts_section(user.get("/invoices/INV-003").text)
@@ -144,6 +145,7 @@ def test_the_forms_need_csrf(user: TestClient) -> None:
 # --- T-AUD-01 -----------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AUD-01")
 def test_aud_01_import_accept_and_approval_each_leave_an_audit_row(
     user: TestClient, app: Any, engine: Engine
 ) -> None:

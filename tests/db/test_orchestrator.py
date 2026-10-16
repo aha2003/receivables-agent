@@ -174,6 +174,7 @@ def wire_transfer(invoice: str) -> dict[str, Any]:
     }
 
 
+@pytest.mark.spec("T-AGT-01")
 def test_t_agt_01_unknown_tool_rejected_and_rule_planner_used(db: Engine) -> None:
     summary = tick(db, planner=ScriptedPlanner(default=wire_transfer))
     assert (summary.planner, summary.fallback, summary.model) == (
@@ -219,6 +220,7 @@ def send_inv_004(_: str) -> dict[str, Any]:
     }
 
 
+@pytest.mark.spec("T-AGT-02")
 def test_t_agt_02_denied_send_becomes_an_approval(db: Engine) -> None:
     planner = ScriptedPlanner({"INV-004": send_inv_004}, default=PlannerError("timeout"))
     summary = tick(db, level=2, planner=planner, cfg=config(allowlisted_customers=("CUST-B",)))
@@ -274,6 +276,7 @@ def test_a_second_tick_the_same_day_sees_the_sandbox_send(db: Engine) -> None:
 # --- T-AGT-04 ----------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-AGT-04")
 def test_t_agt_04_the_run_is_fully_traced_and_logs_hold_no_pii(
     db: Engine, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -320,6 +323,7 @@ def _normalised(engine: Engine) -> list[dict[str, Any]]:
     return out
 
 
+@pytest.mark.spec("T-AGT-05")
 def test_t_agt_05_same_inputs_same_steps(tmp_path: Path) -> None:
     traces = []
     for name in ("a.db", "b.db"):
@@ -358,6 +362,7 @@ def six_steps(invoice: str) -> dict[str, Any]:
     return {"invoice_number": invoice, "steps": [step] * 6}
 
 
+@pytest.mark.spec("T-AGT-07")
 def test_t_agt_07_top_20_cases_and_six_step_plans_rejected(db: Engine) -> None:
     _add_overdue_invoices(db, 21)  # 9 golden + 21 = 30 overdue invoices
     with db.connect() as c:

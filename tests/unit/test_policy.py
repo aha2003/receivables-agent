@@ -91,11 +91,13 @@ def test_defaults_are_the_spec_values() -> None:
 # --- T-POL-01 to T-POL-11 -------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-POL-01")
 def test_t_pol_01_allowed(facts: AgentFacts) -> None:
     assert facts.rows["INV-003"].days_overdue == 30
     assert decide(facts, "INV-003", allow=("CUST-A",)) == PolicyDecision(True, ())
 
 
+@pytest.mark.spec("T-POL-02")
 def test_t_pol_02_three_reasons_sorted(facts: AgentFacts) -> None:
     decision = decide(facts, "INV-004", allow=("CUST-B",))
     assert decision == PolicyDecision(
@@ -103,15 +105,18 @@ def test_t_pol_02_three_reasons_sorted(facts: AgentFacts) -> None:
     )
 
 
+@pytest.mark.spec("T-POL-03")
 def test_t_pol_03_tone_two(facts: AgentFacts) -> None:
     assert draft_for(facts, "INV-013").tone == 2
     assert decide(facts, "INV-013", allow=("CUST-A",)).reasons == ("POLICY_TONE_NOT_ALLOWED",)
 
 
+@pytest.mark.spec("T-POL-04")
 def test_t_pol_04_empty_allowlist(facts: AgentFacts) -> None:
     assert decide(facts, "INV-012", allow=()).reasons == ("POLICY_NOT_ALLOWLISTED",)
 
 
+@pytest.mark.spec("T-POL-05")
 def test_t_pol_05_unallocated_cash(make_agent_facts: MakeFacts) -> None:
     p5 = PaymentRecord(
         payment_id="P-005",
@@ -124,6 +129,7 @@ def test_t_pol_05_unallocated_cash(make_agent_facts: MakeFacts) -> None:
     assert decide(facts, "INV-012", allow=("CUST-C",)).reasons == ("POLICY_UNALLOCATED_CASH",)
 
 
+@pytest.mark.spec("T-POL-06")
 @pytest.mark.parametrize(
     ("now", "allowed"),
     [
@@ -140,6 +146,7 @@ def test_t_pol_06_business_hours(facts: AgentFacts, now: datetime, allowed: bool
     )
 
 
+@pytest.mark.spec("T-POL-07")
 @pytest.mark.parametrize(
     ("last_outbound", "reasons"),
     [(date(2026, 10, 27), ("POLICY_RECENT_CONTACT",)), (date(2026, 10, 26), ())],
@@ -151,16 +158,19 @@ def test_t_pol_07_recent_contact(
     assert decision.reasons == reasons
 
 
+@pytest.mark.spec("T-POL-08")
 def test_t_pol_08_daily_cap(facts: AgentFacts) -> None:
     decision = decide(facts, "INV-003", allow=("CUST-A",), sends_today=2, daily_send_cap=2)
     assert decision.reasons == ("POLICY_DAILY_CAP",)
 
 
+@pytest.mark.spec("T-POL-09")
 def test_t_pol_09_kill_switch(facts: AgentFacts) -> None:
     decision = decide(facts, "INV-003", allow=("CUST-A",), kill_switch=True)
     assert decision.reasons == ("POLICY_KILL_SWITCH",)
 
 
+@pytest.mark.spec("T-POL-10")
 def test_t_pol_10_validation_failed(facts: AgentFacts) -> None:
     # The draft validator is S2.05; here the draft carries its amount violation (D-021).
     decision = decide(
@@ -169,6 +179,7 @@ def test_t_pol_10_validation_failed(facts: AgentFacts) -> None:
     assert decision.reasons == ("POLICY_VALIDATION_FAILED",)
 
 
+@pytest.mark.spec("T-POL-10")
 def test_t_pol_10_through_the_draft_validator(facts: AgentFacts) -> None:
     rows = [facts.rows["INV-003"]]
     fact_block = build_fact_block(
@@ -188,6 +199,7 @@ def test_t_pol_10_through_the_draft_validator(facts: AgentFacts) -> None:
     assert decision.reasons == ("POLICY_VALIDATION_FAILED",)
 
 
+@pytest.mark.spec("T-POL-11")
 def test_t_pol_11_recipient(facts: AgentFacts) -> None:
     decision = decide(
         facts,

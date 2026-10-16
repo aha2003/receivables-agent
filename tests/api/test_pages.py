@@ -36,6 +36,7 @@ def _queue_order(html: str) -> list[str]:
     return re.findall(r'<a href="/invoices/(INV-\d{3})\?as_of=', html)
 
 
+@pytest.mark.spec("T-UI-05")
 def test_dashboard_shows_the_golden_figures(seeded: TestClient) -> None:
     page = seeded.get("/", params={"as_of": "2026-10-31"}).text
     for text in (
@@ -67,6 +68,7 @@ def test_dashboard_as_of_and_empty_states(client: TestClient) -> None:
     assert "No payments yet" in page
 
 
+@pytest.mark.spec("T-UI-02", "T-UI-05")
 def test_queue_page_order_matches_the_api(seeded: TestClient) -> None:
     page = seeded.get("/queue", params={"as_of": "2026-10-31"}).text
     assert _queue_order(page) == GOLDEN_ORDER
@@ -102,6 +104,7 @@ def test_queue_flags_are_shown_in_plain_language(seeded: TestClient) -> None:
     assert page.count("This customer has AED 12,000.00 of unallocated cash.") == 3
 
 
+@pytest.mark.spec("T-UI-02")
 def test_queue_rows_click_through_to_the_invoice(seeded: TestClient) -> None:
     page = seeded.get("/queue", params={"as_of": "2026-10-31"}).text
     href = re.search(r'href="(/invoices/INV-004\?as_of=2026-10-31)"', page)

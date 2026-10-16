@@ -53,6 +53,7 @@ def text_of(html: str) -> str:
 # --- T-RPT-01 -----------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-RPT-01", "T-UI-05")
 def test_rpt_01_the_report_holds_the_golden_figures_and_labels(user: TestClient) -> None:
     response = report(user)
     assert response.status_code == 200

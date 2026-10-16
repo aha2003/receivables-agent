@@ -67,6 +67,7 @@ def _facts() -> dict[str, Any]:
     }  # fmt: skip
 
 
+@pytest.mark.spec("T-SEC-01")
 class TestSec01:
     def test_classify_m01_sends_none_of_the_injected_values(
         self, load_fixture_csv: Callable[[str], list[dict[str, str]]]

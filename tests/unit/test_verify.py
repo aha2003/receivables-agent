@@ -74,6 +74,7 @@ def codes(result: Any) -> list[str]:
 # --- T-VER-01 to T-VER-05 ------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-VER-01")
 def test_ver_01_po_amount_difference(ledger: list[LedgerRow]) -> None:
     ex = extraction(
         label="PO_AMOUNT_MISMATCH",
@@ -92,6 +93,7 @@ def test_ver_01_po_amount_difference(ledger: list[LedgerRow]) -> None:
     assert result.matched == ("INV-004",)
 
 
+@pytest.mark.spec("T-VER-02")
 def test_ver_02_unknown_invoice(ledger: list[LedgerRow]) -> None:
     message = "Invoice INV-9999 has no PO number on it."
     ex = extraction(
@@ -102,6 +104,7 @@ def test_ver_02_unknown_invoice(ledger: list[LedgerRow]) -> None:
     assert result.needs_review is True
 
 
+@pytest.mark.spec("T-VER-03")
 def test_ver_03_already_paid_against_the_ledger(ledger: list[LedgerRow]) -> None:
     open_one = verify(
         extraction(
@@ -123,6 +126,7 @@ def test_ver_03_already_paid_against_the_ledger(ledger: list[LedgerRow]) -> None
     assert settled.flags == ()
 
 
+@pytest.mark.spec("T-VER-04")
 def test_ver_04_evidence_not_verbatim(ledger: list[LedgerRow]) -> None:
     ex = extraction(
         label="PO_AMOUNT_MISMATCH",
@@ -134,6 +138,7 @@ def test_ver_04_evidence_not_verbatim(ledger: list[LedgerRow]) -> None:
     assert result.needs_review is True  # so it is never auto-accepted
 
 
+@pytest.mark.spec("T-VER-05")
 @pytest.mark.parametrize(
     "fields",
     [
@@ -153,6 +158,7 @@ def test_ver_05_value_without_a_supporting_quote(
     assert result.needs_review is True
 
 
+@pytest.mark.spec("T-VER-05")
 def test_ver_05_invoice_of_another_customer(ledger: list[LedgerRow]) -> None:
     # INV-001 belongs to CUST-A; the message came from CUST-B.
     message = "About INV-001: we dispute the quantity."
@@ -169,6 +175,7 @@ def test_ver_05_invoice_of_another_customer(ledger: list[LedgerRow]) -> None:
 # --- T-LLM-03: an invented invoice --------------------------------------------------------------
 
 
+@pytest.mark.spec("T-LLM-03")
 def test_llm_03_invented_invoice_is_flagged(ledger: list[LedgerRow]) -> None:
     invented = {
         "label": "PO_AMOUNT_MISMATCH",

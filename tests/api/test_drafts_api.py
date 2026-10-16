@@ -52,6 +52,7 @@ def new_draft(client: TestClient, *invoices: str, **extra: Any) -> dict[str, Any
 # --- T-API-06 -------------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-API-06")
 def test_api_06_create_and_approve(user: TestClient, engine: Engine) -> None:
     draft = new_draft(user, "INV-003")
     assert (draft["status"], draft["generator"], draft["violations"]) == ("draft", "template", [])
@@ -64,6 +65,7 @@ def test_api_06_create_and_approve(user: TestClient, engine: Engine) -> None:
     assert rows(engine, "SELECT * FROM mail_outbox") == []  # at L1 nothing is sent
 
 
+@pytest.mark.spec("T-API-06")
 def test_api_06_a_model_draft_with_violations_is_409(user: TestClient, engine: Engine) -> None:
     draft = new_draft(user, "INV-003")
     with engine.begin() as c:  # the loop never saves one; an older or edited row could exist

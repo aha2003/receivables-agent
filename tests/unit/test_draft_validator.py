@@ -42,6 +42,7 @@ FACTS = FactBlock(
 )
 
 
+@pytest.mark.spec("T-DRF-01")
 def test_t_drf_01_valid_text_has_no_violations() -> None:
     text = (
         "Dear Ahmed, invoice INV-004 (AED 50,000.00) was due on 2026-07-01 and remains unpaid "
@@ -50,6 +51,7 @@ def test_t_drf_01_valid_text_has_no_violations() -> None:
     assert validate_draft(text, FACTS, RX) == ()
 
 
+@pytest.mark.spec("T-DRF-02")
 def test_t_drf_02_exactly_the_four_violations() -> None:
     text = (
         "Invoice INV-005 for AED 51,000 due 2026-07-02 is unpaid; "

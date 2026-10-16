@@ -106,6 +106,7 @@ GOOD = json.dumps(CLASSIFICATION)
 # --- T-LLM-02 ----------------------------------------------------------------------------------
 
 
+@pytest.mark.spec("T-LLM-02")
 class TestLlm02:
     def test_bad_json_30_times_becomes_unclear_after_one_retry(self) -> None:
         server = Server(reply("{not json at all"))
@@ -222,6 +223,7 @@ def test_customer_text_cannot_break_out_of_its_turn() -> None:
     assert json.loads(body["messages"][0]["content"])["message"] == hostile
 
 
+@pytest.mark.spec("T-INJ-01")
 def test_inj_01_a_hostile_message_stays_data_in_the_user_turn() -> None:
     # T-INJ-01 (§18.9): the instructions are the constant §7.3 prompt; the message is quoted data.
     server = Server(reply(GOOD))
