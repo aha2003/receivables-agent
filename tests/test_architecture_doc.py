@@ -14,54 +14,66 @@ SRC = ROOT / "src" / "receivables"
 DOC = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
 
 
-def _package(path: Path) -> str:
+def _package(path: Path) -> str | None:
+    """The package a module belongs to (``adapters.db``, ``agent``, …); None for the
+    ``__init__`` of ``receivables`` and ``receivables.adapters``, which hold no code."""
     parts = path.relative_to(SRC).with_suffix("").parts
+    if parts in {("__init__",), ("adapters", "__init__")}:
+        return None
     return f"adapters.{parts[1]}" if parts[0] == "adapters" else parts[0]
 
 
-def _target(module: str) -> str | None:
-    parts = module.split(".")[1:]
-    if not parts:
-        return None
-    return f"adapters.{parts[1]}" if parts[0] == "adapters" and len(parts) > 1 else parts[0]
+def _targets(node: ast.ImportFrom | ast.Import) -> list[str]:
+    """The ``receivables`` packages one import statement reaches."""
+    if isinstance(node, ast.Import):
+        modules = [a.name for a in node.names]
+    else:
+        assert node.level == 0, "relative imports would hide dependencies"
+        base = node.module or ""
+        # ``from receivables import settings`` and ``from receivables.adapters import db``
+        # name the package in the imported names.
+        modules = (
+            [f"{base}.{a.name}" for a in node.names]
+            if base in {"receivables", "receivables.adapters"}
+            else [base]
+        )
+    out = []
+    for module in modules:
+        parts = module.split(".")
+        if parts[0] != "receivables" or len(parts) < 2:
+            continue
+        out.append(f"adapters.{parts[2]}" if parts[1] == "adapters" and len(parts) > 2
+                   else parts[1])  # fmt: skip
+    return out
 
 
 def import_graph() -> dict[str, set[str]]:
     """Package -> the other ``receivables`` packages it imports (migrations excluded)."""
     graph: dict[str, set[str]] = {}
     for path in SRC.rglob("*.py"):
-        if "migrations" in path.parts:
-            continue
         source = _package(path)
+        if source is None or "migrations" in path.parts:
+            continue
         graph.setdefault(source, set())
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                modules = [node.module]
-            elif isinstance(node, ast.Import):
-                modules = [alias.name for alias in node.names]
-            else:
-                continue
-            for module in modules:
-                target = _target(module) if module.startswith("receivables.") else None
-                if target and target != source:
-                    graph[source].add(target)
+            if isinstance(node, ast.Import | ast.ImportFrom):
+                graph[source] |= {t for t in _targets(node) if t != source}
     return graph
 
 
 def documented_graph() -> dict[str, set[str]]:
     table = DOC.split("**Dependency rules**", 1)[1].split("\n## ", 1)[0]
-    graph: dict[str, set[str]] = {}
-    for package, imports in re.findall(r"^\| `([\w.]+)` \| ([^|]*) \|", table, re.M):
-        graph[package] = set(re.findall(r"`([\w.]+)`", imports))
-    return graph
+    rows = re.findall(r"^\| `([\w.]+)` \| ([^|]*) \|", table, re.M)
+    packages = [package for package, _ in rows]
+    assert len(packages) == len(set(packages)), "a package is listed twice"
+    return {package: set(re.findall(r"`([\w.]+)`", imports)) for package, imports in rows}
 
 
 def test_the_dependency_table_equals_the_real_imports() -> None:
-    real = {k: v for k, v in import_graph().items() if v}
-    documented = {k: v for k, v in documented_graph().items() if v}
-    assert documented == real
-    # Every package that imports others is in the table, and core imports nothing.
-    assert documented_graph()["core"] == set() and import_graph()["core"] == set()
+    # Every package is a row (those importing nothing too), no row is invented, and each
+    # row lists exactly what the package imports.
+    assert documented_graph() == import_graph()
+    assert import_graph()["core"] == set() and import_graph()["agent"] == {"core"}
 
 
 def _defined_names(path: Path) -> set[str]:
@@ -95,26 +107,56 @@ def test_every_path_in_the_text_exists() -> None:
     assert sorted(p for p in paths if not (ROOT / p).exists()) == []
 
 
+_ARROW = re.compile(r"<?-->|<?==>|-\.->|---|-\.-")
+_LABELLED = re.compile(r"--\s[^>]*?-->|-\.\s[^>]*?\.->|==\s[^>]*?==>")
+_SHAPE = re.compile(
+    r"\{\{[^}]*\}\}|\[\([^)]*\)\]|\(\([^)]*\)\)|\(\[[^\]]*\]\)"
+    r"|\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|\|[^|]*\|"
+)
+
+
+def _edges(block: str) -> tuple[set[str], set[str]]:
+    """(declared node ids, ids used on edge lines) of one Mermaid flowchart."""
+    declared: set[str] = set(re.findall(r"^\s*subgraph (\w+)", block, re.M))
+    used: set[str] = set()
+    for line in block.splitlines()[1:]:
+        stripped = line.strip()
+        if not stripped or stripped == "end" or stripped.startswith(("subgraph", "%%")):
+            continue
+        plain = _LABELLED.sub("-->", stripped)
+        for m in re.finditer(r"(\w+)\s*(?=\{\{|\[\(|\(\(|\(\[|\[|\(|\{)", plain):
+            before = plain[: m.start()]
+            if not before or re.search(r"(-->|\.->|==>|---|-\.-|&)\s*$", before):
+                declared.add(m.group(1))
+        bare = _SHAPE.sub("", plain)
+        if _ARROW.search(bare):
+            used |= {w for part in _ARROW.split(bare) for w in re.findall(r"\w+", part)}
+    return declared, used
+
+
 def test_the_mermaid_diagrams_connect_only_declared_nodes() -> None:
     blocks = re.findall(r"```mermaid\n(.*?)```", DOC, re.S)
     assert len(blocks) == 3
     for block in blocks:
-        declared = set(re.findall(r"\b(\w+)\s*(?:\[|\(|\{)", block))
-        declared |= set(re.findall(r"^\s*subgraph (\w+)", block, re.M))
-        used = set(re.findall(r"^\s*(\w+)\s+(?:-|\.)", block, re.M))
-        used |= set(re.findall(r"(?:-->|\.->)\s*(\w+)", block))
+        declared, used = _edges(block)
+        assert used, "no edges found"
         assert used - declared == set(), used - declared
 
 
-def test_the_names_in_the_diagrams_exist() -> None:
+def test_the_node_check_catches_a_typo() -> None:
+    declared, used = _edges("flowchart TD\n  a[A] --> b[B]\n  b -- label --> c\n  a ==> d")
+    assert used - declared == {"c", "d"}
+
+
+def test_the_names_in_the_diagrams_exist_where_the_table_says() -> None:
     cited = {"run_tick", "evaluate_send", "TOOL_REGISTRY", "validate_plan", "plan_case",
              "LlmPlanner", "RedactingClient", "AnthropicClient", "ReplayClient", "FakeClient",
              "SandboxMailGateway", "DbAgentStore", "injection_signals", "verify_extraction",
-             "check_draft", "PlanSource", "DraftWriter", "AgentStore"}  # fmt: skip
+             "check_draft", "PlanSource", "DraftWriter", "AgentStore",
+             "run_agent_tick"}  # fmt: skip
     diagrams = "".join(re.findall(r"```mermaid\n(.*?)```", DOC, re.S))
-    defined: set[str] = set()
-    for path in SRC.rglob("*.py"):
-        defined |= _defined_names(path)
+    table = DOC.split("## Where things live", 1)[1]
+    listed = set(re.findall(r"`(\w+)`", "".join(re.findall(r"^\| `src/.*$", table, re.M))))
     for name in cited:
-        assert name in diagrams, name
-        assert name in defined, name
+        assert re.search(rf"\b{name}\b", diagrams), name  # a whole word, not a substring
+        assert name in listed, name  # and the table ties it to the module that defines it
