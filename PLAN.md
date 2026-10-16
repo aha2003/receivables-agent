@@ -211,7 +211,7 @@ Planning window Dec 2026–Jan 2027 [A]. Priority P0/P1. Exit: end-to-end demo w
   - Spec: §11
   - Tests: T-RPT-01
   - Done when: Report contains the golden figures, the DSO label and the heuristic sentence.
-- [ ] **S3.13** Record cassettes and live end-to-end run
+- [x] **S3.13** Record cassettes and live end-to-end run
   - Goal: Record cassettes manually on synthetic data with a real key from the environment; run the full demo with live Claude; tag `slice-3-complete`.
   - Spec: §12.1, §16
   - Tests: D1 and D3 with live Claude; replay run identical in shape

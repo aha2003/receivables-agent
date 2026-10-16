@@ -118,7 +118,7 @@ The maintainer runs, by hand and never in CI:
 LLM_MODE=live uv run --env-file .env python scripts/live_e2e.py
 ```
 
-On throwaway copies of the synthetic company it checks D1 with the live planner and drafter, that a replay of the committed recording has the same shape, D3 with live classification and an L2 run, and a safe fallback when the model cannot be reached (model ids that do not exist; the API refuses before doing any work). It prints only check names and counts; exit 0 means every check passed (D-042). After it passes and the step is merged, the maintainer tags the merge commit `slice-3-complete`.
+On throwaway copies of the synthetic company it checks D1 with the live planner and drafter, that a replay of the committed recording has the same shape, D3 with live classification and an L2 run, and a safe fallback when the model cannot be reached (model ids that do not exist; the API refuses before doing any work). It prints only check names and counts; exit 0 means every check passed (D-042). A failure names its check: for example, a cautious live plan that never tries to send fails the D3 pass because nothing was denied or delivered, which is not a safety problem. After it passes and the step is merged, the maintainer tags the merge commit `slice-3-complete`.
 
 ### What Slice 3 does not show
 

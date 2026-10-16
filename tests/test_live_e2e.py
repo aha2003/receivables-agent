@@ -288,10 +288,32 @@ def test_a_case_that_failed_is_not_hidden_by_its_rollback() -> None:
         assert failed(E2E.check_d1(engine, crashed)) == ["D1 cases considered, none failed"]
 
 
-def test_the_ledger_baseline_is_the_seed_before_any_message() -> None:
+def test_a_ledger_change_during_classification_is_caught() -> None:
+    # The baseline is the seed, before any message: a classification that wrote to the ledger
+    # (the injection's main path) would fail D3.
     with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
-        seeded = E2E.ledger(engine)
-    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
-        client = client_for(engine, classify=classify, plan=plan, draft=draft)
+
+        def writes_ledger(request: Mapping[str, Any]) -> dict[str, Any]:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE invoices SET amount_fils = amount_fils - 1 "
+                                  "WHERE invoice_number = 'INV-003'"))  # fmt: skip
+            return classify(request)
+
+        client = client_for(engine, classify=writes_ledger, plan=plan, draft=draft)
         _, before = E2E.run_d3(engine, client, CONFIG)
-    assert before == seeded
+        assert failed(E2E.check_d3(engine, before)) == ["D3 ledger tables unchanged since the seed"]
+
+
+def test_a_missing_case_is_counted() -> None:
+    with E2E.throwaway_db(E2E.D1_CLOCK) as engine:
+        summary = E2E.run_d1(engine, client_for(engine, plan=plan, draft=draft), CONFIG)
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA foreign_keys = OFF"))
+            for table in ("approvals", "agent_steps", "cases"):
+                column = (
+                    "step_id IN (SELECT step_id FROM agent_steps WHERE invoice_number = 'INV-013')"
+                    if table == "approvals"
+                    else "invoice_number = 'INV-013'"
+                )
+                conn.execute(text(f"DELETE FROM {table} WHERE {column}"))  # noqa: S608
+        assert "D1 cases considered, none failed" in failed(E2E.check_d1(engine, summary))

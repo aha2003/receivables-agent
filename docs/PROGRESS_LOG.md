@@ -291,3 +291,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-041 (options 1a, 2a, 3a; review fixes)
 - Unverified: the browser's print to PDF was not exercised (print styles are in place)
 - Next step: S3.13 Record cassettes and live end-to-end run
+
+## 2026-10-16 — [S3.13] Record cassettes and live end-to-end run
+- PR: see branch | Branch: s3-13-live-end-to-end | Commit: see PR head
+- Tests: `uv run pytest -q` → 2308 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; every check in the script is shown failing when its property is broken (tamper tests), and all 15 mutations of the check functions killed
+- Spec / test IDs covered: §12.1 D1 and D3, §16 Slice 3 exit. `scripts/live_e2e.py` (manual, live, never CI): D1 live, replay of the committed recording (D1 and the same shape), D3 live at L2 with golden and hostile messages, and a safe-fallback pass with model ids that do not exist. Offline: the committed recording passes D1 and has the expected shape; an honest run, an attacker-obeying run and a model that never answers each give the expected verdicts
+- Recording: `tests/cassettes/live_demo.json` (recorded by the maintainer on 2026-10-16) unchanged; prompts have not changed since
+- Deviations or decisions (link docs/DECISIONS.md): D-042 (options 1a, 2a, 3a; review fixes)
+- Unverified until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/live_e2e.py`: the live D1, D3 and fallback passes; then the maintainer tags the merge commit `slice-3-complete`
+- Next step: C1.01 (Checkpoint C1, January 2027 submission pack)
