@@ -37,6 +37,7 @@ from receivables.api.routes import decision_pages as decision_routes
 from receivables.api.routes import drafts as draft_routes
 from receivables.api.routes import inbox as inbox_routes
 from receivables.api.routes import pages as page_routes
+from receivables.api.routes import payments as payment_routes
 from receivables.api.security import LoginRateLimiter, ReauthRegistry
 from receivables.core.money import from_fils
 from receivables.core.queue import unallocated_cash_message
@@ -106,6 +107,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.include_router(inbox_routes.router)
     app.include_router(draft_routes.router)
     app.include_router(decision_routes.router)
+    app.include_router(payment_routes.router)
     app.include_router(page_routes.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.
