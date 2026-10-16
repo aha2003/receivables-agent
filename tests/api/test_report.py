@@ -54,6 +54,11 @@ def test_rpt_01_the_report_holds_the_golden_figures_and_labels(user: TestClient)
     assert response.headers["content-type"].startswith("text/html")
     page = response.text
     assert "AED 193,000.00" in page
+    headline = text_of(section(page, "headline"))
+    assert (
+        "14 invoices dated 2026-05-01 to 2026-10-10; 4 payments; 0 unallocated payments" in headline
+    )
+    assert "Heuristic score. Not a probability." in section(page, "risk")
     assert "AED 147,000.00" in page
     customers = text_of(section(page, "customers"))
     assert "Beta Contracting LLC (CUST-B) AED 102,000.00 69.4% 69.4%" in customers  # share
@@ -167,6 +172,11 @@ def test_messages_count_only_accepted_classifications(
     )
     assert "1 awaiting review, 13 not classified." in messages
     assert "MISSING_DELIVERY_NOTE 1" in messages
+    # As of the day before M-02 was sent, it is neither counted nor its acceptance.
+    earlier = text_of(section(report(user, "2026-10-12").text, "disputes"))
+    # M-01 (12 Oct) and M-06 (8 Oct) only.
+    assert "2 inbound messages on or before 2026-10-12: 0 classified and accepted" in earlier
+    assert "MISSING_DELIVERY_NOTE" not in earlier
 
 
 def test_import_warnings_and_data_warnings(user: TestClient) -> None:
@@ -181,8 +191,11 @@ def test_import_warnings_and_data_warnings(user: TestClient) -> None:
     definitions = text_of(section(report(user).text, "definitions"))
     assert "Data as of 2026-10-31: W_UNALLOCATED (count=1 total=12000.00)" in definitions
     assert "Latest payments import" in definitions and "W_UNALLOCATED" in definitions
-    observations = text_of(section(report(user).text, "headline"))
+    page = report(user).text
+    observations = text_of(section(page, "headline"))
     assert "AED 12,000.00 of unallocated cash is on account" in observations
+    customers = text_of(section(page, "customers"))
+    assert "(CUST-C) AED 26,000.00 17.7% 87.1% AED 12,000.00" in customers
 
 
 def test_an_empty_ledger_says_n_a(client: TestClient) -> None:

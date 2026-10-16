@@ -87,8 +87,7 @@ def _import_warnings(engine: Engine) -> list[dict[str, Any]]:
     with engine.connect() as conn:
         latest = (
             select(Import.file_kind, func.max(Import.created_at).label("at"))
-            .where(Import.status == "accepted")
-            .group_by(Import.file_kind)
+            .group_by(Import.file_kind)  # only accepted imports are stored
             .subquery()
         )
         rows = conn.execute(
