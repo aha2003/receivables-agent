@@ -161,6 +161,25 @@ def test_the_exact_open_amount_is_allowed_and_less_leaves_a_balance(
     assert open_amount(user, "INV-012") == "8000.00"
 
 
+def test_one_fils_over_the_open_amount_is_409(user: TestClient, engine: Engine) -> None:
+    upload_payments(user, b"P-010,,CUST-C,2026-10-29,9000.01,payment\n")  # INV-012: 9,000.00
+    response = allocate(user, "P-010", "INV-012")
+    assert (response.status_code, response.json()["reason"]) == (409, "EXCEEDS_OPEN_AMOUNT")
+
+
+def test_an_invoice_dated_after_today_is_409(user: TestClient, engine: Engine) -> None:
+    upload = user.post(
+        "/api/imports/invoices",
+        files={"file": ("i.csv", b"invoice_number,customer_id,invoice_date,due_date,amount,"
+                                 b"currency,po_number\nINV-901,CUST-C,2026-11-15,2026-12-15,"
+                                 b"20000.00,AED,PO-C-901\n", "text/csv")},
+        headers={"x-csrf-token": csrf(user)},
+    )  # fmt: skip
+    assert upload.status_code == 200
+    response = allocate(user, "P-005", "INV-901")
+    assert (response.status_code, response.json()["reason"]) == (409, "NOT_IN_LEDGER")
+
+
 @pytest.mark.parametrize(
     ("payment", "invoice", "status"),
     [("P-404", "INV-008", 404), ("P-005", "INV-404", 404), ("P-005", "", 422), ("P-005", 7, 422)],

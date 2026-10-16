@@ -156,7 +156,6 @@ def allocate_payment(
         try:
             return allocate_in(conn, payment_id, invoice_number, clock=clock, actor=actor)
         except AllocationError as error:
-            if error.reason is None:  # 404: nothing was written
-                raise
-            refusal = error  # its audit row is committed (T-API-10), then it is raised
+            # Committed first, so a 409's audit row is kept (T-API-10); a 404 wrote nothing.
+            refusal = error
     raise refusal

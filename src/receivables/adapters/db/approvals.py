@@ -127,9 +127,9 @@ def _approve_allocation(
             context={"approval_id": approval_id},
         )  # fmt: skip
     except AllocationError as error:
-        if error.reason is None:  # the payment or invoice is gone: nothing was written
-            raise ApprovalError(409, "conflict", error.detail) from None
-        return ApprovalError(409, "conflict", error.detail)  # its audit row is kept
+        # Raised after the commit: a refusal's audit row is kept; a payment or invoice that is
+        # gone wrote nothing. The item stays pending either way.
+        return ApprovalError(409, "conflict", error.detail)
     _settle(conn, approval_id, "approved", clock=clock, actor=actor)
     _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, None,
            {"allocation": allocation})  # fmt: skip

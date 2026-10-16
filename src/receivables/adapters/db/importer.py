@@ -343,8 +343,6 @@ def _kept_allocations(
             )
         ).scalars()
     )
-    if not allocated:
-        return {}
     stored = {
         r.payment_id: (r.invoice_number, r.customer_id)
         for r in conn.execute(
