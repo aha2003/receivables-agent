@@ -1,13 +1,26 @@
 """README.md (SPEC §20.1; C1.02; D-044): the setup, controls, synthetic-data notice, known
 limitations and demo script are present, and what it tells an evaluator to run or open exists."""
 
+import json
 import re
+from datetime import datetime
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
+from receivables.adapters.clock import DUBAI, FixedClock
 from receivables.adapters.config import load_config
+from receivables.adapters.db.allocations import allocate_payment
+from receivables.adapters.db.engine import make_engine
+from receivables.adapters.db.importer import import_csv
+from receivables.adapters.db.migrate import upgrade_to_head
+from receivables.adapters.llm.mode import LlmModeConflict, resolve_llm_mode
 from receivables.cli import main
+from receivables.core.scoring import round_half_up
+from receivables.seed import seed
+from receivables.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -64,22 +77,59 @@ def test_the_run_command_is_the_one_in_claude_md() -> None:
 
 def test_the_settings_it_names_are_real() -> None:
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
-    for name in ("SESSION_SECRET", "LLM_MODE", "ANTHROPIC_API_KEY"):
-        assert name in README and f"{name}=" in example
+    for name in ("SESSION_SECRET", "LLM_MODE", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL_PLANNER",
+                 "ANTHROPIC_MODEL_CLASSIFIER", "ANTHROPIC_MODEL_DRAFTER"):  # fmt: skip
+        assert f"{name}=" in example
+    assert "SESSION_SECRET" in README and "ANTHROPIC_MODEL_*" in README
     config = load_config(ROOT / "config.yaml")
     assert config.agent.autonomy_level == 1  # "L1 assist (default)"
     assert not config.agent.l2.allowlisted_customers  # "empty by default"
     assert config.mail.gateway == "sandbox" and config.llm.replay is False
-    for key in ("agent.autonomy_level", "agent.l2", "agent.l2.kill_switch", "llm.replay"):
+    for key in (
+        "agent.autonomy_level",
+        "agent.l2.kill_switch",
+        "llm.replay",
+        "allowlisted_customers",
+    ):
         assert key in README
+
+
+def test_replay_needs_llm_replay_in_the_config_as_it_says() -> None:
+    config = load_config(ROOT / "config.yaml")  # llm.replay: false
+    with pytest.raises(LlmModeConflict):
+        resolve_llm_mode(Settings(llm_mode="replay"), config)
+    assert "also set `llm.replay: true`" in README
 
 
 def test_the_demo_files_and_figures_are_real() -> None:
     script = section("Demo script")
-    for path in ("fixtures/correspondence.csv", "tests/fixtures/injection/correspondence.csv"):
+    for path in ("fixtures/correspondence.csv", "tests/fixtures/injection/correspondence.csv",
+                 "tests/fixtures/demo/unallocated_payment.csv"):  # fmt: skip
         assert path in script and (ROOT / path).exists()
-    assert "69.4%" in script  # T-RPT-01's CUST-B share
-    assert "AED 193,000.00" in section("Quickstart") and "AED 147,000.00" in section("Quickstart")
+    golden = json.loads((ROOT / "fixtures" / "expected" / "golden_results.json").read_text())
+    quick = section("Quickstart")
+    assert f"AED {Decimal(golden['total_open']):,}" in quick  # AED 193,000.00
+    assert f"AED {Decimal(golden['total_overdue']):,}" in quick
+    top = golden["overdue_by_customer"][0]
+    share = round_half_up(Fraction(Decimal(top["share_pct"])), 1)
+    assert f"{share}%" in script  # 69.4%, the report's one-decimal share
+
+
+def test_the_demo_payment_can_be_allocated_to_inv_008(tmp_path: Path) -> None:
+    clock = FixedClock(datetime(2026, 10, 31, 10, 0, tzinfo=DUBAI))
+    url = f"sqlite:///{tmp_path / 'demo.db'}"
+    upgrade_to_head(url)
+    engine = make_engine(url)
+    try:
+        seed(engine, ROOT / "fixtures", clock)
+        raw = (ROOT / "tests" / "fixtures" / "demo" / "unallocated_payment.csv").read_bytes()
+        assert import_csv(engine, "payments", raw, filename="p.csv", clock=clock).status == (
+            "accepted"
+        )
+        result = allocate_payment(engine, "P-011", "INV-008", clock=clock, actor="demo")
+        assert result["invoice_open_amount"] == "0.00"
+    finally:
+        engine.dispose()
 
 
 def test_known_limitations_link_real_decisions() -> None:
