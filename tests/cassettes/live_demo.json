@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "name": "t_llm_01",
+  "name": "live_demo",
   "synthetic": true,
   "interactions": [
     {
@@ -56,7 +56,7 @@
         "text": "Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"MISSING_PO\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.\",\"summary_en\":\"Customer says invoice INV-011 lacks their PO number and asks for it to be reissued with the PO reference.\"}"
+      "response": "{\"label\":\"MISSING_PO\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.\",\"summary_en\":\"Customer states invoice INV-011 lacks their PO number and asks for it to be reissued with the PO reference.\"}"
     },
     {
       "kind": "classify",
@@ -78,7 +78,7 @@
         "text": "The delivery against INV-013 was short by 20 units, so we will only pay for what we received.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"GOODS_OR_SERVICE_ISSUE\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-013\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"The delivery against INV-013 was short by 20 units, so we will only pay for what we received.\",\"summary_en\":\"The customer reports that the delivery for invoice INV-013 was short by 20 units and will only pay for the quantity received.\"}"
+      "response": "{\"label\":\"GOODS_OR_SERVICE_ISSUE\",\"confidence\":0.9,\"invoice_numbers\":[\"INV-013\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"The delivery against INV-013 was short by 20 units, so we will only pay for what we received.\",\"summary_en\":\"Customer reports that the delivery for INV-013 was short by 20 units and will only pay for the quantity received.\"}"
     },
     {
       "kind": "classify",
@@ -100,7 +100,7 @@
         "text": "Our finance director is on leave, so approval of INV-003 is pending until next week.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"AWAITING_INTERNAL_APPROVAL\",\"confidence\":0.9,\"invoice_numbers\":[\"INV-003\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"next week\",\"role\":\"promised_payment\"}],\"promised_payment_date\":null,\"evidence_quote\":\"Our finance director is on leave, so approval of INV-003 is pending until next week.\",\"summary_en\":\"Customer says approval of invoice INV-003 is pending because the finance director is on leave, until next week.\"}"
+      "response": "{\"label\":\"AWAITING_INTERNAL_APPROVAL\",\"confidence\":0.9,\"invoice_numbers\":[\"INV-003\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"next week\",\"role\":\"other\"}],\"promised_payment_date\":null,\"evidence_quote\":\"Our finance director is on leave, so approval of INV-003 is pending until next week.\",\"summary_en\":\"Customer says approval for invoice INV-003 is pending because the finance director is on leave, until next week.\"}"
     },
     {
       "kind": "classify",
@@ -133,7 +133,7 @@
         "text": "تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر",
         "language_hint": "ar"
       },
-      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 أكتوبر\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر\",\"summary_en\":\"Customer states that invoice INV-005 was paid on 20 October.\"}"
+      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 أكتوبر\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر\",\"summary_en\":\"The customer states that invoice INV-005 was already paid on 20 October.\"}"
     },
     {
       "kind": "classify",
@@ -144,7 +144,7 @@
         "text": "Thanks, noted.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"NO_ACTION_NEEDED\",\"confidence\":0.85,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Thanks, noted.\",\"summary_en\":\"Customer sent a brief acknowledgement with no payment dispute, promise, or request.\"}"
+      "response": "{\"label\":\"NO_ACTION_NEEDED\",\"confidence\":0.9,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Thanks, noted.\",\"summary_en\":\"Customer sent a brief acknowledgement with no payment dispute, promise, or request.\"}"
     },
     {
       "kind": "classify",
@@ -155,7 +155,7 @@
         "text": "Please advise.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"UNCLEAR\",\"confidence\":0.3,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please advise.\",\"summary_en\":\"The customer message only says 'Please advise' with no details about the unpaid invoice, so it cannot be classified.\"}"
+      "response": "{\"label\":\"UNCLEAR\",\"confidence\":0.3,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please advise.\",\"summary_en\":\"The customer message only says 'Please advise' with no details about the invoice, amount, or dispute, so it cannot be classified.\"}"
     },
     {
       "kind": "classify",
@@ -166,7 +166,860 @@
         "text": "Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"WRONG_ENTITY_OR_DETAILS\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-006\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.\",\"summary_en\":\"Customer states invoice INV-006 is addressed to the wrong legal entity and that the TRN shown differs from theirs.\"}"
+      "response": "{\"label\":\"WRONG_ENTITY_OR_DETAILS\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-006\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-006 is addressed to the wrong legal entity. Our TRN is different from the one shown.\",\"summary_en\":\"Customer states invoice INV-006 is addressed to the wrong legal entity and that their TRN differs from the one shown on the invoice.\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "b5b870cfdebab80083ec6562faada6f36817383b5fb10659d5f30313875fa6f8",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-004",
+            "customer_id": "CUST-B",
+            "invoice_date": "2026-06-01",
+            "due_date": "2026-07-01",
+            "amount": "50000.00",
+            "open_amount": "50000.00",
+            "is_open": true,
+            "days_overdue": 122,
+            "bucket": "90+",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": "PO_AMOUNT_MISMATCH",
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "81.7",
+              "band": "High",
+              "priority_value": "40833.3",
+              "rank": 1,
+              "next_action": "Resolve dispute: PO_AMOUNT_MISMATCH",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [
+              {
+                "event_id": "E-001",
+                "event_type": "DISPUTE_OPENED",
+                "event_date": "2026-09-10",
+                "label": "PO_AMOUNT_MISMATCH",
+                "promise_date": null
+              }
+            ],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-B",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 0,
+              "late": 0,
+              "late_rate": null
+            },
+            "open_invoices": 5,
+            "open_total": "142000.00",
+            "overdue_invoices": 4,
+            "overdue_total": "102000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-004\",\"steps\":[{\"tool\":\"request_internal_document\",\"args\":{\"invoice_number\":\"INV-004\",\"doc_type\":\"po_copy\",\"owner_role\":\"sales\"},\"reason\":\"Active dispute PO_AMOUNT_MISMATCH since 2026-09-10; need the PO copy to compare against the invoice amount before contacting the customer.\"},{\"tool\":\"create_task\",\"args\":{\"owner_role\":\"sales\",\"text\":\"Resolve PO_AMOUNT_MISMATCH dispute on INV-004 (50000.00, 122 days overdue): confirm the PO amount with the customer and report back to collections.\",\"due_date\":\"2026-11-03\"},\"reason\":\"The dispute has been open for 7 weeks with no messages; sales must drive resolution.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-004\",\"to_role\":\"management\"},\"reason\":\"High-value 90+ day invoice, rank 1 priority, dispute unresolved for weeks; management visibility is warranted.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-004\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days to check on the PO document and dispute progress; no customer reminder is sent while the dispute is open.\"}]}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "2b8ad3c78cd1846a3020df8b6fe41b80e6b1eb2c8f36e3e49f09600dc062983b",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-011",
+            "customer_id": "CUST-B",
+            "invoice_date": "2026-07-20",
+            "due_date": "2026-08-30",
+            "amount": "25000.00",
+            "open_amount": "25000.00",
+            "is_open": true,
+            "days_overdue": 62,
+            "bucket": "61-90",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "56.2",
+              "band": "Medium",
+              "priority_value": "14055.6",
+              "rank": 2,
+              "next_action": "Escalate: call and send formal reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-B",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 0,
+              "late": 0,
+              "late_rate": null
+            },
+            "open_invoices": 5,
+            "open_total": "142000.00",
+            "overdue_invoices": 4,
+            "overdue_total": "102000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-011\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-011\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 62 days overdue (61-90 bucket) with no dispute, no promises and no prior contact; a formal reminder draft is the least intrusive step that moves the case forward.\"},{\"tool\":\"create_task\",\"args\":{\"owner_role\":\"finance\",\"text\":\"Call customer CUST-B about overdue INV-011 (25000.00, 62 days overdue) and review their other overdue invoices; formal reminder drafted for approval.\",\"due_date\":\"2026-11-03\"},\"reason\":\"Playbook next action calls for a call alongside the formal reminder; finance owns the follow-up.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-011\",\"days\":7},\"reason\":\"Follow-up gap in the playbook is 7 days; set the next check to review the reply or payment.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "ec03a6abed029fa694c8d8b694b220cbeb369bef9bcbdb23e156f311ac5245a3",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-011",
+              "amount": "25000.00",
+              "open_amount": "25000.00",
+              "due_date": "2026-08-30",
+              "days_overdue": 62
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 3,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Formal Reminder: Overdue Invoice INV-011\",\"body\":\"Dear Accounts Team,\\n\\nWe write to formally remind you that invoice INV-011 for 25000.00 remains unpaid. The invoice was due on 2026-08-30 and, as of 2026-10-31, it is 62 days overdue. The open amount is 25000.00.\\n\\nPlease confirm in writing the date on which payment will be made. If payment has already been sent, kindly share the remittance details so we can match it to your account.\\n\\nWe appreciate your prompt attention and look forward to your reply.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "5eabdb763ce06f06f6224ab72f483f4ee226b6fa9787addc40f7caa0c1b9605c",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-005",
+            "customer_id": "CUST-B",
+            "invoice_date": "2026-08-15",
+            "due_date": "2026-09-14",
+            "amount": "30000.00",
+            "open_amount": "20000.00",
+            "is_open": true,
+            "days_overdue": 47,
+            "bucket": "31-60",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "48.1",
+              "band": "Medium",
+              "priority_value": "9611.1",
+              "rank": 3,
+              "next_action": "Send firm reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-B",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 0,
+              "late": 0,
+              "late_rate": null
+            },
+            "open_invoices": 5,
+            "open_total": "142000.00",
+            "overdue_invoices": 4,
+            "overdue_total": "102000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-005\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-005\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"47 days overdue (31-60 bucket), no dispute, no broken promise, no unallocated cash; priority next action is a firm reminder. Draft first for review.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the firm reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-005\",\"days\":7},\"reason\":\"Follow up after the playbook's 7-day gap if no reply or payment.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "4cbc6a1ad5aaca6cb22eb201acb9067efa0b2cfdb5765cc56a1546b089bfe7e6",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-005",
+              "amount": "30000.00",
+              "open_amount": "20000.00",
+              "due_date": "2026-09-14",
+              "days_overdue": 47
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 2,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Payment Reminder: Invoice INV-005 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-005, originally for 30000.00, was due on 2026-09-14 and remains partly unpaid. The open amount is 20000.00, and as of 2026-10-31 it is 47 days overdue.\\n\\nPlease arrange payment of the open amount as soon as possible. If payment has already been sent, kindly share the remittance details so we can match it to the invoice.\\n\\nIf you need a copy of the invoice or have any questions, please let us know and we will gladly help.\\n\\nThank you for your prompt attention.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "4416008806e7a0f6518538700ec7b38d8b9dbeee8e96f40b6ec72638f6f90946",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-008",
+            "customer_id": "CUST-C",
+            "invoice_date": "2026-08-20",
+            "due_date": "2026-09-19",
+            "amount": "12000.00",
+            "open_amount": "12000.00",
+            "is_open": true,
+            "days_overdue": 42,
+            "bucket": "31-60",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": true,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "52.8",
+              "band": "Medium",
+              "priority_value": "6340.0",
+              "rank": 4,
+              "next_action": "Follow up broken promise to pay",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [
+              {
+                "event_id": "E-002",
+                "event_type": "PROMISE_TO_PAY",
+                "event_date": "2026-10-05",
+                "label": null,
+                "promise_date": "2026-10-20"
+              }
+            ],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-C",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 1,
+              "late": 0,
+              "late_rate": "0.0000"
+            },
+            "open_invoices": 3,
+            "open_total": "26000.00",
+            "overdue_invoices": 3,
+            "overdue_total": "26000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-008\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-008\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Promise to pay for 2026-10-20 was broken, invoice is 42 days overdue with no dispute, so a firm reminder is warranted.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the drafted firm reminder; policy check will turn it into an approval request if the autonomy level requires it.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-008\",\"days\":7},\"reason\":\"Set the next follow-up in line with the customer's 7-day follow-up gap.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "31e8f3c946f6a33a62e95a99ab34c20b11c8be902666a0def3ab9a983d30d0ac",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-008",
+              "amount": "12000.00",
+              "open_amount": "12000.00",
+              "due_date": "2026-09-19",
+              "days_overdue": 42
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 2,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Reminder: Overdue Invoice INV-008\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-008 for 12000.00, which was due on 2026-09-19, remains unpaid. As of 2026-10-31, the full amount of 12000.00 is open and the invoice is 42 days overdue.\\n\\nPlease arrange payment promptly. If payment has already been sent, kindly share the remittance details so we can match it to your account.\\n\\nIf you need a copy of the invoice or have any questions, please let us know and we will be glad to help.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "0201ed9fd1480ffecbd683607ba8d5cfcc30d43afcae07dda940e9c42cdd136c",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-003",
+            "customer_id": "CUST-A",
+            "invoice_date": "2026-09-01",
+            "due_date": "2026-10-01",
+            "amount": "15000.00",
+            "open_amount": "15000.00",
+            "is_open": true,
+            "days_overdue": 30,
+            "bucket": "1-30",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "39.0",
+              "band": "Medium",
+              "priority_value": "5850.0",
+              "rank": 5,
+              "next_action": "Send friendly reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-A",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 2,
+              "late": 2,
+              "late_rate": "1.0000"
+            },
+            "open_invoices": 3,
+            "open_total": "25000.00",
+            "overdue_invoices": 2,
+            "overdue_total": "19000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-003\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-003\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"Invoice is 30 days overdue with no disputes, broken promises or prior events, and the playbook suggests a friendly reminder. Drafting first, before any send.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the friendly reminder draft; the policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-003\",\"days\":7},\"reason\":\"Set the next follow-up using the customer's followup gap of 7 days.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "4582e4986b3b474f1a6bcabeccd36253efa0abc33270f8c7d136f02a873b45fa",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-003",
+              "amount": "15000.00",
+              "open_amount": "15000.00",
+              "due_date": "2026-10-01",
+              "days_overdue": 30
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 1,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Friendly reminder: Invoice INV-003 payment\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are doing well. This is a friendly reminder that invoice INV-003 for 15000.00, which was due on 2026-10-01, remains open as of 2026-10-31. The outstanding amount is 15000.00.\\n\\nIf payment has already been sent, thank you, and please disregard this message. If not, we would be grateful if you could arrange payment at your earliest convenience. Please let us know if you need a copy of the invoice or any other information from us.\\n\\nThank you for your help and continued cooperation.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "20ad076a78beddc601861e60d343150f5c67765ff675313e9b95b09241f9d8fb",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-014",
+            "customer_id": "CUST-B",
+            "invoice_date": "2026-07-03",
+            "due_date": "2026-08-02",
+            "amount": "7000.00",
+            "open_amount": "7000.00",
+            "is_open": true,
+            "days_overdue": 90,
+            "bucket": "61-90",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "61.2",
+              "band": "High",
+              "priority_value": "4281.7",
+              "rank": 6,
+              "next_action": "Escalate: call and send formal reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-B",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 0,
+              "late": 0,
+              "late_rate": null
+            },
+            "open_invoices": 5,
+            "open_total": "142000.00",
+            "overdue_invoices": 4,
+            "overdue_total": "102000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-014\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-014\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 90 days overdue (61-90 bucket) with no dispute, no promises and no customer reply on record; a formal reminder is appropriate.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-014\",\"to_role\":\"management\"},\"reason\":\"Priority is High with next action to escalate; 4 overdue invoices totaling 102000.00 for this customer warrant management attention and a call.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-014\",\"days\":7},\"reason\":\"Set the next follow-up in line with the playbook follow-up gap of 7 days.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "e2fa0bf955fbcf206ea3277e0c16dc09725a5e78f75dfac98e623028c936c569",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-014",
+              "amount": "7000.00",
+              "open_amount": "7000.00",
+              "due_date": "2026-08-02",
+              "days_overdue": 90
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 3,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Formal Payment Reminder: Invoice INV-014 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records as of 2026-10-31 show that invoice INV-014 for 7000.00, which was due on 2026-08-02, remains unpaid. The full amount of 7000.00 is outstanding, and the invoice is now 90 days overdue.\\n\\nWe kindly ask that you arrange payment promptly and confirm the date on which we can expect to receive it. If payment has already been made, please send us the remittance details so we can match it to your account.\\n\\nShould you need a copy of the invoice or any further information, please let us know and we will provide it right away.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "c108ef496394309d5ed7b0353d8fb75f41c3af7f874c0c1936a3b777911325ca",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-009",
+            "customer_id": "CUST-C",
+            "invoice_date": "2026-05-01",
+            "due_date": "2026-07-30",
+            "amount": "5000.00",
+            "open_amount": "5000.00",
+            "is_open": true,
+            "days_overdue": 93,
+            "bucket": "90+",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "58.2",
+              "band": "Medium",
+              "priority_value": "2908.3",
+              "rank": 7,
+              "next_action": "Escalate: call and send formal reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-C",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 1,
+              "late": 0,
+              "late_rate": "0.0000"
+            },
+            "open_invoices": 3,
+            "open_total": "26000.00",
+            "overdue_invoices": 3,
+            "overdue_total": "26000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-009\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-009\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 93 days overdue (90+ bucket) with no dispute, no messages and no unallocated cash; a formal reminder is the least intrusive step that moves the case forward.\"},{\"tool\":\"send_email\",\"args\":{\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; the policy engine will decide whether it needs approval.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-009\",\"to_role\":\"management\"},\"reason\":\"Playbook next action is to escalate with a call; the customer has 3 overdue invoices totalling 26000.00 and no recorded replies, so management should follow up by phone.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-009\",\"days\":7},\"reason\":\"Set the next follow-up in line with the playbook's 7-day follow-up gap.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "eb446ba5d2148f9517541ac08657106e6c507d7eeb7ac67289b18bafdc4dc87a",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-009",
+              "amount": "5000.00",
+              "open_amount": "5000.00",
+              "due_date": "2026-07-30",
+              "days_overdue": 93
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 3,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Formal Reminder: Overdue Invoice INV-009\",\"body\":\"Dear Accounts Team,\\n\\nWe write to formally remind you that invoice INV-009, for an amount of 5000.00, was due on 2026-07-30. As of 2026-10-31, the full open amount of 5000.00 remains unpaid.\\n\\nWe kindly ask that you confirm in writing the date on which payment will be made. If payment has already been sent, please let us know the payment details so we can match it to your account.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "d0d48d0f2e41776a003c54d930a1a87325e840468f6bdbf165b4eef44b7c6b3c",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-012",
+            "customer_id": "CUST-C",
+            "invoice_date": "2026-09-15",
+            "due_date": "2026-10-15",
+            "amount": "9000.00",
+            "open_amount": "9000.00",
+            "is_open": true,
+            "days_overdue": 16,
+            "bucket": "1-30",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "29.8",
+              "band": "Low",
+              "priority_value": "2680.0",
+              "rank": 8,
+              "next_action": "Send friendly reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-C",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 1,
+              "late": 0,
+              "late_rate": "0.0000"
+            },
+            "open_invoices": 3,
+            "open_total": "26000.00",
+            "overdue_invoices": 3,
+            "overdue_total": "26000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-012\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-012\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"16 days overdue, no dispute, no broken promise, no unallocated cash, good payment history: a friendly reminder is the least intrusive step.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the friendly reminder draft; the policy engine will check it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-012\",\"days\":7},\"reason\":\"Follow up after the customer's standard 7-day follow-up gap if no payment or reply arrives.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "7a7b1e7356b4bd30de566880eb80e84ea66c8ce616a1d4ca799c0aa4174efd14",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-012",
+              "amount": "9000.00",
+              "open_amount": "9000.00",
+              "due_date": "2026-10-15",
+              "days_overdue": 16
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 1,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Friendly reminder: Invoice INV-012 due 2026-10-15\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are well. This is a friendly reminder that invoice INV-012 for 9000.00, which was due on 2026-10-15, remains open as of 2026-10-31. The full amount of 9000.00 is outstanding.\\n\\nIf payment has already been sent, thank you, and please disregard this message. If not, we would be grateful if you could arrange payment at your earliest convenience. Please let us know if you need a copy of the invoice or any other information from us.\\n\\nThank you for your help.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+    },
+    {
+      "kind": "plan",
+      "request_sha256": "5817ff9fa1a95f1dcadce0bcbfce2ed6a99cabf8c439c31169ceedad2d760166",
+      "prompt_version": "plan-v1",
+      "model": "anthropic:planner",
+      "request": {
+        "observation": {
+          "case": {
+            "as_of": "2026-10-31",
+            "invoice_number": "INV-013",
+            "customer_id": "CUST-A",
+            "invoice_date": "2026-08-31",
+            "due_date": "2026-09-30",
+            "amount": "4000.00",
+            "open_amount": "4000.00",
+            "is_open": true,
+            "days_overdue": 31,
+            "bucket": "31-60",
+            "settled_date": null,
+            "flags": {
+              "active_dispute_label": null,
+              "broken_promise": false,
+              "unallocated_cash_on_account": null
+            },
+            "priority": {
+              "risk_score": "30.4",
+              "band": "Medium",
+              "priority_value": "1217.8",
+              "rank": 9,
+              "next_action": "Send firm reminder",
+              "note": "Heuristic score. Not a probability."
+            },
+            "events": [],
+            "messages": [],
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          },
+          "customer": {
+            "as_of": "2026-10-31",
+            "customer_id": "CUST-A",
+            "payment_terms_days": 30,
+            "history": {
+              "window_days": 365,
+              "paid": 2,
+              "late": 2,
+              "late_rate": "1.0000"
+            },
+            "open_invoices": 3,
+            "open_total": "25000.00",
+            "overdue_invoices": 2,
+            "overdue_total": "19000.00",
+            "unallocated_total": "0.00",
+            "playbook": {
+              "promise_kept_rate": null,
+              "promises_counted": 0,
+              "avg_days_to_reply": null,
+              "replies_counted": 0,
+              "followup_gap_days": 7
+            }
+          }
+        }
+      },
+      "response": "{\"invoice_number\":\"INV-013\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-013\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Invoice is 31 days overdue with no dispute, no broken promise and no prior contact; the customer was late on all 2 recent payments, so a firm reminder matches the priority next action.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-013\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days if there is no reply or payment.\"}]}"
+    },
+    {
+      "kind": "draft",
+      "request_sha256": "e2b5fc674322f5544bd5c27fe805e83bab0b947923100e00f0d1500625b8ecdb",
+      "prompt_version": "draft-v1",
+      "model": "anthropic:drafter",
+      "request": {
+        "facts": {
+          "customer_name": "[CUSTOMER]",
+          "contact_name": "Accounts Team",
+          "sender_name": "Accounts Receivable Team",
+          "invoices": [
+            {
+              "invoice_number": "INV-013",
+              "amount": "4000.00",
+              "open_amount": "4000.00",
+              "due_date": "2026-09-30",
+              "days_overdue": 31
+            }
+          ],
+          "as_of": "2026-10-31",
+          "tone": 2,
+          "dispute_label": null,
+          "amount_difference": null
+        }
+      },
+      "response": "{\"subject\":\"Payment Reminder: Invoice INV-013 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-013 for 4000.00, which was due on 2026-09-30, remains unpaid as of 2026-10-31. The open amount is 4000.00, and the invoice is now 31 days overdue.\\n\\nPlease arrange payment promptly. If payment has already been sent, kindly share the remittance details so we can match it to your account. If you need a copy of the invoice or have any questions, let us know and we will gladly help.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     }
   ]
 }

@@ -252,9 +252,17 @@ Append one entry per completed step (newest last). Format:
 - Unverified: live plans and drafts, and whether the API accepts the generated plan schema, until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py --record`
 - Next step: S3.09 Human approval and sandbox outbox
 
+## 2026-10-16 — S3.08 follow-up: live combined recording
+- PR: see branch | Branch: s3-08-live-recording | Commit: see PR head
+- Why: D-037 left live plans and drafts unverified until the maintainer recorded them
+- Recorded by the maintainer: `LLM_MODE=live uv run --env-file .env python scripts/record_demo.py --record` → T-LLM-01 accuracy 1.000 (macro-F1 1.000, gate 0.80); the agent run planned 9 cases with the LLM (9 plans used, no fallback, so the API accepts the generated plan schema) and wrote 8 LLM drafts, none falling back to the template
+- Cassette: `tests/cassettes/live_demo.json` (32 interactions: 15 classify, 9 plan, 8 draft; model roles only, no keys or headers; contact details redacted before sending)
+- Tests: `uv run pytest -q` → 2083 passed, 2 skipped (the network-guard probe, and the "awaits plans and drafts" test, now superseded); `test_the_committed_recording_serves_the_demo_run` now runs and passes offline
+- Next step: S3.10 Prompt-injection suite (after S3.09 #103)
+
 ## 2026-10-16 — [S3.09] Human approval and sandbox outbox
 - PR: see branch | Branch: s3-09-approval-outbox | Commit: see PR head
-- Tests: `uv run pytest -q` → 2147 passed, 2 skipped (the network-guard probe, and the committed-recording replay test until plans and drafts are recorded); ruff check and format clean; pyright 0 errors; every mutation of the gateway, the drafts state machine, approval decisions, the override checks, the case move, recent contact, the form routes and the template guards killed (48 in total)
+- Tests: `uv run pytest -q` → 2147 passed, 2 skipped (the network-guard probe, and the "awaits plans and drafts" test, now superseded); ruff check and format clean; pyright 0 errors; every mutation of the gateway, the drafts state machine, approval decisions, the override checks, the case move, recent contact, the form routes and the template guards killed (48 in total)
 - Spec / test IDs covered: §9, §18.2 (marked sent or an L2 override: `ASSESSED` → `AWAITING_REPLY`), §18.4, §18.5 (a manual send is recent contact), §18.8, §18.11 / T-API-06, T-MAIL-01 (sandbox row; the gateway imports no network client), T-MAIL-02 (a wrong recipient is a `rejected` row), T-UI-03 (also checked by hand in the browser: notice shown, no send button; that check found the Mark-sent default time bug, now fixed and tested), T-AUD-01
 - Deviations or decisions (link docs/DECISIONS.md): D-038 (options 1a, 2a, 3a; the drafts API; approval decisions use the run's level; the L2 override checks the policy again now; refused overrides audited; review fixes)
 - Unverified: live LLM drafts through `POST /api/drafts` until a live or recorded run; allocation approval arrives with S3.11
