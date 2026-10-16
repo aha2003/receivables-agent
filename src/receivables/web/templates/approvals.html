@@ -3,7 +3,7 @@
 {% block title %}Approvals{% endblock %}
 {% block content %}
 <h1>Approvals</h1>
-<p class="note">Items the agent prepared that need a human decision. Approve and Reject arrive with S3.09.</p>
+<p class="note">Items the agent prepared that need a human decision. At L0 and L1, Approve marks the draft approved: you send it from your own email and mark it sent on the invoice page. At L2, Approve overrides the policy's denial and delivers the draft to the sandbox outbox only; the kill switch and the recipient rule can never be overridden.</p>
 {% include "_run_form.html" %}
 {% if items %}
 <table>
@@ -19,7 +19,16 @@
       {% if a.reasons %}<ul class="reasons">{% for code in a.reasons %}<li><code>{{ code }}</code>: {{ code|policy_text }}</li>{% endfor %}</ul>{% endif %}
     </td>
     <td><a href="/runs/{{ a.run_id|urlencode }}">{{ a.run_id }}</a></td>
-    <td><button type="button" disabled title="Arrives with S3.09">Approve</button> <button type="button" disabled title="Arrives with S3.09">Reject</button></td>
+    <td>
+      <form method="post" action="/approvals/{{ a.approval_id|urlencode }}/approve" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Approve</button>
+      </form>
+      <form method="post" action="/approvals/{{ a.approval_id|urlencode }}/reject" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Reject</button>
+      </form>
+    </td>
   </tr>
   {% endfor %}
   </tbody>

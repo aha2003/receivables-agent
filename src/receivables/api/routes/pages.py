@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
+from receivables.adapters.clock import DUBAI
 from receivables.adapters.db.agent_store import run_agent_tick
 from receivables.adapters.db.controls import kill_switch_on
 from receivables.api.agent_views import case_runs, pending_approvals, run_trace, send_decisions
@@ -162,6 +163,8 @@ async def invoice_page(request: Request, invoice_number: str, as_of: str | None 
         "flags": flags,
         "runs": runs,
         "decisions": decisions,
+        # Default for the "Mark sent" field: now, in Dubai.
+        "now_local": state.clock.now().astimezone(DUBAI).strftime("%Y-%m-%dT%H:%M"),
     }
     return await render(request, "invoice.html", context)
 
