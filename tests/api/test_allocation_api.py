@@ -221,3 +221,56 @@ def test_a_later_import_that_agrees_or_other_payments_import_as_written(
     assert rows(engine, "SELECT invoice_number FROM payments WHERE payment_id = 'P-001'") == [
         {"invoice_number": "INV-003"}
     ]
+
+
+# --- the agent's proposals (§18.3 propose_allocation; a person confirms) -------------------------
+
+
+def proposal(user: TestClient, engine: Engine, invoice: str) -> str:
+    """An allocation item as the agent's propose_allocation step leaves it."""
+    post_run = user.post(
+        "/api/agent/run", json={"as_of": "2026-10-31"}, headers={"x-csrf-token": csrf(user)}
+    )
+    assert post_run.status_code == 200
+    (step,) = rows(engine, "SELECT step_id FROM agent_steps ORDER BY seq LIMIT 1")
+    payload = json.dumps({"payment_id": "P-005", "invoice_number": invoice})
+    with engine.begin() as c:
+        c.execute(
+            text("INSERT INTO approvals (approval_id, step_id, kind, payload_json)"
+                 " VALUES ('A-ALLOC', :s, 'allocation', :p)"),
+            {"s": step["step_id"], "p": payload},
+        )  # fmt: skip
+    return "A-ALLOC"
+
+
+def decide(user: TestClient, approval_id: str, decision: str) -> Any:
+    return user.post(
+        f"/api/agent/approvals/{approval_id}/{decision}", json={},
+        headers={"x-csrf-token": csrf(user)},
+    )  # fmt: skip
+
+
+def test_approving_a_proposal_allocates_by_the_same_rules(user: TestClient, engine: Engine) -> None:
+    approval_id = proposal(user, engine, "INV-008")
+    response = decide(user, approval_id, "approve")
+    assert response.status_code == 200
+    assert response.json()["allocation"]["invoice_open_amount"] == "0.00"
+    assert open_amount(user, "INV-008") == "0.00"
+    (audit,) = audits(engine, "payment.allocated")
+    assert (audit["actor"], audit["after"]["approval_id"]) == (USERNAME, approval_id)
+    status = "SELECT status, decided_by FROM approvals WHERE approval_id = 'A-ALLOC'"
+    assert rows(engine, status) == [{"status": "approved", "decided_by": USERNAME}]
+
+
+def test_a_refused_proposal_stays_pending_and_is_audited(user: TestClient, engine: Engine) -> None:
+    approval_id = proposal(user, engine, "INV-012")  # more than INV-012's open amount
+    before = payments(engine)
+    response = decide(user, approval_id, "approve")
+    assert response.status_code == 409
+    assert payments(engine) == before
+    (refused,) = audits(engine, "payment.allocation_refused")
+    assert refused["after"]["reason"] == "EXCEEDS_OPEN_AMOUNT"
+    assert refused["after"]["approval_id"] == approval_id
+    status = "SELECT status FROM approvals WHERE approval_id = 'A-ALLOC'"
+    assert rows(engine, status) == [{"status": "pending"}]
+    assert decide(user, approval_id, "reject").status_code == 200

@@ -11,8 +11,10 @@ Approving a ``send_email`` item:
   (§18.2). ``POLICY_KILL_SWITCH`` and ``POLICY_RECIPIENT_NOT_ALLOWED`` can never be overridden,
   nor can a draft that no longer matches today's facts (for example, paid or not overdue).
 
-An ``llm`` draft with violations is never approved (§9). Approving an ``allocation`` item waits
-for S3.11; rejecting any item only records the decision. The actor is the signed-in user.
+An ``llm`` draft with violations is never approved (§9). Approving an ``allocation`` item
+allocates the payment by the §6.7 rules (S3.11, ``allocations.allocate_in``); a refusal is
+audited and the item stays pending. Rejecting any item only records the decision. The actor is
+the signed-in user.
 """
 
 import dataclasses
@@ -25,6 +27,7 @@ from sqlalchemy import Connection, Engine, select, update
 from receivables.adapters.clock import Clock, utc_timestamp
 from receivables.adapters.config import Config
 from receivables.adapters.db.agent_store import DbAgentStore, tick_config
+from receivables.adapters.db.allocations import AllocationError, allocate_in
 from receivables.adapters.db.controls import kill_switch_on
 from receivables.adapters.db.models import AgentRun, AgentStep, Approval, Draft, MailOutbox
 from receivables.adapters.db.repo import load_agent_facts, write_audit
@@ -97,51 +100,91 @@ def decide_approval(
             _settle(conn, approval_id, "rejected", clock=clock, actor=actor)
             _audit(conn, clock, actor, approval_id, "approval.rejected", item, payload, None)
             return result | {"status": "rejected", "decided_by": actor}
-        if item.kind != "send_email":
-            raise ApprovalError(409, "conflict", "Approving an allocation arrives with S3.11.")
-        draft = conn.execute(
-            select(Draft.__table__).where(Draft.draft_id == payload["draft_id"])
-        ).one_or_none()
-        if draft is None or draft.status not in ("draft", "approved"):
-            raise ApprovalError(409, "conflict", "The draft is no longer available to send.")
-        if draft.generator == "llm" and json.loads(draft.violations_json):
-            raise ApprovalError(
-                409, "conflict", "A model draft with violations cannot be approved."
-            )
-        delivered = conn.execute(
-            select(MailOutbox.mail_id).where(
-                MailOutbox.draft_id == draft.draft_id, MailOutbox.status == DELIVERED
-            )
-        ).first()
-        if delivered is not None:  # never a second delivery of the same draft
-            raise ApprovalError(409, "conflict", "The draft was delivered through the sandbox.")
-        mail = None
-        refusal: ApprovalError | None = None
-        override = (
-            config.agent.autonomy_level == 2
-            and _run_level(conn, item.step_id) == 2
-            and payload.get("policy_allowed") is False
+        approve = _approve_allocation if item.kind == "allocation" else _approve_send
+        outcome = approve(conn, item, payload, result, config=config, clock=clock, actor=actor)
+        if isinstance(outcome, dict):
+            return outcome
+    # A refusal whose audit rows are committed: the item stays pending.
+    raise outcome
+
+
+def _approve_allocation(
+    conn: Connection,
+    item: Any,
+    payload: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    config: Config,
+    clock: Clock,
+    actor: str,
+) -> dict[str, Any] | ApprovalError:
+    """§18.3 ``propose_allocation``: a person confirms it, by the rules of §6.7 (S3.11)."""
+    approval_id = item.approval_id
+    try:
+        allocation = allocate_in(
+            conn, str(payload.get("payment_id", "")), str(payload.get("invoice_number", "")),
+            clock=clock, actor=actor,
+            context={"approval_id": approval_id},
+        )  # fmt: skip
+    except AllocationError as error:
+        if error.reason is None:  # the payment or invoice is gone: nothing was written
+            raise ApprovalError(409, "conflict", error.detail) from None
+        return ApprovalError(409, "conflict", error.detail)  # its audit row is kept
+    _settle(conn, approval_id, "approved", clock=clock, actor=actor)
+    _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, None,
+           {"allocation": allocation})  # fmt: skip
+    return result | {"status": "approved", "decided_by": actor, "allocation": allocation}
+
+
+def _approve_send(
+    conn: Connection,
+    item: Any,
+    payload: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    config: Config,
+    clock: Clock,
+    actor: str,
+) -> dict[str, Any] | ApprovalError:
+    approval_id = item.approval_id
+    draft = conn.execute(
+        select(Draft.__table__).where(Draft.draft_id == payload["draft_id"])
+    ).one_or_none()
+    if draft is None or draft.status not in ("draft", "approved"):
+        raise ApprovalError(409, "conflict", "The draft is no longer available to send.")
+    if draft.generator == "llm" and json.loads(draft.violations_json):
+        raise ApprovalError(409, "conflict", "A model draft with violations cannot be approved.")
+    delivered = conn.execute(
+        select(MailOutbox.mail_id).where(
+            MailOutbox.draft_id == draft.draft_id, MailOutbox.status == DELIVERED
         )
-        if override:
-            try:
-                mail = _override(conn, approval_id, draft, payload, config=config, clock=clock)
-            except ApprovalError as error:
-                # Audited and committed (with any rejected outbox row, option 2a); the item
-                # stays pending and the refusal is raised after the commit.
-                refusal = error
-                _audit(conn, clock, actor, approval_id, "approval.override_refused", item,
-                       payload, {"refused": error.detail, **(error.context or {})})  # fmt: skip
-        if refusal is None:
-            if draft.status == "draft":
-                _approve_draft(conn, draft, clock=clock, actor=actor, approval_id=approval_id)
-            if mail is not None:  # §18.2: a sent message moves ASSESSED to AWAITING_REPLY
-                DbAgentStore(conn, clock).message_sent(
-                    json.loads(draft.invoice_numbers_json), actor=actor, draft_id=draft.draft_id
-                )
-            _settle(conn, approval_id, "approved", clock=clock, actor=actor)
-            _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, mail)
-            return result | {"status": "approved", "decided_by": actor, "mail": mail}
-    raise refusal
+    ).first()
+    if delivered is not None:  # never a second delivery of the same draft
+        raise ApprovalError(409, "conflict", "The draft was delivered through the sandbox.")
+    mail = None
+    override = (
+        config.agent.autonomy_level == 2
+        and _run_level(conn, item.step_id) == 2
+        and payload.get("policy_allowed") is False
+    )
+    if override:
+        try:
+            mail = _override(conn, approval_id, draft, payload, config=config, clock=clock)
+        except ApprovalError as error:
+            # Audited and committed (with any rejected outbox row, option 2a); the item
+            # stays pending and the refusal is raised after the commit.
+            _audit(conn, clock, actor, approval_id, "approval.override_refused", item,
+                   payload, {"refused": error.detail, **(error.context or {})})  # fmt: skip
+            return error
+    if draft.status == "draft":
+        _approve_draft(conn, draft, clock=clock, actor=actor, approval_id=approval_id)
+    if mail is not None:  # §18.2: a sent message moves ASSESSED to AWAITING_REPLY
+        DbAgentStore(conn, clock).message_sent(
+            json.loads(draft.invoice_numbers_json), actor=actor, draft_id=draft.draft_id
+        )
+    _settle(conn, approval_id, "approved", clock=clock, actor=actor)
+    _audit(conn, clock, actor, approval_id, "approval.approved", item, payload, mail)
+    return result | {"status": "approved", "decided_by": actor, "mail": mail}
 
 
 def _approve_draft(
@@ -230,6 +273,7 @@ def _audit(
     item: Any,
     payload: dict[str, Any],
     mail: dict[str, Any] | None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     write_audit(
         conn,
@@ -244,5 +288,6 @@ def _audit(
             "draft_id": payload.get("draft_id"),
             "override": mail is not None,  # an L2 human override of the policy's denial
             "mail": mail,
+            **(extra or {}),
         },
     )

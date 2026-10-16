@@ -29,7 +29,7 @@ from receivables.agent.cases import PaidInFull
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
 
-__all__ = ["ALLOCATED_ACTION", "AllocationError", "allocate_payment"]
+__all__ = ["ALLOCATED_ACTION", "AllocationError", "allocate_in", "allocate_payment"]
 
 ALLOCATED_ACTION = "payment.allocated"
 REFUSED_ACTION = "payment.allocation_refused"
@@ -88,61 +88,75 @@ def _check(conn: Connection, payment: Any, invoice_number: str, clock: Clock) ->
     return row.open_amount - payment.amount_fils
 
 
+def allocate_in(
+    conn: Connection,
+    payment_id: str,
+    invoice_number: str,
+    *,
+    clock: Clock,
+    actor: str,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Allocate in the caller's write transaction. A 409 refusal has already written its audit
+    row when it is raised, so the caller commits before failing; a 404 writes nothing."""
+    payment = conn.execute(
+        select(Payment.__table__).where(Payment.payment_id == payment_id)
+    ).one_or_none()
+    if payment is None:
+        raise AllocationError(404, "not_found", "No payment with that id.")
+    known = conn.execute(
+        select(Invoice.invoice_number).where(Invoice.invoice_number == invoice_number)
+    ).scalar_one_or_none()
+    if known is None:
+        raise AllocationError(404, "not_found", "No invoice with that number.")
+    before = {
+        "invoice_number": payment.invoice_number,
+        "customer_id": payment.customer_id,
+        "amount": _aed(payment.amount_fils),
+        "payment_date": payment.payment_date,
+    }
+    try:
+        open_after = _check(conn, payment, invoice_number, clock)
+    except AllocationError as error:
+        write_audit(
+            conn, clock, actor=actor, action=REFUSED_ACTION, entity_type="payment",
+            entity_id=payment_id, before=before,
+            after={"requested_invoice": invoice_number, "reason": error.reason, **(context or {})},
+        )  # fmt: skip
+        raise
+    conn.execute(
+        update(Payment)
+        .where(Payment.payment_id == payment_id)
+        .values(invoice_number=invoice_number)
+    )
+    write_audit(
+        conn, clock, actor=actor, action=ALLOCATED_ACTION, entity_type="payment",
+        entity_id=payment_id, before=before,
+        after=before | {"invoice_number": invoice_number,
+                        "invoice_open_amount": _aed(open_after), **(context or {})},
+    )  # fmt: skip
+    if open_after == 0:  # §18.2: the open amount reached 0 (option 3a)
+        DbAgentStore(conn, clock).apply_by_person(
+            invoice_number, PaidInFull(), actor=actor, context={"payment_id": payment_id}
+        )
+    return {
+        "payment_id": payment_id,
+        "invoice_number": invoice_number,
+        "customer_id": payment.customer_id,
+        "amount": _aed(payment.amount_fils),
+        "invoice_open_amount": _aed(open_after),
+    }
+
+
 def allocate_payment(
     engine: Engine, payment_id: str, invoice_number: str, *, clock: Clock, actor: str
 ) -> dict[str, Any]:
     refusal: AllocationError | None = None
     with engine.connect().execution_options(sqlite_begin="IMMEDIATE") as conn, conn.begin():
-        payment = conn.execute(
-            select(Payment.__table__).where(Payment.payment_id == payment_id)
-        ).one_or_none()
-        if payment is None:
-            raise AllocationError(404, "not_found", "No payment with that id.")
-        known = conn.execute(
-            select(Invoice.invoice_number).where(Invoice.invoice_number == invoice_number)
-        ).scalar_one_or_none()
-        if known is None:
-            raise AllocationError(404, "not_found", "No invoice with that number.")
-        before = {
-            "invoice_number": payment.invoice_number,
-            "customer_id": payment.customer_id,
-            "amount": _aed(payment.amount_fils),
-            "payment_date": payment.payment_date,
-        }
         try:
-            open_after = _check(conn, payment, invoice_number, clock)
+            return allocate_in(conn, payment_id, invoice_number, clock=clock, actor=actor)
         except AllocationError as error:
-            # Committed with the refusal (T-API-10); the error is raised after the commit.
-            refusal = error
-            write_audit(
-                conn, clock, actor=actor, action=REFUSED_ACTION, entity_type="payment",
-                entity_id=payment_id, before=before,
-                after={"requested_invoice": invoice_number, "reason": error.reason},
-            )  # fmt: skip
-        else:
-            conn.execute(
-                update(Payment)
-                .where(Payment.payment_id == payment_id)
-                .values(invoice_number=invoice_number)
-            )
-            write_audit(
-                conn, clock, actor=actor, action=ALLOCATED_ACTION, entity_type="payment",
-                entity_id=payment_id, before=before,
-                after=before | {"invoice_number": invoice_number,
-                                "invoice_open_amount": _aed(open_after)},
-            )  # fmt: skip
-            if open_after == 0:  # §18.2: the open amount reached 0 (option 3a)
-                DbAgentStore(conn, clock).apply_by_person(
-                    invoice_number, PaidInFull(), actor=actor,
-                    context={"payment_id": payment_id},
-                )  # fmt: skip
-            return {
-                "payment_id": payment_id,
-                "invoice_number": invoice_number,
-                "customer_id": payment.customer_id,
-                "amount": _aed(payment.amount_fils),
-                "invoice_open_amount": _aed(open_after),
-            }
-    if refusal is None:  # pragma: no cover - the else branch returned
-        raise RuntimeError("unreachable")
+            if error.reason is None:  # 404: nothing was written
+                raise
+            refusal = error  # its audit row is committed (T-API-10), then it is raised
     raise refusal
