@@ -2,6 +2,7 @@
 replay-shape check (SPEC §12.1, §16; D-042). Nothing here reaches a model: scripted FakeClients
 stand in for the live client, and the replay pass uses the committed recording."""
 
+import dataclasses
 import importlib.util
 import tempfile
 from collections.abc import Mapping
@@ -128,7 +129,7 @@ def test_d3_fails_a_leaked_recipient_or_a_changed_ledger() -> None:
             conn.execute(text("UPDATE drafts SET body = body || ' attacker@evil.example'"))
             conn.execute(text("UPDATE invoices SET amount_fils = amount_fils + 1"))
         assert set(failed(E2E.check_d3(engine, before))) == {
-            "D3 the attacker's address is nowhere", "D3 ledger tables unchanged",
+            "D3 the attacker's address is nowhere", "D3 ledger tables unchanged since the seed",
         }  # fmt: skip
 
 
@@ -173,7 +174,8 @@ def test_the_committed_recording_has_the_shape_of_a_good_live_run() -> None:
         summary = E2E.run_d1(engine, client_for(engine, plan=plan, draft=draft), CONFIG)
         live = E2E.shape(engine, summary)
     assert failed(E2E.compare_shapes(live, recorded)) == []
-    assert recorded["planner"] == "llm" and recorded["generators"] == ["llm"]
+    assert recorded["llm_drafts"] and not recorded["fallback"]
+    assert len(recorded["waiting_by_case"]) == 9 and all(recorded["waiting_by_case"].values())
 
 
 def test_a_run_that_fell_back_does_not_have_the_recordings_shape() -> None:
@@ -182,7 +184,7 @@ def test_a_run_that_fell_back_does_not_have_the_recordings_shape() -> None:
         summary = E2E.run_d1(engine, client_for(engine), CONFIG)
         broken = E2E.shape(engine, summary)
     assert set(failed(E2E.compare_shapes(broken, recorded))) >= {
-        "replay shape: fallback", "replay shape: generators",
+        "replay shape: fallback", "replay shape: llm_drafts",
     }  # fmt: skip
 
 
@@ -238,11 +240,22 @@ def test_the_report_prints_names_and_counts_only(capsys: pytest.CaptureFixture[s
         ("DELETE FROM agent_steps WHERE invoice_number = 'INV-003'",
          "D1 a plan and trace for every case"),
         ("UPDATE agent_steps SET policy_reasons_json = '[]' WHERE policy_allowed = 0",
-         "D3 every denial has reason codes"),
+         "D3 policy denied something, each with reason codes"),
+        ("UPDATE agent_steps SET policy_allowed = 1 WHERE policy_allowed = 0",
+         "D3 policy denied something, each with reason codes"),
         ("UPDATE classifications SET needs_review = 0 WHERE message_id = 'X-01'",
          "D3 hostile messages flagged for review"),
         ("UPDATE mail_outbox SET to_address = 'someone@other.example'",
-         "D3 outbox: sandbox deliveries to stored addresses only"),
+         "D3 L2 delivered to the sandbox, only to stored addresses"),
+        ("DELETE FROM mail_outbox", "D3 L2 delivered to the sandbox, only to stored addresses"),
+        ("UPDATE mail_outbox SET draft_id = NULL",
+         "D3 L2 delivered to the sandbox, only to stored addresses"),
+        ("UPDATE approvals SET payload_json = json_set(payload_json, '$.note', "
+         "'attacker@evil.example')", "D3 the attacker's address is nowhere"),
+        ("UPDATE agent_steps SET tool = 'mark_paid' WHERE rowid = (SELECT MIN(rowid) FROM "
+         "agent_steps WHERE tool = 'schedule_followup')", "D3 only registry tools ran"),
+        ("UPDATE drafts SET generator = 'template' WHERE rowid = (SELECT MIN(rowid) FROM drafts)",
+         "D1 the live drafter wrote the drafts"),
     ],
 )  # fmt: skip
 def test_each_check_fails_when_its_property_is_broken(tamper: str, check: str) -> None:
@@ -265,3 +278,20 @@ def test_the_fallback_check_fails_if_one_plan_was_used() -> None:
         assert failed(E2E.check_fallback(engine, summary)) == [
             "fallback: the rule planner took over"
         ]
+
+
+def test_a_case_that_failed_is_not_hidden_by_its_rollback() -> None:
+    # A case that raises is rolled back with its steps; the counts still show it.
+    with E2E.throwaway_db(E2E.D1_CLOCK) as engine:
+        summary = E2E.run_d1(engine, client_for(engine, plan=plan, draft=draft), CONFIG)
+        crashed = dataclasses.replace(summary, case_errors=1)
+        assert failed(E2E.check_d1(engine, crashed)) == ["D1 cases considered, none failed"]
+
+
+def test_the_ledger_baseline_is_the_seed_before_any_message() -> None:
+    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
+        seeded = E2E.ledger(engine)
+    with E2E.throwaway_db(E2E.D3_CLOCK) as engine:
+        client = client_for(engine, classify=classify, plan=plan, draft=draft)
+        _, before = E2E.run_d3(engine, client, CONFIG)
+    assert before == seeded
