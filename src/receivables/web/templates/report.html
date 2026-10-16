@@ -40,10 +40,10 @@
 <section id="customers">
   <h2>3. Top 10 customers by overdue exposure</h2>
   {% if r.top_customers %}
-  <table>
+  <div class="scroll"><table>
     <thead><tr><th>Customer</th><th class="num">Overdue</th><th class="num">Share</th><th class="num">Cumulative share</th><th class="num">Unallocated cash</th></tr></thead>
     <tbody>{% for c in r.top_customers %}<tr><td>{{ c.customer_name }} ({{ c.customer_id }})</td><td class="num">{{ c.amount|aed }}</td><td class="num">{{ c.share_pct }}%</td><td class="num">{{ c.cumulative_pct }}%</td><td class="num">{{ c.unallocated|aed }}</td></tr>{% endfor %}</tbody>
-  </table>
+  </table></div>
   {% else %}<p>Nothing is overdue.</p>{% endif %}
 </section>
 
@@ -62,7 +62,7 @@
   {% if r.disputes.by_label %}
   <table>
     <thead><tr><th>Dispute label</th><th class="num">Invoices</th><th class="num">Open amount</th></tr></thead>
-    <tbody>{% for d in r.disputes.by_label %}<tr><td>{{ d.label }}</td><td class="num">{{ d.count }}</td><td class="num">{{ d.amount|aed }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for d in r.disputes.by_label %}<tr><td class="id">{{ d.label }}</td><td class="num">{{ d.count }}</td><td class="num">{{ d.amount|aed }}</td></tr>{% endfor %}</tbody>
   </table>
   {% endif %}
   {% if r.messages is not none %}
@@ -80,10 +80,10 @@
 <section id="queue">
   <h2>6. Priority queue (top {{ r.queue|length }})</h2>
   <p class="heuristic">{{ r.heuristic_note }}</p>
-  <table>
+  <div class="scroll"><table>
     <thead><tr><th class="num">#</th><th>Invoice</th><th>Customer</th><th class="num">Open</th><th class="num">Days overdue</th><th class="num">Risk score</th><th>Band</th><th class="num">Priority value</th><th>Next action</th></tr></thead>
-    <tbody>{% for q in r.queue %}<tr><td class="num">{{ q.rank }}</td><td>{{ q.invoice_number }}</td><td>{{ q.customer_name }}</td><td class="num">{{ q.open_amount|aed }}</td><td class="num">{{ q.days_overdue }}</td><td class="num">{{ q.risk_score }}</td><td>{{ q.band }}</td><td class="num">{{ q.priority_value }}</td><td>{{ q.action }}</td></tr>{% endfor %}</tbody>
-  </table>
+    <tbody>{% for q in r.queue %}<tr><td class="num">{{ q.rank }}</td><td class="id">{{ q.invoice_number }}</td><td>{{ q.customer_name }}</td><td class="num">{{ q.open_amount|aed }}</td><td class="num">{{ q.days_overdue }}</td><td class="num">{{ q.risk_score }}</td><td>{{ q.band }}</td><td class="num">{{ q.priority_value }}</td><td>{{ q.action }}</td></tr>{% endfor %}</tbody>
+  </table></div>
 </section>
 
 <section id="definitions">

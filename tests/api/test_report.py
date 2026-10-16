@@ -55,7 +55,8 @@ def test_rpt_01_the_report_holds_the_golden_figures_and_labels(user: TestClient)
     page = response.text
     assert "AED 193,000.00" in page
     assert "AED 147,000.00" in page
-    assert "69.4%" in section(page, "customers") and "CUST-B" in section(page, "customers")
+    customers = text_of(section(page, "customers"))
+    assert "Beta Contracting LLC (CUST-B) AED 102,000.00 69.4% 69.4%" in customers  # share
     assert "estimated DSO (90-day sales proxy)" in page
     assert "Heuristic score. Not a probability." in page
     assert "7. Definitions and limits" in section(page, "definitions")
@@ -105,7 +106,7 @@ def test_top_customers_have_cumulative_shares_and_unallocated_cash(user: TestCli
 def test_the_queue_is_the_top_20_in_queue_order(user: TestClient) -> None:
     items = user.get("/api/queue", params={"as_of": AS_OF, "limit": 20}).json()["items"]
     queue = section(report(user).text, "queue")
-    order = re.findall(r'<td class="num">(\d+)</td><td>(INV-\d+)</td>', queue)
+    order = re.findall(r'<td class="num">(\d+)</td><td class="id">(INV-\d+)</td>', queue)
     assert [n for _, n in order] == [i["invoice_number"] for i in items]
     assert "Heuristic score. Not a probability." in queue
 

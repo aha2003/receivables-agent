@@ -148,7 +148,7 @@ def report_context(engine: Engine, snap: Snapshot) -> dict[str, Any]:
                 "customer_id": c.customer_id,
                 "customer_name": snap.customer_name(c.customer_id),
                 "amount": c.amount,
-                "share_pct": str(c.share_pct),
+                "share_pct": _pct(c.amount, k.overdue_total),  # one decimal, as T-RPT-01
                 "cumulative_pct": _pct(cumulative, k.overdue_total),
                 "unallocated": k.unallocated.by_customer.get(c.customer_id, 0),
             }
