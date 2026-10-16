@@ -299,4 +299,4 @@ Append one entry per completed step (newest last). Format:
 - Recording: `tests/cassettes/live_demo.json` (recorded by the maintainer on 2026-10-16) unchanged; prompts have not changed since
 - Deviations or decisions (link docs/DECISIONS.md): D-042 (options 1a, 2a, 3a; review fixes)
 - Unverified until the maintainer runs `LLM_MODE=live uv run --env-file .env python scripts/live_e2e.py`: the live D1, D3 and fallback passes; then the maintainer tags the merge commit `slice-3-complete`
-- Next step: C1.01 (Checkpoint C1, January 2027 submission pack)
+- Next step: C1.01 Test report by test ID
