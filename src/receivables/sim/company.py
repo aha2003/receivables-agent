@@ -5,7 +5,7 @@ Pure: no I/O or clock; every random value comes from ``random.Random(scenario.se
 of what "same seed, same data" means here (pinned by a hash in tests/sim/test_sim_company.py):
 for each customer in turn, for each of its invoices, the due-date offset and then the amount.
 
-- Customers ``SIM-C01``… take the archetypes in blocks (C01–C03 the first archetype, and so on);
+- Customers ``SIM-C01``… take the archetypes in blocks (C01 to C03 the first archetype, and so on);
   ``archetype_index`` (0, 1, 2) is the "customer index" §19.2 cycles by.
 - An invoice falls due ``due_offset`` days after the start (day 0 to day 30) and is dated
   ``payment_terms_days`` before that, so every invoice exists on day 0; amounts are

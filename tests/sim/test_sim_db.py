@@ -1,4 +1,4 @@
-"""The simulator's own database (SPEC §19.2; S4.01; D-047): ``sim_<seed>.db``, never the real one."""
+"""The simulator's own database (SPEC §19.2; S4.01; D-047): `sim_<seed>.db`, not the real one."""
 
 import hashlib
 from datetime import datetime

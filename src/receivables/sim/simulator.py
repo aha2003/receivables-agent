@@ -5,7 +5,7 @@ strict importer, every row stamped by a simulated clock at the run start (day 0,
 in Asia/Dubai), never the wall clock. The file is built next to its destination and moved into
 place only when complete. It refuses any destination that is, or shares a file with, the real
 database, a symlink, or an existing file that is not SQLite, so the real database is never
-opened, let alone written. The arms, the behaviour engine and the day loop come in S4.02–S4.03.
+opened, let alone written. The arms, the behaviour engine and the day loop come in S4.02 and S4.03.
 """
 
 import os
