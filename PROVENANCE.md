@@ -123,7 +123,7 @@ Downloaded from the official GitHub release with the maintainer's approval (S1.1
 
 | Tool | Version | Licence | Use |
 |---|---|---|---|
-| uv / uv_build | 0.12.x | MIT OR Apache-2.0 | Environment, lockfile, build backend |
+| uv / uv_build | 0.12 or 0.13 (`pyproject.toml` allows `uv_build>=0.12,<0.14`; CI installs the latest uv) | MIT OR Apache-2.0 | Environment, lockfile, build backend |
 | actions/checkout | v7 | MIT | CI checkout (bumped from v5 by Dependabot #67) |
 | astral-sh/setup-uv | v7 | MIT | CI uv install |
 | gitleaks (CLI binary, sha256-pinned) | 8.30.1 | MIT | CI secret scan over the full git history |

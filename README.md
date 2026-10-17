@@ -1,23 +1,23 @@
 # Receivables Collections Agent
 
-A prototype for the Dubai Chamber of Digital Economy AI Agents Championship: an agent that helps a B2B finance team collect overdue invoices. It reads a ledger, ranks what to chase, plans each case with Claude inside a closed set of tools, drafts reminders that are checked against the facts, and lets a person approve, reject or send. Every action passes a deterministic policy engine and is audited.
+A prototype for the Dubai Chamber of Digital Economy AI Agents Championship: an agent that helps a B2B finance team collect overdue invoices. It reads a ledger, ranks what to chase, plans each case with Claude inside a closed set of tools, drafts reminders that are checked against the facts, and lets a person approve, reject or send. Every message the agent sends to a customer passes a deterministic policy engine, its other actions are limited by the autonomy level and the kill switch, a person sends approved drafts from their own email, and everything is audited.
 
 > **Synthetic data only.** Every company, customer, invoice, payment and message in this repository is fictional (`fixtures/`, `tests/fixtures/`). Nothing is ever emailed: messages go to a local sandbox outbox. Do not load real customer data: redaction reduces exposure but does not make real data safe. The simulator of Slice 4 will show **mechanics, not evidence**; no result here is evidence of real-world collection outcomes or business value.
 
 ## Progress
 <!-- PROGRESS:START -->
-**Overall: 41/64 steps (64%)** █████████████░░░░░░░
+**Overall: 42/64 steps (66%)** █████████████░░░░░░░
 
 | Section | Done | Total | Progress |
 |---|---|---|---|
 | Slice 1 — Deterministic core + first screen | 14 | 14 | ████████████████████ 100% |
 | Slice 2 — Visible agent loop | 11 | 11 | ████████████████████ 100% |
 | Slice 3 — Claude integration + human approval | 13 | 13 | ████████████████████ 100% |
-| Checkpoint C1 — January 2027 submission pack | 3 | 7 | █████████░░░░░░░░░░░ 43% |
+| Checkpoint C1 — January 2027 submission pack | 4 | 7 | ███████████░░░░░░░░░ 57% |
 | Slice 4 — Simulator + learning proof | 0 | 9 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 | Slice 5 — Hardening + final rehearsal | 0 | 10 | ░░░░░░░░░░░░░░░░░░░░ 0% |
 
-**Next up:** C1.04 Provenance and data-protection statement
+**Next up:** C1.05 Demo video (manual)
 <!-- PROGRESS:END -->
 
 Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · decisions: `docs/DECISIONS.md` · demo: `docs/DEMO.md` · tests: `docs/TEST_REPORT.md`
@@ -25,8 +25,8 @@ Details: `docs/PROGRESS.md` · plan: `PLAN.md` · spec: `docs/SPEC.md` · decisi
 ## What it does
 
 - **Deterministic core** (`src/receivables/core/`, pure Python): money in integer fils; open amounts, aging, payment history, a heuristic risk score and priority queue, KPIs (total open, overdue, estimated DSO on a 90-day sales proxy, unallocated cash). Every number matches the golden fixtures (`fixtures/expected/golden_results.json`). The risk score ranks invoices; it is **not a probability**.
-- **Agent loop** (`src/receivables/agent/`): for each overdue case it observes, plans, calls tools from a closed registry of 11 (none can change amounts or choose recipients), and every side effect passes the policy engine, which returns reason codes. Runs, plans, steps and policy decisions are traced and audited.
-- **Claude** (`src/receivables/adapters/llm/`): classifies customer replies (verified by code before anyone can accept them), plans each case, and writes reminder drafts. Text is redacted and customer names are pseudonymised before it is sent. A plan that is invalid, slow or uses an unknown tool falls back to a rule planner; a draft that fails validation falls back to a fixed template; a classification that fails falls back to "unclear, needs review".
+- **Agent loop** (`src/receivables/agent/`): for each overdue case it observes, plans, calls tools from a closed registry of 11 (none can change amounts or choose recipients), every send passes the policy engine, which returns reason codes, and internal steps run only at L1 and above and never with the kill switch on. Runs, plans, steps and policy decisions are traced and audited.
+- **Claude** (`src/receivables/adapters/llm/`): classifies customer replies (verified by code before anyone can accept them), plans each case, and writes reminder drafts. Text is redacted and customer names are pseudonymised before it is sent (on by default: `llm.redact_before_send` and `llm.pseudonymize_customer_names`). A plan that is invalid, slow or uses an unknown tool falls back to a rule planner; a draft that fails validation falls back to a fixed template; a classification that fails falls back to "unclear, needs review".
 - **People stay in control**: drafts are approved, rejected, copied or marked sent by a person; denied or L1 sends become approval items; unallocated cash is allocated by a person; a kill switch stops the agent.
 - **Safety against hostile email**: inbound text is data, never instructions; it reaches the classifier only. Plans cannot add a tool, a recipient or a ledger change, and suspected instruction-injection is flagged for review (`docs/DEMO.md` shows it).
 - **Report**: a printable Receivables Health Audit with every formula and its limits (`GET /api/report`).

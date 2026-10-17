@@ -236,7 +236,7 @@ Confirm the exact date with the organisers. Exit: submission pack complete, demo
   - Spec: §20.1
   - Tests: manual review
   - Done when: Diagram matches the code.
-- [ ] **C1.04** Provenance and data-protection statement
+- [x] **C1.04** Provenance and data-protection statement
   - Goal: Verify PROVENANCE.md and the Section 20.2 statement against the implementation.
   - Spec: §20.2
   - Tests: manual review

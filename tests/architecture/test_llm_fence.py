@@ -86,3 +86,49 @@ def test_the_fence_catches(source: str) -> None:
 )
 def test_the_fence_allows(source: str) -> None:
     assert fenced_imports(source) == []
+
+
+# The standard library's own network clients: no module may import them, so the Anthropic
+# client is the only way out of the process and mail stays in the sandbox (C1.04, D-046).
+STDLIB_NETWORK = ("socket", "ssl", "smtplib", "ftplib", "imaplib", "poplib", "telnetlib",
+                  "http.client", "urllib.request", "xmlrpc")  # fmt: skip
+
+
+def stdlib_network_imports(source: str) -> list[str]:
+    out: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            # ``from http import client`` and ``from urllib import request`` reach them too.
+            names = [node.module, *(f"{node.module}.{alias.name}" for alias in node.names)]
+        else:
+            continue
+        out.extend(
+            f"line {node.lineno}: {name!r}"
+            for name in names
+            if any(name == root or name.startswith(root + ".") for root in STDLIB_NETWORK)
+        )
+    return out
+
+
+def test_no_module_imports_a_stdlib_network_client() -> None:
+    found = {
+        str(path.relative_to(SRC)): hits
+        for path in SRC.rglob("*.py")
+        if (hits := stdlib_network_imports(path.read_text(encoding="utf-8")))
+    }
+    assert found == {}
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["import smtplib", "from http import client", "from urllib.request import urlopen",
+     "import socket as s", "from urllib import request"],
+)  # fmt: skip
+def test_the_stdlib_fence_catches_every_form(source: str) -> None:
+    assert stdlib_network_imports(source)
+
+
+def test_the_stdlib_fence_allows_url_parsing() -> None:
+    assert stdlib_network_imports("from urllib.parse import quote") == []
