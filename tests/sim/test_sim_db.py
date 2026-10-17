@@ -1,6 +1,7 @@
 """The simulator's own database (SPEC §19.2; S4.01; D-047): `sim_<seed>.db`, not the real one."""
 
 import hashlib
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -10,15 +11,17 @@ from sqlalchemy import Engine, select, text
 from receivables.adapters.clock import DUBAI, FixedClock
 from receivables.adapters.db.engine import make_engine
 from receivables.adapters.db.migrate import upgrade_to_head
-from receivables.adapters.db.models import AuditLog
+from receivables.adapters.db.models import AuditLog, Import
 from receivables.cli import main
 from receivables.seed import seed
+from receivables.sim import simulator
 from receivables.sim.company import generate_company
 from receivables.sim.scenario import load_scenario
 from receivables.sim.simulator import SimRefused, create_sim_db, sim_db_path
 
 ROOT = Path(__file__).resolve().parents[2]
 LEDGER_TABLES = ("customers", "invoices", "payments", "events")
+REFUSED = r"is the real database or shares its files; refusing$"
 
 
 def _sha(path: Path) -> str:
@@ -80,10 +83,12 @@ def test_every_row_is_stamped_with_the_simulated_clock(tmp_path: Path, real_db: 
     try:
         with engine.connect() as conn:
             audit = conn.execute(select(AuditLog.ts, AuditLog.action, AuditLog.after_json)).all()
+            imported = set(conn.execute(select(Import.created_at)).scalars())
     finally:
         engine.dispose()
     # Run start 2026-11-02 10:00 Asia/Dubai is 06:00 UTC; nothing comes from the wall clock.
     assert {row.ts for row in audit} == {"2026-11-02T06:00:00Z"}
+    assert imported == {"2026-11-02T06:00:00Z"}  # the ledger tables themselves hold no times
     created = [row for row in audit if row.action == "sim.created"]
     assert len(created) == 1
     assert '"seed": 42' in created[0].after_json
@@ -127,12 +132,67 @@ def test_it_refuses_to_write_over_the_real_database(tmp_path: Path) -> None:
     url = f"sqlite:///{real}"
     upgrade_to_head(url)
     before = _sha(real)
-    refused = r"is the real database or shares its files; refusing$"
-    with pytest.raises(SimRefused, match=refused):
+    with pytest.raises(SimRefused, match=REFUSED):
         create_sim_db(load_scenario(), tmp_path / "data", url)
-    with pytest.raises(SimRefused, match=refused):  # reached through another spelling
+    with pytest.raises(SimRefused, match=REFUSED):  # reached through another spelling
         create_sim_db(load_scenario(), tmp_path / "data" / ".." / "data", url)
     assert _sha(real) == before
+
+
+@pytest.mark.spec("T-SIM-04")
+@pytest.mark.parametrize("name", ["SIM_42.db", "Sim_42.db"])
+def test_a_real_database_differing_only_in_case_is_refused(tmp_path: Path, name: str) -> None:
+    # macOS file names ignore case: sim_42.db would be the real database's file.
+    real = tmp_path / name
+    upgrade_to_head(f"sqlite:///{real}")
+    before = _sha(real)
+    with pytest.raises(SimRefused, match=REFUSED):
+        create_sim_db(load_scenario(), tmp_path, f"sqlite:///{real}")
+    assert _sha(real) == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == [name]
+
+
+@pytest.mark.spec("T-SIM-04")
+def test_a_real_database_differing_only_in_unicode_form_is_refused(tmp_path: Path) -> None:
+    data = tmp_path / unicodedata.normalize("NFC", "donn\u00e9es")
+    other = tmp_path / unicodedata.normalize("NFD", "donn\u00e9es")
+    data.mkdir()
+    real = data / "sim_42.db"
+    upgrade_to_head(f"sqlite:///{real}")
+    before = _sha(real)
+    with pytest.raises(SimRefused, match=REFUSED):
+        create_sim_db(load_scenario(), other, f"sqlite:///{real}")
+    assert _sha(real) == before
+
+
+@pytest.mark.spec("T-SIM-04")
+def test_a_real_database_given_as_a_file_uri_is_refused(tmp_path: Path) -> None:
+    url = f"sqlite:///file:{tmp_path / 'sim_42.db'}?mode=rwc&uri=true"
+    with pytest.raises(SimRefused, match=r"is a file: URI; cannot tell its file, refusing$"):
+        create_sim_db(load_scenario(), tmp_path, url)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_in_memory_real_database_has_no_file_to_protect(tmp_path: Path) -> None:
+    assert create_sim_db(load_scenario(), tmp_path, "sqlite://").path.is_file()
+
+
+def test_the_destination_is_checked_again_before_the_swap(
+    tmp_path: Path, real_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "data" / "sim_42.db"
+    real_import = simulator.import_csv
+
+    def import_then_meddle(*args: object, **kwargs: object) -> object:
+        if not target.exists():  # something puts a file there while the run is building
+            target.write_text("notes, not a database")
+        return real_import(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(simulator, "import_csv", import_then_meddle)
+    with pytest.raises(SimRefused, match=r"is not a SQLite database; refusing to replace it$"):
+        create_sim_db(load_scenario(), tmp_path / "data", f"sqlite:///{real_db}")
+    assert target.read_text() == "notes, not a database"
+    assert sorted(p.name for p in target.parent.iterdir()) == ["sim_42.db"]  # staging removed
 
 
 def test_it_refuses_a_symlink_or_a_file_that_is_not_sqlite(tmp_path: Path, real_db: Path) -> None:
@@ -147,7 +207,7 @@ def test_it_refuses_a_symlink_or_a_file_that_is_not_sqlite(tmp_path: Path, real_
         create_sim_db(load_scenario(), data, url)
     (data / "sim_42.db").unlink()
     (data / "sim_42.db").symlink_to(real_db)  # a link to the real database
-    with pytest.raises(SimRefused, match=r"is the real database or shares its files; refusing$"):
+    with pytest.raises(SimRefused, match=REFUSED):
         create_sim_db(load_scenario(), data, url)
     (data / "sim_42.db").unlink()
     (data / "sim_42.db").write_text("notes, not a database")
@@ -184,3 +244,10 @@ def test_cli_sim_create_refusal_is_an_error_exit(
     assert main(["sim-create", "--data-dir", str(tmp_path)]) == 2
     assert "sim-create refused:" in capsys.readouterr().err
     assert sorted(p.name for p in tmp_path.iterdir()) == ["sim_42.db"]
+
+
+@pytest.mark.parametrize("seed", ["-1", "4.2", "\u0664\u0662", "x"])
+def test_cli_sim_create_takes_only_an_ascii_whole_number_seed(seed: str) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        main(["sim-create", "--seed", seed])
+    assert exit_.value.code == 2  # argparse usage error, before anything is written

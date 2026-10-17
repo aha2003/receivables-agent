@@ -5,11 +5,16 @@ strict importer, every row stamped by a simulated clock at the run start (day 0,
 in Asia/Dubai), never the wall clock. The file is built next to its destination and moved into
 place only when complete. It refuses any destination that is, or shares a file with, the real
 database, a symlink, or an existing file that is not SQLite, so the real database is never
-opened, let alone written. The arms, the behaviour engine and the day loop come in S4.02 and S4.03.
+opened, let alone written. "The same file" is decided by identity (``os.path.samefile``) and by
+the resolved path compared without case or Unicode-form differences, since macOS file names
+ignore both; a real database given as a ``file:`` URI is refused, as its file cannot be told
+reliably. The destination is checked again just before the swap. The arms, the behaviour
+engine and the day loop come in S4.02 and S4.03.
 """
 
 import os
 import stat
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -52,18 +57,34 @@ def _siblings(path: Path) -> tuple[Path, ...]:
     return path, Path(f"{path}-wal"), Path(f"{path}-shm"), Path(f"{path}-journal")
 
 
-def _real_files(real_database_url: str) -> set[Path]:
-    """The real database's file and its companions, resolved; empty when it has no file."""
+def _key(path: Path) -> str:
+    """A resolved path compared as case- and normalisation-insensitive file systems do."""
+    return unicodedata.normalize("NFC", str(path.resolve())).casefold()
+
+
+def _real_files(real_database_url: str) -> list[Path]:
+    """The real database's file and its companions; empty for an in-memory database."""
     database = make_url(real_database_url).database
-    if not database or database == ":memory:" or database.startswith("file:"):
-        return set()
-    return {p.resolve() for p in _siblings(Path(database))}
+    if not database or database == ":memory:":
+        return []
+    if database.startswith("file:"):
+        raise SimRefused("the real database is a file: URI; cannot tell its file, refusing")
+    return list(_siblings(Path(database)))
+
+
+def _same_file(candidate: Path, real: list[Path]) -> bool:
+    keys = {_key(p) for p in real}
+    if _key(candidate) in keys:
+        return True
+    if not candidate.exists():
+        return False
+    return any(p.exists() and os.path.samefile(candidate, p) for p in real)
 
 
 def _check_destination(path: Path, staging: Path, real_database_url: str) -> None:
     real = _real_files(real_database_url)
     for candidate in (*_siblings(path), *_siblings(staging)):
-        if candidate.resolve() in real:
+        if _same_file(candidate, real):
             raise SimRefused(f"{path} is the real database or shares its files; refusing")
         try:
             mode = candidate.lstat().st_mode
@@ -129,6 +150,7 @@ def create_sim_db(scenario: Scenario, data_dir: Path, real_database_url: str) ->
                 counts = table_counts(conn)
         finally:
             engine.dispose()  # last connection closed: SQLite checkpoints and drops the WAL
+        _check_destination(path, staging, real_database_url)  # again, just before the swap
         _remove(_siblings(path))
         os.replace(staging, path)
     finally:

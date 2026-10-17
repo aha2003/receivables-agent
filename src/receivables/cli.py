@@ -80,7 +80,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _seed(value: str) -> int:
-    if not value.isdigit():
+    if not (value.isascii() and value.isdigit()):
         raise argparse.ArgumentTypeError("the seed is a whole number, 0 or more")
     return int(value)
 
