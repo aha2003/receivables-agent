@@ -1,0 +1,20 @@
+{
+  "name": "demo_company",
+  "seed": 42,
+  "start_date": "2026-11-02",
+  "days": 60,
+  "tick_time": "10:00",
+  "timezone": "Asia/Dubai",
+  "working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  "customers": 12,
+  "customers_per_archetype": 3,
+  "archetypes": ["responsive", "disputer", "silent", "claims_paid"],
+  "invoices_per_customer": 5,
+  "payment_terms_days": 30,
+  "currency": "AED",
+  "amount_step_aed": 100,
+  "amount_units_min": 50,
+  "amount_units_max": 600,
+  "due_offset_min_days": 0,
+  "due_offset_max_days": 30
+}

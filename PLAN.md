@@ -261,7 +261,7 @@ Confirm the exact date with the organisers. Exit: submission pack complete, demo
 
 Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; labelled simulation; plan → tool → policy → action → outcome → playbook demonstrated.
 
-- [ ] **S4.01** Scenario config and seeded demo-company generator
+- [x] **S4.01** Scenario config and seeded demo-company generator
   - Goal: Seed 42; 12 customers, 60 invoices; its own `sim_<seed>.db`.
   - Spec: §19.2
   - Tests: T-SIM-01 (generated data), T-SIM-04

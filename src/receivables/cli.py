@@ -1,4 +1,4 @@
-"""Command line: ``seed``, ``reset`` and ``create-user`` (SYNTHETIC DEMO DATA only).
+"""Command line: ``seed``, ``reset``, ``create-user`` and ``sim-create`` (SYNTHETIC DEMO DATA only).
 
 The database URL and fixtures directory come from settings (environment), never from a
 request. The system clock is used only here, at the application edge.
@@ -33,6 +33,8 @@ from receivables.core.queue import build_queue
 from receivables.core.scoring import score_overdue_invoices
 from receivables.seed import SEED_ORDER, ResetRefused, SeedError, reset, seed
 from receivables.settings import Settings
+from receivables.sim.scenario import load_scenario
+from receivables.sim.simulator import LABEL, SimRefused, create_sim_db
 
 __all__ = ["main"]
 
@@ -67,7 +69,38 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="read the password from standard input instead of prompting",
     )
+    sim = commands.add_parser(
+        "sim-create", help="write the seeded simulation company to its own sim_<seed>.db"
+    )
+    sim.add_argument("--seed", type=_seed, default=None, help="default: the scenario's (42)")
+    sim.add_argument(
+        "--data-dir", type=Path, default=None, help="default: app.data_dir in config.yaml"
+    )
     return parser
+
+
+def _seed(value: str) -> int:
+    if not (value.isascii() and value.isdigit()):
+        raise argparse.ArgumentTypeError("the seed is a whole number, 0 or more")
+    return int(value)
+
+
+def _sim_create(settings: Settings, args: argparse.Namespace) -> int:
+    print(LABEL)
+    data_dir = args.data_dir or Path(load_config(Path(settings.config_path)).app.data_dir)
+    try:
+        result = create_sim_db(load_scenario(seed=args.seed), data_dir, settings.database_url)
+    except SimRefused as err:
+        print(f"sim-create refused: {err}", file=sys.stderr)
+        return 2
+    except OSError as err:
+        print(f"sim-create failed: {err}", file=sys.stderr)
+        return 1
+    counts = {k: result.counts[k] for k in SEED_ORDER}
+    print(f"created {result.path} (seed {result.company.seed})")
+    print(" ".join(f"{name}={count}" for name, count in counts.items()))
+    print(f"company sha256 {result.company.sha256()}")
+    return 0
 
 
 def _read_password(from_stdin: bool) -> str:
@@ -145,6 +178,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"create-user failed: {err}", file=sys.stderr)
             return 1
         return 0
+    if args.command == "sim-create":
+        return _sim_create(settings, args)
     as_of: date = args.as_of or clock.today()
     try:
         if args.command == "reset":
