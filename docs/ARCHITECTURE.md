@@ -4,7 +4,7 @@ One page for evaluators and contributors: how the code is layered, how one agent
 
 ## 1. Ports and adapters
 
-The pure core holds every financial rule; the agent holds the decision loop and declares the ports it needs; adapters implement them with SQLite, the Anthropic API (behind redaction, which `config.yaml` turns on by default), a sandbox mail outbox and the clock. The web app (pages and JSON API) and the CLI are the entry points. The web app and the manual scripts reach the agent through `adapters/db/agent_store.py` `run_agent_tick`; the CLI only manages data (`reset`, `seed`, `create-user`) and never runs the agent. `adapters.db` and `adapters.mail` use each other: the store delivers through the gateway, and the gateway reads drafts and customers.
+The pure core holds every financial rule; the agent holds the decision loop and declares the ports it needs; adapters implement them with SQLite, the Anthropic API (behind redaction, which `config.yaml` turns on by default), a sandbox mail outbox and the clock. The web app (pages and JSON API) and the CLI are the entry points. The web app and the manual scripts reach the agent through `adapters/db/agent_store.py` `run_agent_tick`; the CLI only manages data (`reset`, `seed`, `create-user`, and `sim-create`, which writes the seeded simulation company to its own `sim_<seed>.db`) and never runs the agent. `adapters.db` and `adapters.mail` use each other: the store delivers through the gateway, and the gateway reads drafts and customers.
 
 ```mermaid
 flowchart TB
@@ -68,8 +68,9 @@ flowchart TB
 | `adapters.mail` | `adapters.clock`, `adapters.db` | T-MAIL-01: imports no network client |
 | `adapters.db` | `adapters.clock`, `adapters.config`, `adapters.llm`, `adapters.mail`, `agent`, `core` | |
 | `seed` | `adapters.clock`, `adapters.db` | |
+| `sim` | `adapters.clock`, `adapters.db`, `core` | T-SIM-04: writes only its own `sim_<seed>.db`, never the real database |
 | `web` | `core` | |
-| `cli` | `adapters.clock`, `adapters.config`, `adapters.db`, `api`, `core`, `seed`, `settings` | |
+| `cli` | `adapters.clock`, `adapters.config`, `adapters.db`, `api`, `core`, `seed`, `settings`, `sim` | |
 | `api` | `adapters.clock`, `adapters.config`, `adapters.db`, `adapters.llm`, `adapters.log`, `agent`, `core`, `settings`, `web` | |
 
 ## 2. The agent loop (one tick)
@@ -173,6 +174,8 @@ Every failure has a safe fallback: an invalid or failed classification becomes "
 | `src/receivables/adapters/llm/fake.py` | `FakeClient` |
 | `src/receivables/adapters/mail/sandbox.py` | `SandboxMailGateway` |
 | `src/receivables/adapters/clock.py` | `Clock`, `SimulatedClock` |
+| `src/receivables/sim/company.py` | `generate_company`, `SimCompany` |
+| `src/receivables/sim/simulator.py` | `create_sim_db`, `sim_db_path` |
 | `src/receivables/api/main.py` | `create_app` |
 
 Behaviour and acceptance tests: `docs/SPEC.md`; decisions: `docs/DECISIONS.md`; the test report by spec test ID: `docs/TEST_REPORT.md`.
