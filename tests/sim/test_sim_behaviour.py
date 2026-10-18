@@ -182,6 +182,14 @@ def test_a_disputer_does_not_wait_past_60_days_for_a_resolution() -> None:
     assert paid[first.invoice_number].day == first.due_date + timedelta(days=60)
 
 
+def test_a_disputer_paying_by_the_reply_day_does_not_reply() -> None:
+    first = invoices_of(COMPANY, customer_no(4))[0]
+    reminder = first.due_date + timedelta(days=58)  # the reply would come on the payment day
+    actions = run(behaviour(4), {reminder: [("message_sent", first.invoice_number)]})
+    assert payments(actions)[first.invoice_number].day == first.due_date + timedelta(days=60)
+    assert replies(actions) == []
+
+
 # Silent -----------------------------------------------------------------------------------
 
 

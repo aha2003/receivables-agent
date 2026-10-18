@@ -131,8 +131,8 @@ class CustomerBehaviour:
             return
         if state.contact is None:
             state.contact = day
-        if state.resolved is not None and state.response is None and day >= state.resolved:
-            state.response = day
+        if state.resolved is not None and state.response is None:
+            state.response = day  # on or after the resolution: events are never backdated
 
     def dispute_resolved(self, invoice_number: str, day: date) -> None:
         state = self._event(invoice_number, day)
