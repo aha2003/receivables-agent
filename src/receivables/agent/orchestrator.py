@@ -27,10 +27,13 @@ from receivables.agent.cases import (
     EscalateExecuted,
     MessageSent,
     PaidInFull,
+    PromiseBroken,
+    PromiseMade,
     transition,
 )
 from receivables.agent.drafting import DraftWriter, generate_draft
 from receivables.agent.facts import AgentFacts
+from receivables.agent.outcomes import BROKEN, InferredOutcome, infer_outcomes, promise_verdicts
 from receivables.agent.plans import PlanRejection, validate_plan
 from receivables.agent.policy import L2Limits, SendDraft, evaluate_send, send_facts_from
 from receivables.agent.rules_planner import Plan, PlanStep, plan_case
@@ -88,6 +91,7 @@ class TickConfig:
     sender_name: str
     max_regenerations: int = 2
     sender_domain: str | None = None
+    promise_grace_days: int = 2  # §18.7 [A]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -163,6 +167,8 @@ class AgentStore(Protocol):
     def sends_on(self, local_date: date, timezone: str) -> int: ...
     def outbound_dates(self, customer_id: str, timezone: str) -> tuple[date, ...]: ...
     def audit(self, action: str, entity_type: str, entity_id: str, after: Any) -> None: ...
+    def outcome_ids(self) -> set[str]: ...
+    def add_outcome(self, outcome: InferredOutcome, run_id: str) -> None: ...
 
 
 @dataclass
@@ -260,6 +266,8 @@ def run_tick(
                     {"run_id": run_id, "error": _code(error)},
                 )
 
+    case_errors += _learn(tick)
+
     ordered = sorted(facts.scored.values(), key=lambda s: (-s.priority_value, s.invoice_number))
     budget = min(config.max_cases_per_tick, MAX_CASES_PER_TICK)
     selected = [s.invoice_number for s in ordered[:budget]]
@@ -287,27 +295,81 @@ def run_tick(
     return summary
 
 
+def _learn(tick: _Tick) -> int:
+    """§18.7 at every tick: escalate pending cases whose promise is now broken (§18.2, every
+    such case, not only the ones this tick selects) and record the new final outcomes. Only
+    when the tick persists and its ``as_of`` is not after its own date, so a future-dated
+    preview cannot record a premature outcome (D-051 options 2a, 3a). Returns case errors."""
+    local_today = tick.now_local.astimezone(ZoneInfo(tick.config.l2.timezone)).date()
+    if not tick.persist or tick.facts.as_of > local_today:
+        return 0
+    grace = tick.config.promise_grace_days
+    verdicts = promise_verdicts(tick.facts, grace)
+    errors = 0
+    for invoice, state in sorted(tick.states.items()):
+        if state is not CaseState.PROMISE_PENDING:
+            continue
+        latest = _latest(tick.facts, invoice, {"PROMISE_TO_PAY"})
+        if latest is None or verdicts.get(latest.event_id, ("", ""))[1] != BROKEN:
+            continue
+        try:
+            with tick.store.savepoint():
+                result = tick.apply(invoice, PromiseBroken())
+                if result.escalation_task:  # §18.2: entering ESCALATED always creates a task
+                    text = f"Escalated: the promise to pay {invoice} by {latest.promise_date} "
+                    text += "was broken."
+                    _task(tick, f"{tick.run_id}-{invoice}-PB", invoice, "finance", text,
+                          tick.facts.as_of)  # fmt: skip
+        except Exception as error:
+            tick.states[invoice] = state
+            errors += 1
+            tick.store.audit(
+                "agent.case_failed", "invoice", invoice,
+                {"run_id": tick.run_id, "error": _code(error)},
+            )  # fmt: skip
+    known = tick.store.outcome_ids()
+    for outcome in infer_outcomes(tick.facts, grace):
+        if outcome.outcome_id not in known:
+            tick.store.add_outcome(outcome, tick.run_id)
+    return errors
+
+
+def _latest(facts: AgentFacts, invoice: str, types: set[str]) -> Any:
+    events = [e for e in facts.events.get(invoice, ()) if e.event_type in types]
+    return max(events, key=lambda e: (e.event_date, e.event_id)) if events else None
+
+
 def _code(error: Exception) -> str:
     """An error code for the trace: the exception type only, never its message (may hold data)."""
     return type(error).__name__
 
 
 def _open_case(tick: _Tick, invoice: str) -> None:
-    """Create and assess the case, then apply the latest dispute event once (§18.2)."""
+    """Create and assess the case, then apply the latest dispute event and the latest promise
+    once each, oldest first (§18.2)."""
     tick.apply(invoice, BecameOverdue())
     tick.apply(invoice, Assessed())
-    disputes = [
+    latest = [
         e
-        for e in tick.facts.events.get(invoice, ())
-        if e.event_type in {"DISPUTE_OPENED", "DISPUTE_RESOLVED"}
+        for e in (
+            _latest(tick.facts, invoice, {"DISPUTE_OPENED", "DISPUTE_RESOLVED"}),
+            _latest(tick.facts, invoice, {"PROMISE_TO_PAY"}),
+        )
+        if e is not None
     ]
-    if not disputes:
-        return
-    latest = max(disputes, key=lambda e: (e.event_date, e.event_id))
-    if (invoice, latest.event_id) in tick.applied_events:
-        return  # already applied: later state changes (e.g. escalation) stand
-    trigger = DisputeOpened() if latest.event_type == "DISPUTE_OPENED" else DisputeResolved()
-    tick.apply(invoice, trigger, latest.event_id)
+    for event in sorted(latest, key=lambda e: (e.event_date, e.event_id)):
+        if (invoice, event.event_id) in tick.applied_events:
+            continue  # already applied: later state changes (e.g. escalation) stand
+        trigger: CaseTrigger
+        if event.event_type == "DISPUTE_OPENED":
+            trigger = DisputeOpened()
+        elif event.event_type == "DISPUTE_RESOLVED":
+            trigger = DisputeResolved()
+        elif event.promise_date is not None:
+            trigger = PromiseMade(promise_date=event.promise_date, as_of=tick.facts.as_of)
+        else:  # pragma: no cover - the importer requires a promise date
+            continue
+        tick.apply(invoice, trigger, event.event_id)
 
 
 def _read(tool: str, args: Mapping[str, Any], facts: AgentFacts) -> Any:

@@ -72,6 +72,8 @@ class AgentFacts:
     messages: tuple[MessageHeader, ...]
     # Messages left out because ``sent_at`` is not an ISO timestamp with an offset.
     invalid_message_ids: tuple[str, ...] = ()
+    # Payments applied to an invoice of the ledger, dated on or before ``as_of`` (§18.7).
+    applied_payments: tuple[PaymentRecord, ...] = ()
 
 
 def _sent_at(value: str) -> datetime | None:
@@ -119,6 +121,19 @@ def build_agent_facts(
             key=lambda p: (p.payment_date, p.payment_id),
         )
     )
+    ledger_numbers = {r.invoice_number for r in rows}
+    applied = tuple(
+        sorted(
+            (
+                p
+                for p in payment_list
+                if p.invoice_number is not None
+                and p.invoice_number in ledger_numbers
+                and p.payment_date <= as_of
+            ),
+            key=lambda p: (p.payment_date, p.payment_id),
+        )
+    )
     timed: list[tuple[datetime, MessageHeader]] = []
     invalid: list[str] = []
     for m in messages:
@@ -142,4 +157,5 @@ def build_agent_facts(
         playbooks={p.customer_id: p for p in playbooks},
         messages=tuple(m for _, m in timed),
         invalid_message_ids=tuple(sorted(invalid)),
+        applied_payments=applied,
     )
