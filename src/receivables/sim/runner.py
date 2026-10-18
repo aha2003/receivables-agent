@@ -15,8 +15,10 @@ results JSON. Each day, in this order:
    (option 4a); resolves a dispute 3 working days after the agent's first document request for
    it, as a ``DISPUTE_RESOLVED`` event (option 3a); and approves and marks sent every draft
    created on an earlier day (options 1a, 5a), after checking it again with the draft validator
-   and recording ``evaluate_send`` for it; it rejects a draft that is out of date, or about an
-   invoice messaged in the last ``min_days_between_contacts`` days.
+   and recording ``evaluate_send`` for it (a person may send a message the policy denies, as at
+   L1, D-046; the results count them); it rejects a draft that is out of date (including one
+   written about a dispute since resolved), or about an invoice messaged in the last
+   ``min_days_between_contacts`` days.
 3. 10:00, working days: the arm acts. A0 nothing; A1 a template reminder draft (tone by age)
    for every overdue invoice not messaged or drafted in the last 7 days, and nothing else; A2
    the agent at L1 and A3 at L2 with every simulated customer allowlisted, both with the rule
@@ -57,6 +59,7 @@ from receivables.adapters.db.importer import import_csv
 from receivables.adapters.db.models import (
     AgentStep,
     Approval,
+    AuditLog,
     Classification,
     Correspondence,
     Draft,
@@ -75,7 +78,7 @@ from receivables.agent.orchestrator import recheck_draft
 from receivables.agent.policy import SendDraft, evaluate_send, send_facts_from
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
-from receivables.core.scoring import round_half_up
+from receivables.core.scoring import active_dispute_label, round_half_up
 from receivables.sim.behaviour import (
     CustomerBehaviour,
     CustomerPayment,
@@ -90,6 +93,7 @@ from receivables.sim.simulator import (
     SimRefused,
     check_destination,
     create_sim_db,
+    sim_db_path,
 )
 
 __all__ = ["ARMS", "HUMAN", "SimRun", "results_path", "run_arms"]
@@ -148,6 +152,7 @@ class _Arm:
     document_requested: dict[str, date] = field(default_factory=dict)  # first, per dispute
     resolved: set[str] = field(default_factory=set)
     last_sent: dict[str, date] = field(default_factory=dict)  # invoice -> last message day
+    closed_on: dict[str, date] = field(default_factory=dict)  # invoice -> allocation day
 
     @property
     def agent(self) -> bool:
@@ -206,10 +211,10 @@ class _Arm:
                         clock=self.clock, actor="inbox",
                     )  # fmt: skip
 
-    def _import(self, kind: str, raw: bytes, day: date) -> None:
+    def _import(self, kind: str, raw: bytes, day: date, actor: str = "simulator") -> None:
         result = import_csv(
             self.engine, kind, raw, filename=f"sim_{kind}_{day.isoformat()}.csv",
-            clock=self.clock, actor="simulator",
+            clock=self.clock, actor=actor,
         )  # fmt: skip
         if result.status != "accepted":
             codes = [(e.line, e.code) for e in result.errors]
@@ -258,6 +263,7 @@ class _Arm:
                 clock=self.clock, actor=HUMAN,
             )  # fmt: skip
             behaviour.allocation_confirmed(invoice, day)
+            self.closed_on[invoice] = day
 
     def _resolve(self, day: date) -> None:
         for invoice, requested in sorted(self.document_requested.items()):
@@ -271,7 +277,7 @@ class _Arm:
                  "promise_date"),
                 [(f"SIM-X{_suffix(invoice)}", invoice, "DISPUTE_RESOLVED", day.isoformat(), "",
                   "")],
-            ), day)  # fmt: skip
+            ), day, actor=HUMAN)  # fmt: skip
             self._behaviour(invoice).dispute_resolved(invoice, day)
 
     def _send_drafts(self, day: date) -> None:
@@ -281,7 +287,14 @@ class _Arm:
                 for d in conn.execute(
                     select(Draft.draft_id, Draft.created_at)
                     .where(Draft.status == "draft")
-                    .order_by(Draft.created_at, Draft.draft_id)
+                    # Draft ids are random: order by what the draft is about, so the human's
+                    # checks (and their recorded verdicts) are the same in every run.
+                    .order_by(
+                        Draft.created_at,
+                        Draft.customer_id,
+                        Draft.invoice_numbers_json,
+                        Draft.draft_id,
+                    )
                 ).all()
                 if _local_date(d.created_at) < day
             ]
@@ -298,8 +311,13 @@ class _Arm:
                     if n in self.last_sent and (day - self.last_sent[n]).days < gap
                 ]
                 stale = recheck_draft(facts, draft, tick_config(self.config))
+                if draft.dispute_label is not None and not any(
+                    active_dispute_label(facts.events.get(n, ()), day) is not None
+                    for n in draft.invoice_numbers
+                ):  # written about a dispute that is now resolved: not the response
+                    stale = (*stale, "DISPUTE_RESOLVED")
                 if not recent and not stale:
-                    self._record_policy(conn, store, facts, draft)
+                    self._record_policy(conn, store, facts, draft, stale)
             if recent or stale:
                 reason = "contacted recently" if recent else "out of date: " + ", ".join(stale)
                 reject_draft(self.engine, draft_id, reason, clock=self.clock, actor=HUMAN)
@@ -308,9 +326,11 @@ class _Arm:
             mark_draft_sent(self.engine, draft_id, self.clock.now(), clock=self.clock, actor=HUMAN)
             self._sent(draft.invoice_numbers, day)
 
-    def _record_policy(self, conn: Any, store: DbAgentStore, facts: Any, draft: Any) -> None:
-        """The policy engine's verdict on a message a person sends (T-SIM-03): recorded, and the
-        person sends it anyway, as at L1 (D-046)."""
+    def _record_policy(
+        self, conn: Any, store: DbAgentStore, facts: Any, draft: Any, recheck: tuple[str, ...]
+    ) -> None:
+        """The policy engine's verdict on a message a person sends (T-SIM-03): recorded with the
+        validator's re-check, and the person sends it even when denied, as at L1 (D-046)."""
         l2 = self.config.agent.l2
         customer = facts.customers[draft.customer_id]
         decision = evaluate_send(
@@ -320,14 +340,14 @@ class _Arm:
                 outbound_dates=store.outbound_dates(draft.customer_id, l2.timezone),
             ),
             SendDraft(invoice_numbers=draft.invoice_numbers, tone=draft.tone,
-                      recipient=customer.contact_email or "", violations=draft.violations),
+                      recipient=customer.contact_email or "", violations=recheck),
             self.clock.now(), l2,
         )  # fmt: skip
         write_audit(
             conn, self.clock, actor=HUMAN, action="sim.policy_checked", entity_type="draft",
             entity_id=draft.draft_id, before=None,
             after={"allowed": decision.allowed, "reasons": list(decision.reasons),
-                   "violations": list(draft.violations)},
+                   "violations": list(draft.violations), "recheck": list(recheck)},
         )  # fmt: skip
 
     # 3. The arm ---------------------------------------------------------------------------------
@@ -409,10 +429,20 @@ class _Arm:
                 .select_from(AgentStep)
                 .where(AgentStep.tool == "send_email", AgentStep.policy_allowed == 0)
             ).scalar_one()
+            checks = conn.execute(
+                select(AuditLog.after_json).where(AuditLog.action == "sim.policy_checked")
+            ).scalars()
+            sent_denied = sum(1 for c in checks if not json.loads(c or "{}")["allowed"])
         overdue = sum(
             r.open_amount for r in rows if r.open_amount > 0 and (r.days_overdue or 0) > 0
         )
-        late = [(r.settled_date - r.due_date).days for r in rows if r.settled_date is not None]
+        # An invoice closed by allocating the day-0 cash counts from the allocation, when it
+        # closed (§19.2), not from the cash's own date, which would flatter the agent arms.
+        late = [
+            (self.closed_on.get(r.invoice_number, r.settled_date) - r.due_date).days
+            for r in rows
+            if r.settled_date is not None
+        ]
         opened: dict[str, date] = {}
         cycles: list[int] = []
         for invoice, kind, event_date in events:
@@ -431,6 +461,7 @@ class _Arm:
             "messages_sent": manual + sandbox,
             "approvals_needed": approvals,
             "policy_denials": denials,
+            "sent_by_a_person_despite_a_denial": sent_denied,
         }
 
 
@@ -487,7 +518,12 @@ def run_arms(scenario: Scenario, data_dir: Path, real_database_url: str, config:
     """Run A0 to A3 on the seeded company and write ``sim_<seed>_results.json``."""
     out = results_path(data_dir, scenario.seed)
     staging = Path(f"{out}{STAGING_SUFFIX}")
+    # Every destination is checked before anything is written (create_sim_db checks again).
     check_destination(out, staging, real_database_url, sqlite=False)
+    for arm in ARMS:
+        path = sim_db_path(data_dir, scenario.seed, arm)
+        check_destination(path, Path(f"{path}{STAGING_SUFFIX}"), real_database_url)
+    out.unlink(missing_ok=True)  # a failed run never leaves an earlier run's results behind
     databases: dict[str, Path] = {}
     arms: dict[str, Any] = {}
     company: SimCompany | None = None
@@ -510,7 +546,8 @@ def run_arms(scenario: Scenario, data_dir: Path, real_database_url: str, config:
             "human_acts_at": HUMAN_TIME.isoformat("minutes"),
             "human_waits_working_days": 1,
             "dispute_resolved_after_working_days": RESOLVE_AFTER_WORKING_DAYS,
-            "a1_reminder_every_days": REMINDER_EVERY_DAYS,
+            "a1_reminder_min_gap_days": REMINDER_EVERY_DAYS,
+            "a1_reminder_sent": "by the human, the next working day",
             "a3_allowlist": "every simulated customer",
         },
         "arms": arms,

@@ -6,6 +6,9 @@ second. No test calls the Anthropic API: the simulation has no model at all.
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -33,6 +36,7 @@ from receivables.adapters.db.models import (
     Payment,
     Task,
 )
+from receivables.agent.policy import REASON_CODES
 from receivables.cli import main
 from receivables.seed import seed
 from receivables.sim.behaviour import behaviours_for
@@ -105,13 +109,32 @@ def _fils(text: str) -> int:
 # Reproducibility and the ordering -------------------------------------------------------------
 
 
+_SECOND_RUN = """
+import sys
+from pathlib import Path
+from receivables.adapters.config import load_config
+from receivables.sim.runner import run_arms
+from receivables.sim.scenario import load_scenario
+run = run_arms(load_scenario(), Path(sys.argv[1]), sys.argv[2], load_config(Path(sys.argv[3])))
+print(run.results_path)
+"""
+
+
 @pytest.mark.spec("T-SIM-01")
 def test_seed_42_twice_gives_identical_results_json(
     sim: SimRun, tmp_path: Path, real_db: Path
 ) -> None:
-    again = run_arms(SCENARIO, tmp_path / "again", f"sqlite:///{real_db}", CONFIG)
-    assert again.results_path.name == sim.results_path.name == "sim_42_results.json"
-    assert _sha(again.results_path) == _sha(sim.results_path)
+    # The second run is another process with another hash seed, so no set or dict order that
+    # depends on string hashing can make both runs agree by chance.
+    env = {**os.environ, "PYTHONHASHSEED": "12345"}
+    done = subprocess.run(  # noqa: S603 - this interpreter, fixed arguments
+        [sys.executable, "-c", _SECOND_RUN, str(tmp_path / "again"), f"sqlite:///{real_db}",
+         str(ROOT / "config.yaml")],
+        capture_output=True, text=True, env=env, check=True, cwd=ROOT,
+    )  # fmt: skip
+    again = Path(done.stdout.strip())
+    assert again.name == sim.results_path.name == "sim_42_results.json"
+    assert _sha(again) == _sha(sim.results_path)
     assert json.loads(sim.results_path.read_text(encoding="utf-8")) == sim.results
 
 
@@ -134,7 +157,8 @@ def test_the_results_are_labelled_and_complete(sim: SimRun) -> None:
     assert set(r["arms"]) == set(ARMS)
     keys = {"overdue_amount", "mean_days_past_due_at_payment", "invoices_settled",
             "mean_dispute_cycle_days", "disputes_resolved", "disputes_open", "messages_sent",
-            "approvals_needed", "policy_denials"}  # fmt: skip
+            "approvals_needed", "policy_denials",
+            "sent_by_a_person_despite_a_denial"}  # fmt: skip
     assert all(set(m) == keys for m in r["arms"].values())
     assert "planner" in r["assumptions"] and "classifier" in r["assumptions"]
     text = sim.results_path.read_text(encoding="utf-8")
@@ -150,6 +174,50 @@ def test_the_overdue_amount_is_the_ledgers(sim: SimRun, engines: dict[str, Engin
             rows = build_ledger(load_invoices(conn), load_payments(conn), END)
         overdue = sum(r.open_amount for r in rows if r.open_amount and (r.days_overdue or 0) > 0)
         assert _fils(sim.results["arms"][arm]["overdue_amount"]) == overdue
+
+
+def test_days_past_due_count_a_claimed_invoice_from_its_allocation(
+    sim: SimRun, engines: dict[str, Engine]
+) -> None:
+    from receivables.adapters.db.repo import load_invoices, load_payments
+    from receivables.core.ledger import build_ledger
+
+    for arm in ARMS:
+        engine = engines[arm]
+        allocated = {a.entity_id: _local(a.ts).date() for a in _all(engine, select(AuditLog)
+                     .where(AuditLog.action == "payment.allocated"))}  # fmt: skip
+        cash = {p.payment_id: p.invoice_number for p in _all(engine, select(Payment))}
+        closed = {cash[pid]: day for pid, day in allocated.items() if pid in cash}
+        with engine.connect() as conn:
+            rows = build_ledger(load_invoices(conn), load_payments(conn), END)
+        late = [(closed.get(r.invoice_number, r.settled_date) - r.due_date).days
+                for r in rows if r.settled_date is not None]  # fmt: skip
+        expected = Decimal(sum(late)) / len(late)
+        metric = Decimal(sim.results["arms"][arm]["mean_days_past_due_at_payment"])
+        assert abs(metric - expected) < Decimal("0.005"), arm
+        assert len(closed) == (3 if arm in ("A2", "A3") else 0)
+        assert all(day > SCENARIO.start_date for day in closed.values())
+
+
+def test_a_dispute_is_answered_only_by_a_message_written_after_it_was_resolved(
+    engines: dict[str, Engine],
+) -> None:
+    for arm in ("A2", "A3"):
+        engine = engines[arm]
+        resolved = {e.invoice_number: date.fromisoformat(e.event_date) for e in _all(
+            engine, select(Event).where(Event.event_type == "DISPUTE_RESOLVED"))}  # fmt: skip
+        assert resolved
+        for draft in _all(engine, select(Draft).where(Draft.status == "sent_manually")):
+            for n in json.loads(draft.invoice_numbers_json):
+                if n in resolved and _local(draft.sent_at).date() >= resolved[n]:
+                    assert _local(draft.created_at).date() >= resolved[n], (arm, n)
+
+
+def test_dispute_resolutions_are_the_humans(engines: dict[str, Engine]) -> None:
+    for arm in ("A2", "A3"):
+        imports = _all(engines[arm], select(AuditLog).where(AuditLog.action == "import.accepted"))
+        events = [a for a in imports if json.loads(a.after_json)["file_kind"] == "events"]
+        assert len(events) == 14 and {a.actor for a in events} == {"sim-human"}
 
 
 # T-SIM-03: every outbound message passes the draft validator and the policy engine -----------
@@ -168,7 +236,11 @@ def test_every_message_passed_the_validator_and_the_policy_engine(
         for draft in manual:  # a person's message: validated, and the policy's verdict recorded
             assert draft.generator == "template" and json.loads(draft.violations_json) == []
             (check,) = checks[draft.draft_id]
-            assert check["violations"] == [] and check["allowed"] is (check["reasons"] == [])
+            assert check["violations"] == [] and check["recheck"] == []  # checked again to send
+            assert set(check["reasons"]) <= set(REASON_CODES)
+        denied = sum(1 for d in manual if not checks[d.draft_id][0]["allowed"])
+        assert denied == sim.results["arms"][arm]["sent_by_a_person_despite_a_denial"]
+        assert set(checks) <= {d.draft_id for d in manual}  # a verdict only for what was sent
         sends = {
             json.loads(s.result_json)["draft_id"]: s
             for s in _all(engine, select(AgentStep).where(AgentStep.tool == "send_email",
@@ -245,6 +317,10 @@ def test_replies_are_accepted_with_their_true_label_a_working_day_later(
         accepted = _all(engine, select(AuditLog).where(AuditLog.action ==
                                                        "classification.accepted"))  # fmt: skip
         assert {a.actor for a in accepted} == {"sim-human"} and len(accepted) == len(rows)
+        for a in accepted:  # the classifier said "unclear"; only the person knew the meaning
+            assert json.loads(a.before_json)["label"] == "UNCLEAR"
+            assert json.loads(a.after_json)["label_override"] is True
+        assert {c.needs_review for c in rows} == {1}
         sent = {m.message_id: _local(m.sent_at) for m in _all(engine, select(Correspondence))}
         for a in accepted:
             at = _local(a.ts)
@@ -356,13 +432,49 @@ def test_the_real_database_is_untouched(sim: SimRun, real_db: Path) -> None:
     ]  # fmt: skip
 
 
+@pytest.mark.spec("T-SIM-04")
+@pytest.mark.parametrize("name", ["sim_42_a0.db", "sim_42_a3.db", "SIM_42_A2.db"])
+def test_a_real_database_named_like_an_arm_is_refused_before_anything_is_written(
+    tmp_path: Path, name: str
+) -> None:
+    from receivables.sim.simulator import SimRefused
+
+    real = _real_db(tmp_path / name)
+    before = _sha(real)
+    with pytest.raises(SimRefused, match=r"is the real database or shares its files; refusing$"):
+        run_arms(SCENARIO, tmp_path, f"sqlite:///{real}", CONFIG)
+    assert _sha(real) == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == [name]
+
+
+@pytest.mark.spec("T-SIM-04")
+def test_the_results_file_cannot_be_the_real_database_or_a_symlink(tmp_path: Path) -> None:
+    from receivables.sim.simulator import SimRefused
+
+    real = _real_db(tmp_path / "sim_42_results.json")
+    before = _sha(real)
+    with pytest.raises(SimRefused, match=r"is the real database or shares its files; refusing$"):
+        run_arms(SCENARIO, tmp_path, f"sqlite:///{real}", CONFIG)
+    assert _sha(real) == before
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    (other / "sim_42_results.json").symlink_to(tmp_path / "notes.txt")
+    (tmp_path / "notes.txt").write_text("keep me")
+    with pytest.raises(SimRefused, match=r"is a symlink; refusing to replace it$"):
+        run_arms(SCENARIO, other, f"sqlite:///{real}", CONFIG)
+    assert (tmp_path / "notes.txt").read_text() == "keep me"
+    assert sorted(p.name for p in other.iterdir()) == ["sim_42_results.json"]
+
+
 def test_cli_sim_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     real = _real_db(tmp_path / "app" / "demo.db")
+    before = _sha(real)
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{real}")
     assert main(["sim-run", "--seed", "7", "--data-dir", str(tmp_path / "sim")]) == 0
     out = capsys.readouterr().out
     assert "SYNTHETIC DEMO DATA" in out and LABEL in out
     assert all(f"{arm}: overdue AED" in out for arm in ARMS)
     assert str(tmp_path / "sim" / "sim_7_results.json") in out
+    assert _sha(real) == before
