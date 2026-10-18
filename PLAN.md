@@ -266,7 +266,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §19.2
   - Tests: T-SIM-01 (generated data), T-SIM-04
   - Done when: Same seed gives identical data; the real database is untouched.
-- [ ] **S4.02** Customer behaviour engine
+- [x] **S4.02** Customer behaviour engine
   - Goal: The four archetypes producing replies and payments on a simulated clock.
   - Spec: §19.2
   - Tests: archetype behaviour unit tests

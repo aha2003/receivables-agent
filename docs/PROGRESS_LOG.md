@@ -343,3 +343,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-047 (Slice 4 started before the manual C1.05 to C1.07, the maintainer's choice; options 1a, 2a, 3a; review fixes: the real database recognised across case and Unicode spellings, `file:` URIs refused, a re-check before the swap)
 - Unverified: T-SIM-01 for the results JSON (S4.03); the archetype behaviour (S4.02); the sim database files are not byte-identical between builds (random import ids), only their ledger tables
 - Next step: S4.02 Customer behaviour engine
+
+## 2026-10-18 — [S4.02] Customer behaviour engine
+- PR: see branch | Branch: s4-02-behaviour-engine | Commit: see PR head
+- Tests: `uv run pytest -q` → 2475 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/sim/test_sim_behaviour.py` (48 archetype behaviour tests); mutation checks on every rule killed except one equivalent mutant (events on a closed invoice, which change nothing)
+- Spec / test IDs covered: §19.2 (the four archetypes: Responsive, Disputer, Silent and Claims paid, producing replies and payments on simulated days); archetype behaviour unit tests (no spec test ID)
+- Deviations or decisions (link docs/DECISIONS.md): D-048 (options 1a, 2a, 3a; review fixes); D-049 (open: T-SIM-02's A1 < A0 cannot hold under the §19.2 behaviours on overdue at day 60; to be settled in S4.03 with the arms' results)
+- Unverified: the behaviours inside a full run (S4.03); T-SIM-02's ordering (D-049)
+- Next step: S4.03 Arms A0 to A3 and metrics

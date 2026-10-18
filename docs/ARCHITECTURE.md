@@ -175,6 +175,7 @@ Every failure has a safe fallback: an invalid or failed classification becomes "
 | `src/receivables/adapters/mail/sandbox.py` | `SandboxMailGateway` |
 | `src/receivables/adapters/clock.py` | `Clock`, `SimulatedClock` |
 | `src/receivables/sim/company.py` | `generate_company`, `SimCompany` |
+| `src/receivables/sim/behaviour.py` | `CustomerBehaviour`, `behaviours_for` |
 | `src/receivables/sim/simulator.py` | `create_sim_db`, `sim_db_path` |
 | `src/receivables/api/main.py` | `create_app` |
 
