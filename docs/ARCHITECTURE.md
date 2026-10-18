@@ -157,6 +157,7 @@ Every failure has a safe fallback: an invalid or failed classification becomes "
 | `src/receivables/agent/tools.py` | `TOOL_REGISTRY` |
 | `src/receivables/agent/rules_planner.py` | `plan_case` |
 | `src/receivables/agent/cases.py` | `transition` |
+| `src/receivables/agent/outcomes.py` | `infer_outcomes`, `promise_outcome` |
 | `src/receivables/core/draft_validator.py` | `check_draft` |
 | `src/receivables/core/verify.py` | `verify_extraction` |
 | `src/receivables/core/redact.py` | `redact`, `pseudonymize` |

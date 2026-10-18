@@ -103,7 +103,7 @@ def test_a_promise_replaced_on_the_last_day_of_its_grace_is_superseded(make_agen
     facts = make_agent_facts(
         extra_events=(promise("E-T01", date(2026, 10, 22), date(2026, 10, 30)),),  # P + 2
     )
-    assert promise_verdicts(facts, GRACE) == {"E-T01": ("INV-008", BROKEN)}
+    assert promise_verdicts(facts, GRACE) == {"E-T01": ("INV-008", PENDING)}  # E-002 replaced
 
 
 def test_a_new_promise_after_the_grace_does_not_rescue_the_old_one(make_agent_facts) -> None:

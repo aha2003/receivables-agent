@@ -110,8 +110,8 @@ def _states(db: Engine) -> dict[str, str]:
 
 
 def _promise_tasks(db: Engine, invoice: str) -> list[dict[str, Any]]:
-    return rows(db, "SELECT task_id, owner_role, text FROM tasks"
-                    f" WHERE invoice_number = '{invoice}' AND text LIKE '%promise%'")  # fmt: skip
+    tasks = rows(db, "SELECT task_id, invoice_number, owner_role, text FROM tasks")
+    return [t for t in tasks if t["invoice_number"] == invoice and "promise" in t["text"]]
 
 
 def test_a_promise_makes_the_case_pending_and_a_broken_one_escalates_it(db: Engine) -> None:
