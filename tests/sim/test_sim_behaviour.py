@@ -8,6 +8,7 @@ the invoice its unallocated cash matches; its other invoices pay 45 days after d
 import ast
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -190,6 +191,29 @@ def test_a_disputer_paying_by_the_reply_day_does_not_reply() -> None:
     assert replies(actions) == []
 
 
+def test_a_message_and_a_resolution_on_one_day_count_in_either_order() -> None:
+    first = invoices_of(COMPANY, customer_no(5))[0]
+    resolved = first.due_date + timedelta(days=6)
+    paid = payments(run(behaviour(5), {
+        first.due_date + timedelta(days=1): [("message_sent", first.invoice_number)],
+        resolved: [("message_sent", first.invoice_number),
+                   ("dispute_resolved", first.invoice_number)],
+    }))  # fmt: skip
+    assert paid[first.invoice_number].day == resolved + timedelta(days=3)
+
+
+def test_no_dispute_reply_about_an_already_resolved_dispute() -> None:
+    first = invoices_of(COMPANY, customer_no(4))[0]
+    reminder = first.due_date + timedelta(days=1)
+    actions = run(behaviour(4), {
+        reminder: [("message_sent", first.invoice_number)],
+        reminder + timedelta(days=1): [("dispute_resolved", first.invoice_number),
+                                       ("message_sent", first.invoice_number)],
+    })  # fmt: skip
+    assert replies(actions) == []
+    assert payments(actions)[first.invoice_number].day == reminder + timedelta(days=4)
+
+
 # Silent -----------------------------------------------------------------------------------
 
 
@@ -211,6 +235,17 @@ def test_silent_pays_10_days_after_escalation_when_that_is_sooner() -> None:
                                        late: [("escalated", second.invoice_number)]}))  # fmt: skip
     assert paid[first.invoice_number].day == soon + timedelta(days=10)
     assert paid[second.invoice_number].day == second.due_date + timedelta(days=35)
+
+
+@pytest.mark.parametrize(("n", "delay"), [(1, 2), (3, 4)])
+@pytest.mark.parametrize("offset", [-5, 10])  # before it falls due, and well after
+def test_responsive_payment_is_counted_from_the_reminder_not_the_due_date(
+    n: int, delay: int, offset: int
+) -> None:
+    inv = invoices_of(COMPANY, customer_no(n))[2]
+    reminder = max(START, inv.due_date + timedelta(days=offset))
+    paid = payments(run(behaviour(n), {reminder: [("message_sent", inv.invoice_number)]}))
+    assert paid[inv.invoice_number].day == reminder + timedelta(days=delay)
 
 
 # Claims paid ------------------------------------------------------------------------------
@@ -270,6 +305,47 @@ def test_an_allocation_before_any_contact_also_closes_it() -> None:
                                   inv.due_date + timedelta(days=1):
                                       [("message_sent", inv.invoice_number)]})  # fmt: skip
     assert inv.invoice_number not in payments(actions) and replies(actions) == []
+
+
+def test_claims_paid_reply_is_counted_from_the_reminder_and_states_the_cash() -> None:
+    inv = claimed(11)
+    reminder = inv.due_date + timedelta(days=10)
+    (reply,) = replies(run(behaviour(11), {reminder: [("message_sent", inv.invoice_number)]}))
+    assert reply.day == reminder + timedelta(days=2)
+    assert reply.text == (
+        f"We paid invoice {inv.invoice_number} in full on 2026-11-02 by bank transfer, "
+        f"AED {Decimal(inv.amount_fils) / 100:,.2f}."
+    )
+
+
+def test_an_allocation_after_contact_but_before_the_reply_stops_the_reply() -> None:
+    inv = claimed(10)
+    reminder = inv.due_date + timedelta(days=1)
+    actions = run(behaviour(10), {
+        reminder: [("message_sent", inv.invoice_number)],
+        reminder + timedelta(days=1): [("allocation_confirmed", inv.invoice_number)],
+    })  # fmt: skip
+    assert replies(actions) == [] and inv.invoice_number not in payments(actions)
+
+
+def test_an_allocation_closes_any_invoice_and_stops_its_payment() -> None:
+    inv = invoices_of(COMPANY, customer_no(1))[1]
+    actions = run(behaviour(1), {START: [("allocation_confirmed", inv.invoice_number)]})
+    assert inv.invoice_number not in payments(actions)
+    assert len(payments(actions)) == 4  # the others still pay
+
+
+def test_an_allocation_to_a_closed_invoice_is_refused() -> None:
+    b = behaviour(1)
+    inv = invoices_of(COMPANY, customer_no(1))[0]
+    paid_on = inv.due_date + timedelta(days=25)
+    b.actions_on(paid_on)
+    with pytest.raises(ValueError, match="already closed"):
+        b.allocation_confirmed(inv.invoice_number, paid_on)
+    other = invoices_of(COMPANY, customer_no(1))[4]
+    b.allocation_confirmed(other.invoice_number, paid_on)
+    with pytest.raises(ValueError, match="already closed"):
+        b.allocation_confirmed(other.invoice_number, paid_on)  # the same cash twice
 
 
 # Across archetypes --------------------------------------------------------------------------
@@ -356,6 +432,24 @@ def test_skipped_days_lose_no_action() -> None:
         day += timedelta(days=7)
     weekly.extend(b.actions_on(END))
     assert sorted(weekly, key=lambda a: a.day) == every_day  # each keeps its own date
+
+
+def test_skipped_days_keep_event_driven_dates_and_the_same_day_rule() -> None:
+    b, daily = behaviour(4), behaviour(4)
+    first = invoices_of(COMPANY, customer_no(4))[0]
+    second = invoices_of(COMPANY, customer_no(4))[1]
+    reminder = first.due_date + timedelta(days=1)
+    late = second.due_date + timedelta(days=58)  # its reply would fall on its payment day
+    events = {reminder: [("message_sent", first.invoice_number)],
+              late: [("message_sent", second.invoice_number)]}  # fmt: skip
+    skipped: list[CustomerReply | CustomerPayment] = []
+    for day in sorted({START, reminder, late, END}):  # only the days with events, and the end
+        skipped.extend(b.actions_on(day))
+        for kind, invoice in events.get(day, []):
+            getattr(b, kind)(invoice, day)
+    assert sorted(skipped, key=lambda a: (a.day, a.invoice_number)) == run(daily, events)
+    assert [r.invoice_number for r in replies(skipped)] == [first.invoice_number]
+    assert replies(skipped)[0].day == reminder + timedelta(days=2)
 
 
 def test_the_engine_is_pure() -> None:

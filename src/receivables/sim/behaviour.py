@@ -20,7 +20,9 @@ message about that invoice (D-048 option 1a), and a reply comes 2 days after it 
 An event dated D changes only what the customer does after D: the customer's actions on D are
 asked first (the agent ticks at 10:00, after them), so an event must be dated the last day
 asked. Days asked never go backwards; a skipped day loses nothing, as each action keeps its own
-date. Nothing happens to an invoice once it is paid or allocated.
+date. Nothing happens to an invoice once it is paid or allocated (an allocation to it is
+refused). No reply is written about an invoice already paid, nor a dispute about one already
+resolved.
 """
 
 from collections.abc import Mapping, Sequence
@@ -87,6 +89,7 @@ class _Invoice:
     response: date | None = None
     escalated: date | None = None
     allocated: date | None = None
+    last_message: date | None = None
     replied: bool = False
     paid: bool = False
 
@@ -131,13 +134,17 @@ class CustomerBehaviour:
             return
         if state.contact is None:
             state.contact = day
+        state.last_message = day
         if state.resolved is not None and state.response is None:
             state.response = day  # on or after the resolution: events are never backdated
 
     def dispute_resolved(self, invoice_number: str, day: date) -> None:
+        """A message sent the same day counts as the response, whichever is told first."""
         state = self._event(invoice_number, day)
         if state is not None and state.resolved is None:
             state.resolved = day
+            if state.last_message == day:
+                state.response = day
 
     def escalated(self, invoice_number: str, day: date) -> None:
         state = self._event(invoice_number, day)
@@ -145,14 +152,22 @@ class CustomerBehaviour:
             state.escalated = day
 
     def allocation_confirmed(self, invoice_number: str, day: date) -> None:
+        """The customer's cash was allocated and closed the invoice. An allocation to an invoice
+        already paid or allocated is a runner error, so it is refused."""
+        if self._known(invoice_number).closed:
+            raise ValueError(f"{invoice_number} is already closed; nothing to allocate")
         state = self._event(invoice_number, day)
         if state is not None:
             state.allocated = day
 
-    def _event(self, invoice_number: str, day: date) -> _Invoice | None:
+    def _known(self, invoice_number: str) -> _Invoice:
         state = self._invoices.get(invoice_number)
         if state is None:
             raise ValueError(f"{invoice_number} is not an invoice of {self.customer.customer_id}")
+        return state
+
+    def _event(self, invoice_number: str, day: date) -> _Invoice | None:
+        state = self._known(invoice_number)
         if self._last_day is not None and day < self._last_day:
             raise ValueError("an event cannot be dated before an earlier day already asked")
         if self._last_day != day:
@@ -178,7 +193,7 @@ class CustomerBehaviour:
                 and reply is not None
                 and reply <= day
                 and (pay is None or reply < pay)
-                and (state.allocated is None or state.allocated >= reply)
+                and (state.resolved is None or state.resolved >= reply)
             ):
                 state.replied = True
                 actions.append(self._reply(state, reply))
