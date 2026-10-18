@@ -276,7 +276,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §19.2
   - Tests: T-SIM-01, T-SIM-02, T-SIM-03
   - Done when: Results are reproducible; every message passes the validator and policy.
-- [ ] **S4.04** Outcome inference
+- [x] **S4.04** Outcome inference
   - Goal: Promise kept, broken or pending with the 2-day grace.
   - Spec: §18.7
   - Tests: T-OUT-01

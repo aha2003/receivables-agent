@@ -189,11 +189,16 @@ class _Tick:
     today: date | None = None  # the real date (the store's clock), never a requested ``now``
 
     @property
+    def current(self) -> bool:
+        """``as_of`` is not after the real date (an L0 shadow follows it in memory too)."""
+        return self.today is None or self.facts.as_of <= self.today
+
+    @property
     def learns(self) -> bool:
         """Promises and outcomes (§18.7) are judged only by a tick that persists and whose
         ``as_of`` is not after the real date: a preview of the future may not use them up or
         record a premature verdict (D-051)."""
-        return self.persist and (self.today is None or self.facts.as_of <= self.today)
+        return self.persist and self.current
 
     @property
     def persist(self) -> bool:
@@ -387,15 +392,17 @@ def _open_case(tick: _Tick, invoice: str) -> None:
         if (invoice, event.event_id) in tick.applied_events:
             continue  # already applied: later state changes (e.g. escalation) stand
         if event.event_type == "PROMISE_TO_PAY":
-            if not tick.learns:
+            if not tick.current:
                 continue  # judged only from today's facts (D-051), not used up by a preview
             if (
                 newest is not None
                 and newest is not event
+                and newest.event_type == "DISPUTE_OPENED"
                 and (invoice, newest.event_id) in tick.applied_events
             ):
-                # A promise imported after a newer dispute event was applied came first in
-                # time: the dispute stands, so the promise is considered but changes nothing.
+                # A promise imported after a newer dispute was opened came first in time: the
+                # dispute stands, so the promise is considered but changes nothing. (A newer
+                # resolution would not have undone a pending promise, so it does not block.)
                 if tick.persist:
                     tick.store.mark_event(invoice, event.event_id, "PromiseMade", tick.run_id)
                     tick.applied_events.add((invoice, event.event_id))

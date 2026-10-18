@@ -232,3 +232,23 @@ def test_l0_changes_nothing_about_a_broken_promise(db: Engine) -> None:
     new = rows(db, f"SELECT action FROM audit_log WHERE audit_id > {audits}")  # noqa: S608
     assert {a["action"] for a in new} <= {"agent.run_started", "agent.run_finished",
                                           "agent.step"}  # fmt: skip
+
+
+def test_a_promise_older_than_an_applied_resolution_still_counts(db: Engine) -> None:
+    add(db, "events", "event_id,invoice_number,event_type,event_date,label,promise_date\n"
+                      "E-T26,INV-003,DISPUTE_OPENED,2026-10-10,MISSING_PO,\n"
+                      "E-T27,INV-003,DISPUTE_RESOLVED,2026-10-25,,\n")  # fmt: skip
+    tick(db, date(2026, 10, 31))
+    assert _states(db)["INV-003"] == "ASSESSED"
+    add(db, "events", promise("E-T28", "INV-003", "2026-10-20", "2026-11-10"))  # backdated
+    tick(db, date(2026, 11, 2))
+    # In time order: opened, promised, resolved; the resolution leaves PROMISE_PENDING alone.
+    assert _states(db)["INV-003"] == "PROMISE_PENDING"
+
+
+def test_an_l0_shadow_shows_the_promise_in_memory_only(db: Engine) -> None:
+    add(db, "events", promise("E-T29", "INV-003", "2026-10-28", "2026-11-04"))
+    summary = tick(db, date(2026, 11, 2), level=0)
+    assert "INV-003" not in _states(db)  # nothing saved at L0
+    steps = rows(db, f"SELECT DISTINCT status FROM agent_steps WHERE run_id = '{summary.run_id}'")  # noqa: S608
+    assert {s["status"] for s in steps} == {"skipped"}
