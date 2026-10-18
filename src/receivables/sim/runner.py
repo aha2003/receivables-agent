@@ -76,8 +76,12 @@ from receivables.agent.policy import SendDraft, evaluate_send, send_facts_from
 from receivables.core.ledger import build_ledger
 from receivables.core.money import from_fils
 from receivables.core.scoring import round_half_up
-from receivables.sim.behaviour import CustomerBehaviour, CustomerPayment, CustomerReply
-from receivables.sim.behaviour import behaviours_for
+from receivables.sim.behaviour import (
+    CustomerBehaviour,
+    CustomerPayment,
+    CustomerReply,
+    behaviours_for,
+)
 from receivables.sim.company import SimCompany
 from receivables.sim.scenario import Scenario
 from receivables.sim.simulator import (
@@ -288,8 +292,11 @@ class _Arm:
                 draft = store.get_draft(draft_id)
                 assert draft is not None  # noqa: S101 - read from the table just above
                 facts = load_agent_facts(conn, day, self.config.engine)
-                recent = [n for n in draft.invoice_numbers
-                          if n in self.last_sent and (day - self.last_sent[n]).days < gap]  # fmt: skip
+                recent = [
+                    n
+                    for n in draft.invoice_numbers
+                    if n in self.last_sent and (day - self.last_sent[n]).days < gap
+                ]
                 stale = recheck_draft(facts, draft, tick_config(self.config))
                 if not recent and not stale:
                     self._record_policy(conn, store, facts, draft)
@@ -368,7 +375,7 @@ class _Arm:
             ).all()
             for invoice, tool, result_json in steps:
                 if tool == "send_email":  # delivered to the sandbox at L2
-                    draft_id = json.loads(result_json)["draft_id"]
+                    draft_id = json.loads(result_json or "{}")["draft_id"]
                     numbers = conn.execute(
                         select(Draft.invoice_numbers_json).where(Draft.draft_id == draft_id)
                     ).scalar_one()
@@ -392,17 +399,19 @@ class _Arm:
                 select(func.count()).select_from(Draft).where(Draft.status == "sent_manually")
             ).scalar_one()
             sandbox = conn.execute(
-                select(func.count()).select_from(MailOutbox).where(
-                    MailOutbox.status.in_(_DELIVERED)
-                )
+                select(func.count())
+                .select_from(MailOutbox)
+                .where(MailOutbox.status.in_(_DELIVERED))
             ).scalar_one()
             approvals = conn.execute(select(func.count()).select_from(Approval)).scalar_one()
             denials = conn.execute(
-                select(func.count()).select_from(AgentStep).where(
-                    AgentStep.tool == "send_email", AgentStep.policy_allowed == 0
-                )
+                select(func.count())
+                .select_from(AgentStep)
+                .where(AgentStep.tool == "send_email", AgentStep.policy_allowed == 0)
             ).scalar_one()
-        overdue = sum(r.open_amount for r in rows if r.open_amount > 0 and (r.days_overdue or 0) > 0)
+        overdue = sum(
+            r.open_amount for r in rows if r.open_amount > 0 and (r.days_overdue or 0) > 0
+        )
         late = [(r.settled_date - r.due_date).days for r in rows if r.settled_date is not None]
         opened: dict[str, date] = {}
         cycles: list[int] = []
@@ -474,9 +483,7 @@ def _run_arm(
         engine.dispose()
 
 
-def run_arms(
-    scenario: Scenario, data_dir: Path, real_database_url: str, config: Config
-) -> SimRun:
+def run_arms(scenario: Scenario, data_dir: Path, real_database_url: str, config: Config) -> SimRun:
     """Run A0 to A3 on the seeded company and write ``sim_<seed>_results.json``."""
     out = results_path(data_dir, scenario.seed)
     staging = Path(f"{out}{STAGING_SUFFIX}")

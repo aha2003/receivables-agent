@@ -9,7 +9,9 @@ import json
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, select
@@ -91,9 +93,9 @@ def engines(sim: SimRun):
         engine.dispose()
 
 
-def _all(engine: Engine, statement):  # type: ignore[no-untyped-def]
+def _all(engine: Engine, statement: Any) -> list[Any]:
     with engine.connect() as conn:
-        return conn.execute(statement).all()
+        return list(conn.execute(statement).all())
 
 
 def _fils(text: str) -> int:
@@ -225,7 +227,7 @@ def test_the_human_never_messages_an_invoice_twice_within_7_days(
                 days[n].append(_local(created_at).date())
         for n, sent in days.items():
             sent.sort()
-            assert all((b - a).days >= 7 for a, b in zip(sent, sent[1:], strict=False)), (arm, n)
+            assert all((b - a).days >= 7 for a, b in pairwise(sent)), (arm, n)
 
 
 def test_replies_are_accepted_with_their_true_label_a_working_day_later(
@@ -275,9 +277,12 @@ def test_disputes_are_resolved_3_working_days_after_the_document_request(
         resolved = _all(engine, select(Event).where(Event.event_type == "DISPUTE_RESOLVED"))
         assert resolved
         for event in resolved:
-            assert _working_days_after(
-                requested[event.invoice_number], date.fromisoformat(event.event_date)
-            ) == 3
+            assert (
+                _working_days_after(
+                    requested[event.invoice_number], date.fromisoformat(event.event_date)
+                )
+                == 3
+            )
 
 
 def test_claimed_invoices_are_closed_by_the_customers_own_cash(
