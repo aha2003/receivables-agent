@@ -1,4 +1,5 @@
-"""Command line: ``seed``, ``reset``, ``create-user`` and ``sim-create`` (SYNTHETIC DEMO DATA only).
+"""Command line: ``seed``, ``reset``, ``create-user``, ``sim-create`` and ``sim-run`` (SYNTHETIC
+DEMO DATA only).
 
 The database URL and fixtures directory come from settings (environment), never from a
 request. The system clock is used only here, at the application edge.
@@ -9,6 +10,7 @@ import re
 import sys
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from getpass import getpass
 from pathlib import Path
 
@@ -33,6 +35,7 @@ from receivables.core.queue import build_queue
 from receivables.core.scoring import score_overdue_invoices
 from receivables.seed import SEED_ORDER, ResetRefused, SeedError, reset, seed
 from receivables.settings import Settings
+from receivables.sim.runner import run_arms
 from receivables.sim.scenario import load_scenario
 from receivables.sim.simulator import LABEL, SimRefused, create_sim_db
 
@@ -69,13 +72,15 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="read the password from standard input instead of prompting",
     )
-    sim = commands.add_parser(
-        "sim-create", help="write the seeded simulation company to its own sim_<seed>.db"
-    )
-    sim.add_argument("--seed", type=_seed, default=None, help="default: the scenario's (42)")
-    sim.add_argument(
-        "--data-dir", type=Path, default=None, help="default: app.data_dir in config.yaml"
-    )
+    for name, text in (
+        ("sim-create", "write the seeded simulation company to its own sim_<seed>.db"),
+        ("sim-run", "run arms A0 to A3 on the seeded company and write sim_<seed>_results.json"),
+    ):
+        sim = commands.add_parser(name, help=text)
+        sim.add_argument("--seed", type=_seed, default=None, help="default: the scenario's (42)")
+        sim.add_argument(
+            "--data-dir", type=Path, default=None, help="default: app.data_dir in config.yaml"
+        )
     return parser
 
 
@@ -100,6 +105,28 @@ def _sim_create(settings: Settings, args: argparse.Namespace) -> int:
     print(f"created {result.path} (seed {result.company.seed})")
     print(" ".join(f"{name}={count}" for name, count in counts.items()))
     print(f"company sha256 {result.company.sha256()}")
+    return 0
+
+
+def _sim_run(settings: Settings, args: argparse.Namespace) -> int:
+    print(LABEL)
+    config = load_config(Path(settings.config_path))
+    data_dir = args.data_dir or Path(config.app.data_dir)
+    try:
+        run = run_arms(load_scenario(seed=args.seed), data_dir, settings.database_url, config)
+    except SimRefused as err:
+        print(f"sim-run refused: {err}", file=sys.stderr)
+        return 2
+    except OSError as err:
+        print(f"sim-run failed: {err}", file=sys.stderr)
+        return 1
+    for arm, m in run.results["arms"].items():
+        print(
+            f"{arm}: overdue AED {Decimal(m['overdue_amount']):,}, mean days past due at payment "
+            f"{m['mean_days_past_due_at_payment']}, messages {m['messages_sent']}, approvals "
+            f"{m['approvals_needed']}, policy denials {m['policy_denials']}"
+        )
+    print(f"results {run.results_path}")
     return 0
 
 
@@ -180,6 +207,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "sim-create":
         return _sim_create(settings, args)
+    if args.command == "sim-run":
+        return _sim_run(settings, args)
     as_of: date = args.as_of or clock.today()
     try:
         if args.command == "reset":
