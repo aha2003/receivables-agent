@@ -271,7 +271,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §19.2
   - Tests: archetype behaviour unit tests
   - Done when: Each archetype behaves as specified.
-- [ ] **S4.03** Arms A0 to A3 and metrics
+- [x] **S4.03** Arms A0 to A3 and metrics
   - Goal: Runner for the four arms and day-60 metrics.
   - Spec: §19.2
   - Tests: T-SIM-01, T-SIM-02, T-SIM-03
