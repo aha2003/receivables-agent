@@ -172,3 +172,63 @@ def test_a_resolved_dispute_is_recorded(db: Engine) -> None:
                       "E-T14,INV-004,DISPUTE_RESOLVED,2026-10-30,,\n")  # fmt: skip
     tick(db, date(2026, 10, 31))
     assert outcomes(db)["OUT-DSP-E-T14"] == "DISPUTE_RESOLVED"
+
+
+def test_a_future_dated_preview_does_not_use_up_a_promise(db: Engine) -> None:
+    add(db, "events", promise("E-T20", "INV-003", "2026-10-28", "2026-11-04"))
+    tick(db, date(2026, 11, 5))  # an L1 preview of the future (D-026)
+    marked = rows(db, "SELECT after_json FROM audit_log WHERE action = 'case.event_applied'")
+    assert "E-T20" not in {json.loads(m["after_json"])["event_id"] for m in marked}
+    assert _states(db)["INV-003"] != "PROMISE_PENDING" and _promise_tasks(db, "INV-003") == []
+    tick(db, date(2026, 11, 2))  # the real today: the promise still counts
+    assert _states(db)["INV-003"] == "PROMISE_PENDING"
+
+
+def test_a_requested_now_cannot_get_past_the_real_date(db: Engine) -> None:
+    add(db, "events", promise("E-T21", "INV-003", "2026-10-28", "2026-11-02"))
+    tick(db, date(2026, 11, 2))
+    assert _states(db)["INV-003"] == "PROMISE_PENDING"
+    run_agent_tick(
+        db, CLOCK, config(), as_of=date(2026, 12, 31),
+        now_local=datetime(2026, 12, 31, 10, 0, tzinfo=DUBAI), autonomy_level=1,
+    )  # fmt: skip  # the clock still says 2026-11-02
+    assert "OUT-PRM-E-T21" not in outcomes(db)
+    assert _states(db)["INV-003"] == "PROMISE_PENDING" and _promise_tasks(db, "INV-003") == []
+
+
+def test_the_escalation_task_is_audited_and_due_from_today(db: Engine) -> None:
+    add(db, "events", promise("E-T22", "INV-003", "2026-10-28", "2026-10-29"))
+    tick(db, date(2026, 10, 29))
+    tick(db, date(2026, 11, 1))  # a past as_of; the real date is 2026-11-02
+    (task,) = _promise_tasks(db, "INV-003")
+    due = rows(db, "SELECT due_date FROM tasks WHERE text LIKE '%promise%'")
+    assert due == [{"due_date": "2026-11-02"}]
+    created = rows(db, "SELECT entity_id, after_json FROM audit_log WHERE action = 'task.created'")
+    assert [(c["entity_id"], json.loads(c["after_json"])["event_id"]) for c in created] == [
+        (task["task_id"], "E-T22")
+    ]
+
+
+def test_a_promise_older_than_an_applied_dispute_changes_nothing(db: Engine) -> None:
+    add(db, "events", "event_id,invoice_number,event_type,event_date,label,promise_date\n"
+                      "E-T23,INV-003,DISPUTE_OPENED,2026-10-25,MISSING_PO,\n")  # fmt: skip
+    tick(db, date(2026, 10, 31))
+    assert _states(db)["INV-003"] == "DISPUTE_OPEN"
+    add(db, "events", promise("E-T24", "INV-003", "2026-10-20", "2026-11-10"))  # backdated
+    tick(db, date(2026, 11, 2))
+    assert _states(db)["INV-003"] == "DISPUTE_OPEN"  # the later dispute stands
+    marked = rows(db, "SELECT after_json FROM audit_log WHERE action = 'case.event_applied'")
+    assert "E-T24" in {json.loads(m["after_json"])["event_id"] for m in marked}
+
+
+def test_l0_changes_nothing_about_a_broken_promise(db: Engine) -> None:
+    add(db, "events", promise("E-T25", "INV-003", "2026-10-28", "2026-10-29"))
+    tick(db, date(2026, 10, 29))
+    assert _states(db)["INV-003"] == "PROMISE_PENDING"
+    audits = len(rows(db, "SELECT audit_id FROM audit_log"))
+    tick(db, date(2026, 11, 2), level=0)
+    assert _states(db)["INV-003"] == "PROMISE_PENDING" and _promise_tasks(db, "INV-003") == []
+    assert "OUT-PRM-E-T25" not in outcomes(db)
+    new = rows(db, f"SELECT action FROM audit_log WHERE audit_id > {audits}")  # noqa: S608
+    assert {a["action"] for a in new} <= {"agent.run_started", "agent.run_finished",
+                                          "agent.step"}  # fmt: skip

@@ -186,6 +186,14 @@ class _Tick:
     applied_events: set[tuple[str, str]] = field(default_factory=set)
     kill_switch: bool = False
     drafter: DraftWriter | None = None  # None: the §8.4 template only (D-036)
+    today: date | None = None  # the real date (the store's clock), never a requested ``now``
+
+    @property
+    def learns(self) -> bool:
+        """Promises and outcomes (§18.7) are judged only by a tick that persists and whose
+        ``as_of`` is not after the real date: a preview of the future may not use them up or
+        record a premature verdict (D-051)."""
+        return self.persist and (self.today is None or self.facts.as_of <= self.today)
 
     @property
     def persist(self) -> bool:
@@ -226,10 +234,13 @@ def run_tick(
     planner: PlanSource | None = None,
     drafter: DraftWriter | None = None,
     new_run_id: Callable[[], str] = lambda: f"RUN-{uuid4().hex[:12]}",
+    today: date | None = None,
 ) -> RunSummary:
     """One tick (§18.6). The caller commits or rolls back the store's transaction.
 
     ``drafter`` writes LLM drafts (§8.2); without it every draft is the §8.4 template.
+    ``today`` is the real date from the caller's clock; it defaults to ``now_local``'s date, and
+    a caller that accepts a requested ``now`` must pass it (D-051).
     """
     if now_local.tzinfo is None:
         raise ValueError("now_local must carry a time zone")
@@ -238,6 +249,7 @@ def run_tick(
     facts = store.load_facts(as_of, config.engine)
     run_id = new_run_id()
     tick = _Tick(store, facts, config, run_id, now_local, autonomy_level)
+    tick.today = today or now_local.astimezone(ZoneInfo(config.l2.timezone)).date()
     tick.kill_switch = config.l2.kill_switch  # read once, at the start of the tick
     tick.drafter = drafter
     tick.states = dict(store.case_states())
@@ -300,8 +312,7 @@ def _learn(tick: _Tick) -> int:
     such case, not only the ones this tick selects) and record the new final outcomes. Only
     when the tick persists and its ``as_of`` is not after its own date, so a future-dated
     preview cannot record a premature outcome (D-051 options 2a, 3a). Returns case errors."""
-    local_today = tick.now_local.astimezone(ZoneInfo(tick.config.l2.timezone)).date()
-    if not tick.persist or tick.facts.as_of > local_today:
+    if not tick.learns:
         return 0
     grace = tick.config.promise_grace_days
     verdicts = promise_verdicts(tick.facts, grace)
@@ -318,8 +329,14 @@ def _learn(tick: _Tick) -> int:
                 if result.escalation_task:  # §18.2: entering ESCALATED always creates a task
                     text = f"Escalated: the promise to pay {invoice} by {latest.promise_date} "
                     text += "was broken."
-                    _task(tick, f"{tick.run_id}-{invoice}-PB", invoice, "finance", text,
-                          tick.facts.as_of)  # fmt: skip
+                    due = max(tick.facts.as_of, tick.today or tick.facts.as_of)
+                    task_id = _task(tick, f"{tick.run_id}-{invoice}-PB", invoice, "finance",
+                                    text, due)  # fmt: skip
+                    tick.store.audit(
+                        "task.created", "task", task_id,
+                        {"invoice_number": invoice, "run_id": tick.run_id, "owner_role": "finance",
+                         "reason": "PROMISE_BROKEN", "event_id": latest.event_id},
+                    )  # fmt: skip
         except Exception as error:
             tick.states[invoice] = state
             errors += 1
@@ -329,8 +346,16 @@ def _learn(tick: _Tick) -> int:
             )  # fmt: skip
     known = tick.store.outcome_ids()
     for outcome in infer_outcomes(tick.facts, grace):
-        if outcome.outcome_id not in known:
-            tick.store.add_outcome(outcome, tick.run_id)
+        if outcome.outcome_id in known:
+            continue
+        try:
+            with tick.store.savepoint():  # e.g. another tick recorded it meanwhile
+                tick.store.add_outcome(outcome, tick.run_id)
+        except Exception as error:
+            tick.store.audit(
+                "agent.outcome_failed", "invoice", outcome.invoice_number,
+                {"run_id": tick.run_id, "outcome_id": outcome.outcome_id, "error": _code(error)},
+            )  # fmt: skip
     return errors
 
 
@@ -357,9 +382,24 @@ def _open_case(tick: _Tick, invoice: str) -> None:
         )
         if e is not None
     ]
+    newest = max(latest, key=lambda e: (e.event_date, e.event_id), default=None)
     for event in sorted(latest, key=lambda e: (e.event_date, e.event_id)):
         if (invoice, event.event_id) in tick.applied_events:
             continue  # already applied: later state changes (e.g. escalation) stand
+        if event.event_type == "PROMISE_TO_PAY":
+            if not tick.learns:
+                continue  # judged only from today's facts (D-051), not used up by a preview
+            if (
+                newest is not None
+                and newest is not event
+                and (invoice, newest.event_id) in tick.applied_events
+            ):
+                # A promise imported after a newer dispute event was applied came first in
+                # time: the dispute stands, so the promise is considered but changes nothing.
+                if tick.persist:
+                    tick.store.mark_event(invoice, event.event_id, "PromiseMade", tick.run_id)
+                    tick.applied_events.add((invoice, event.event_id))
+                continue
         trigger: CaseTrigger
         if event.event_type == "DISPUTE_OPENED":
             trigger = DisputeOpened()

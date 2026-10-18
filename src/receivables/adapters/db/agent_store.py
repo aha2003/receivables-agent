@@ -458,6 +458,7 @@ def run_agent_tick(
             summary = run_tick(
                 DbAgentStore(conn, clock),
                 as_of=as_of or now.astimezone(DUBAI).date(),
+                today=clock.today(),  # the real date, whatever ``now`` was requested (D-051)
                 now_local=now,
                 autonomy_level=level,
                 config=dataclasses.replace(tick_config(config), l2=l2),
