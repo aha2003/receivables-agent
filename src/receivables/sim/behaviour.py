@@ -52,8 +52,7 @@ _TEXTS = {
     "cannot approve it for payment.",
     "MISSING_PO": "Invoice {inv} does not quote a purchase order we can match. Please send the "
     "purchase order reference.",
-    "ALREADY_PAID": "We paid invoice {inv} in full on {paid_on} by bank transfer, "
-    "AED {amount}.",
+    "ALREADY_PAID": "We paid invoice {inv} in full on {paid_on} by bank transfer, AED {amount}.",
 }
 
 
@@ -198,10 +197,14 @@ class CustomerBehaviour:
         if self.archetype is Archetype.RESPONSIVE and state.contact is not None:
             delay = RESPONSIVE_DELAYS[self.customer.archetype_index % len(RESPONSIVE_DELAYS)]
             return min(fallback, state.contact + _days(delay))
-        if self.archetype is Archetype.DISPUTER and state.contact is not None:
-            if state.resolved is not None and state.response is not None:
-                later = max(state.resolved, state.response)
-                return min(fallback, later + _days(PAY_AFTER_RESOLUTION_DAYS))
+        if (
+            self.archetype is Archetype.DISPUTER
+            and state.contact is not None
+            and state.resolved is not None
+            and state.response is not None
+        ):
+            later = max(state.resolved, state.response)
+            return min(fallback, later + _days(PAY_AFTER_RESOLUTION_DAYS))
         if self.archetype is Archetype.SILENT and state.escalated is not None:
             return min(fallback, state.escalated + _days(PAY_AFTER_ESCALATION_DAYS))
         if state.claimed and state.contact is not None and state.contact < fallback:

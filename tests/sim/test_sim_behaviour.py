@@ -6,6 +6,7 @@ the invoice its unallocated cash matches; its other invoices pay 45 days after d
 """
 
 import ast
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -112,7 +113,9 @@ def test_a_late_reminder_does_not_delay_the_25_day_payment() -> None:
 @pytest.mark.parametrize(
     ("n", "label"), [(4, "PO_AMOUNT_MISMATCH"), (5, "MISSING_DELIVERY_NOTE"), (6, "MISSING_PO")]
 )
-def test_disputer_replies_2_days_after_the_first_reminder_with_its_label(n: int, label: str) -> None:
+def test_disputer_replies_2_days_after_the_first_reminder_with_its_label(
+    n: int, label: str
+) -> None:
     first = invoices_of(COMPANY, customer_no(n))[0]
     reminder = first.due_date + timedelta(days=1)
     actions = run(behaviour(n), {reminder: [("message_sent", first.invoice_number)],
@@ -218,8 +221,10 @@ def test_claims_paid_replies_already_paid_and_closes_on_the_allocation(n: int) -
     inv = claimed(n)
     reminder = inv.due_date + timedelta(days=1)
     confirmed = reminder + timedelta(days=4)
-    actions = run(behaviour(n), {reminder: [("message_sent", inv.invoice_number)],
-                                 confirmed: [("allocation_confirmed", inv.invoice_number)]})  # fmt: skip
+    actions = run(behaviour(n), {
+        reminder: [("message_sent", inv.invoice_number)],
+        confirmed: [("allocation_confirmed", inv.invoice_number)],
+    })  # fmt: skip
     (reply,) = replies(actions)
     assert reply.day == reminder + timedelta(days=2) and reply.label == "ALREADY_PAID"
     assert inv.invoice_number in reply.text and "2026-11-02" in reply.text
@@ -281,7 +286,9 @@ def test_every_action_is_dated_the_day_it_is_returned_and_ids_are_unique() -> No
         while day <= END:
             for action in b.actions_on(day):
                 assert action.day == day
-                key = action.payment_id if isinstance(action, CustomerPayment) else action.message_id
+                key = (
+                    action.payment_id if isinstance(action, CustomerPayment) else action.message_id
+                )
                 assert key not in seen
                 seen.add(key)
             day += timedelta(days=1)
@@ -289,8 +296,6 @@ def test_every_action_is_dated_the_day_it_is_returned_and_ids_are_unique() -> No
 
 
 def test_identifiers_never_look_like_invoice_numbers() -> None:
-    import re
-
     first = invoices_of(COMPANY, customer_no(4))[0]
     actions = run(behaviour(4), {first.due_date: [("message_sent", first.invoice_number)]})
     for action in actions:
@@ -334,7 +339,7 @@ def test_an_unknown_or_another_customers_invoice_is_refused() -> None:
 
 
 def test_skipped_days_lose_no_action() -> None:
-    every_day = [a for a in run(behaviour(2))]
+    every_day = run(behaviour(2))
     b = behaviour(2)
     weekly = []
     day = START
@@ -353,7 +358,9 @@ def test_the_engine_is_pure() -> None:
             imported |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module or "")
-    allowed = {"collections.abc", "dataclasses", "datetime", "typing",
-               "receivables.core.money", "receivables.sim.company", "receivables.sim.scenario"}  # fmt: skip
+    allowed = {
+        "collections.abc", "dataclasses", "datetime", "typing", "receivables.core.money",
+        "receivables.sim.company", "receivables.sim.scenario",
+    }  # fmt: skip
     assert imported <= allowed, imported - allowed  # no clock, randomness, I/O or adapters
     assert Archetype.CLAIMS_PAID in {b.archetype for b in behaviours_for(COMPANY).values()}
