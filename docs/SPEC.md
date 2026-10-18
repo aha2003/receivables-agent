@@ -1233,8 +1233,8 @@ Runs against its own database file (`sim_<seed>.db`), never the real one. Uses `
 | ID | Test | Expected |
 |---|---|---|
 | T-SIM-01 | Run seed 42 twice | identical results JSON (equal SHA-256) |
-| T-SIM-02 | Sanity ordering | overdue amount at day 60: A3 <= A1 < A0 and A2 <= A1. If not, investigate the implementation before touching the scenario |
-| T-SIM-03 | Every simulated outbound message | passes the draft validator and the policy engine; none bypasses them |
+| T-SIM-02 | Sanity ordering | overdue amount at day 60: A3 <= A1 and A2 <= A1; mean days past due at payment: A1 < A0 (reminders alone cannot lower the day-60 overdue amount under the behaviours above, D-049). If not, investigate the implementation before touching the scenario |
+| T-SIM-03 | Every simulated outbound message | passes the draft validator and is evaluated by the policy engine, its verdict recorded; none bypasses them. An automatic (L2) send leaves only when the policy allows it; a simulated person may send a message the policy denied, as at L1 (D-046), and the results count those (D-050) |
 | T-SIM-04 | Run the simulator | the real database file is byte-identical before and after |
 
 ### 19.3 Synthetic evaluation mode (L0) — competition default

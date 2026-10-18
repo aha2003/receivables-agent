@@ -351,3 +351,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-048 (options 1a, 2a, 3a; review fixes); D-049 (open: T-SIM-02's A1 < A0 cannot hold under the §19.2 behaviours on overdue at day 60; to be settled in S4.03 with the arms' results)
 - Unverified: the behaviours inside a full run (S4.03); T-SIM-02's ordering (D-049)
 - Next step: S4.03 Arms A0 to A3 and metrics
+
+## 2026-10-18 — [S4.03] Arms A0 to A3 and metrics
+- PR: see branch | Branch: s4-03-arms-metrics | Commit: see PR head
+- Tests: `uv run pytest -q` → 2498 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/sim/test_sim_arms.py` (one shared seed-42 run, a second in another process for T-SIM-01); mutation checks on the human's timing, the resolution delay, A3's allowlist, the policy record, the re-check and the inbox delay all caught (one equivalent mutant)
+- Spec / test IDs covered: §19.2 (arms A0 to A3, the day-60 metrics); T-SIM-01 (results JSON identical across processes), T-SIM-02 (as amended, D-049), T-SIM-03 (as amended, D-050); T-SIM-04 for the arm databases and the results file
+- Results (seed 42, SIMULATION — MECHANICS, NOT EVIDENCE): overdue at day 60 A0 AED 717,400.00, A1 784,300.00, A2 277,500.00, A3 256,200.00; mean days past due at payment A0 33.11, A1 23.56, A2 23.44, A3 23.39
+- Deviations or decisions (link docs/DECISIONS.md): D-049 resolved (T-SIM-02 compares A1 with A0 on mean days past due, maintainer's choice); D-050 (options 1a to 5a; T-SIM-03 amended to the L1 reading, maintainer's choice; review fixes)
+- Unverified: the simulation with a live or replayed LLM planner (rules only, by design); the arms' behaviour with a follow-up gate (S4.06)
+- Next step: S4.04 Outcome inference

@@ -29,7 +29,14 @@ from receivables.adapters.db.repo import table_counts, write_audit
 from receivables.sim.company import SimCompany, company_csv, generate_company
 from receivables.sim.scenario import Scenario
 
-__all__ = ["LABEL", "SimDbResult", "SimRefused", "create_sim_db", "sim_db_path"]
+__all__ = [
+    "LABEL",
+    "SimDbResult",
+    "SimRefused",
+    "check_destination",
+    "create_sim_db",
+    "sim_db_path",
+]
 
 LABEL = "SIMULATION — MECHANICS, NOT EVIDENCE"
 ACTOR = "simulator"
@@ -49,8 +56,10 @@ class SimDbResult:
     counts: dict[str, int]
 
 
-def sim_db_path(data_dir: Path, seed: int) -> Path:
-    return data_dir / f"sim_{seed}.db"
+def sim_db_path(data_dir: Path, seed: int, arm: str | None = None) -> Path:
+    """``sim_<seed>.db``, or ``sim_<seed>_<arm>.db`` for one arm of a run (S4.03)."""
+    suffix = "" if arm is None else f"_{arm.lower()}"
+    return data_dir / f"sim_{seed}{suffix}.db"
 
 
 def _siblings(path: Path) -> tuple[Path, ...]:
@@ -81,7 +90,11 @@ def _same_file(candidate: Path, real: list[Path]) -> bool:
     return any(p.exists() and os.path.samefile(candidate, p) for p in real)
 
 
-def _check_destination(path: Path, staging: Path, real_database_url: str) -> None:
+def check_destination(
+    path: Path, staging: Path, real_database_url: str, *, sqlite: bool = True
+) -> None:
+    """Refuse a destination that is the real database (or shares its files), a symlink or not a
+    regular file; with ``sqlite``, also an existing file that is not a SQLite database."""
     real = _real_files(real_database_url)
     for candidate in (*_siblings(path), *_siblings(staging)):
         if _same_file(candidate, real):
@@ -94,7 +107,7 @@ def _check_destination(path: Path, staging: Path, real_database_url: str) -> Non
             raise SimRefused(f"{candidate} is a symlink; refusing to replace it")
         if not stat.S_ISREG(mode):
             raise SimRefused(f"{candidate} is not a regular file; refusing to replace it")
-    if path.exists():
+    if sqlite and path.exists():
         with path.open("rb") as f:
             if f.read(len(_SQLITE_HEADER)) != _SQLITE_HEADER:
                 raise SimRefused(f"{path} is not a SQLite database; refusing to replace it")
@@ -105,11 +118,13 @@ def _remove(paths: tuple[Path, ...]) -> None:
         p.unlink(missing_ok=True)
 
 
-def create_sim_db(scenario: Scenario, data_dir: Path, real_database_url: str) -> SimDbResult:
-    """Generate the seeded company and write it to a fresh ``sim_<seed>.db``."""
-    path = sim_db_path(data_dir, scenario.seed)
+def create_sim_db(
+    scenario: Scenario, data_dir: Path, real_database_url: str, *, arm: str | None = None
+) -> SimDbResult:
+    """Generate the seeded company and write it to a fresh ``sim_<seed>.db`` (or the arm's)."""
+    path = sim_db_path(data_dir, scenario.seed, arm)
     staging = Path(f"{path}{STAGING_SUFFIX}")
-    _check_destination(path, staging, real_database_url)
+    check_destination(path, staging, real_database_url)
     company = generate_company(scenario)
     files = company_csv(company)
     clock = SimulatedClock(datetime.combine(scenario.start_date, scenario.tick_time, DUBAI))
@@ -150,7 +165,7 @@ def create_sim_db(scenario: Scenario, data_dir: Path, real_database_url: str) ->
                 counts = table_counts(conn)
         finally:
             engine.dispose()  # last connection closed: SQLite checkpoints and drops the WAL
-        _check_destination(path, staging, real_database_url)  # again, just before the swap
+        check_destination(path, staging, real_database_url)  # again, just before the swap
         _remove(_siblings(path))
         os.replace(staging, path)
     finally:
