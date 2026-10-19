@@ -28,6 +28,7 @@ from receivables.adapters.db.models import (
     Draft,
     Invoice,
     MailOutbox,
+    Outcome,
     Task,
 )
 from receivables.adapters.db.repo import load_agent_facts, write_audit
@@ -43,6 +44,7 @@ from receivables.agent.orchestrator import (
     TickConfig,
     run_tick,
 )
+from receivables.agent.outcomes import InferredOutcome
 from receivables.core.config import EngineConfig
 
 __all__ = ["ACTOR", "DbAgentStore", "run_agent_tick", "tick_config"]
@@ -88,6 +90,29 @@ class DbAgentStore:
             before=None,
             after=after,
         )
+
+    # --- outcomes (§18.7) ------------------------------------------------------------------
+
+    def outcome_ids(self) -> set[str]:
+        return set(self.conn.execute(select(Outcome.outcome_id)).scalars())
+
+    def add_outcome(self, outcome: InferredOutcome, run_id: str) -> None:
+        self.conn.execute(
+            insert(Outcome).values(
+                outcome_id=outcome.outcome_id,
+                invoice_number=outcome.invoice_number,
+                recorded_at=utc_timestamp(self.clock),
+                outcome_type=outcome.outcome_type,
+                note=outcome.note,
+            )
+        )
+        self.audit(
+            "outcome.recorded",
+            "invoice",
+            outcome.invoice_number,
+            {"outcome_id": outcome.outcome_id, "outcome_type": outcome.outcome_type,
+             "run_id": run_id},
+        )  # fmt: skip
 
     # --- facts and cases -----------------------------------------------------------------
 
@@ -399,6 +424,7 @@ def tick_config(config: Config) -> TickConfig:
         sender_name=config.drafts.sender_name,
         max_regenerations=config.drafts.max_regenerations,
         sender_domain=config.drafts.sender_domain,
+        promise_grace_days=config.agent.promise_grace_days,
     )
 
 
@@ -432,6 +458,7 @@ def run_agent_tick(
             summary = run_tick(
                 DbAgentStore(conn, clock),
                 as_of=as_of or now.astimezone(DUBAI).date(),
+                today=clock.today(),  # the real date, whatever ``now`` was requested (D-051)
                 now_local=now,
                 autonomy_level=level,
                 config=dataclasses.replace(tick_config(config), l2=l2),

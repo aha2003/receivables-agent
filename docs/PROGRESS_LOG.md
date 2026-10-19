@@ -360,3 +360,11 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-049 resolved (T-SIM-02 compares A1 with A0 on mean days past due, maintainer's choice); D-050 (options 1a to 5a; T-SIM-03 amended to the L1 reading, maintainer's choice; review fixes)
 - Unverified: the simulation with a live or replayed LLM planner (rules only, by design); the arms' behaviour with a follow-up gate (S4.06)
 - Next step: S4.04 Outcome inference
+
+## 2026-10-18 — [S4.04] Outcome inference
+- PR: see branch | Branch: s4-04-outcome-inference | Commit: see PR head
+- Tests: `uv run pytest -q` → 2537 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/unit/test_outcomes.py` (22 tests) and `tests/db/test_outcome_tick.py` (17 tests); mutation checks on the grace boundaries, superseding, payment types, the persist and real-date guards, idempotence, the escalation task and promise application all caught
+- Spec / test IDs covered: §18.7 (outcome inference: promises KEPT, BROKEN or PENDING with the 2-day grace; PAYMENT_RECEIVED and DISPUTE_RESOLVED outcomes), §18.2 (PROMISE_TO_PAY → PROMISE_PENDING; promise inferred broken → ESCALATED with a task); T-OUT-01
+- Deviations or decisions (link docs/DECISIONS.md): D-051 (options 1a, 2a, 3a; review fixes: the guard uses the real date, not a requested `now`; a preview cannot use up a promise; a promise older than an applied dispute changes nothing; the escalation task audited)
+- Unverified: `POST /api/outcomes` and NO_RESPONSE outcomes (not in this step); outcomes in the simulator's arms are recorded but unused until S4.05
+- Next step: S4.05 Customer playbook

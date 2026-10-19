@@ -892,7 +892,9 @@ def test_an_event_that_changes_nothing_is_still_marked_applied(db: Engine) -> No
         )
     tick(db)
     marked = rows(db, "SELECT after_json FROM audit_log WHERE action = 'case.event_applied'")
-    assert [json.loads(m["after_json"])["event_id"] for m in marked] == ["E-001"]
+    # E-002 (INV-008's promise of 2026-10-20) is considered too since S4.04: its date is before
+    # as_of, so it makes no PROMISE_PENDING (§18.2) and is marked applied, like E-001.
+    assert [json.loads(m["after_json"])["event_id"] for m in marked] == ["E-001", "E-002"]
     with db.connect() as c:
         assert ("INV-004", "E-001") in DbAgentStore(c, CLOCK).applied_events()
 
