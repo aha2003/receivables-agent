@@ -213,11 +213,13 @@ def test_a_dispute_is_answered_only_by_a_message_written_after_it_was_resolved(
                     assert _local(draft.created_at).date() >= resolved[n], (arm, n)
 
 
-def test_dispute_resolutions_are_the_humans(engines: dict[str, Engine]) -> None:
+def test_dispute_resolutions_are_the_humans(sim: SimRun, engines: dict[str, Engine]) -> None:
     for arm in ("A2", "A3"):
         imports = _all(engines[arm], select(AuditLog).where(AuditLog.action == "import.accepted"))
         events = [a for a in imports if json.loads(a.after_json)["file_kind"] == "events"]
-        assert len(events) == 14 and {a.actor for a in events} == {"sim-human"}
+        resolved = sim.results["arms"][arm]["disputes_resolved"]
+        assert resolved > 0 and len(events) == resolved  # one import per resolution
+        assert {a.actor for a in events} == {"sim-human"}
 
 
 # T-SIM-03: every outbound message passes the draft validator and the policy engine -----------
