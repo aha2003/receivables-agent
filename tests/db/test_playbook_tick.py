@@ -116,9 +116,13 @@ def test_nothing_is_saved_at_l0_with_the_kill_switch_or_from_a_future_as_of(
     db: Engine, level: int, switch: bool, as_of: date
 ) -> None:
     replies(db, "CUST-A", [5, 5, 5])
-    tick(db, as_of, level=level, cfg=config(kill_switch=switch))
+    summary = tick(db, as_of, level=level, cfg=config(kill_switch=switch))
     assert books(db) == {}
     assert rows(db, "SELECT * FROM audit_log WHERE action = 'playbook.updated'") == []
+    if not switch:  # still computed and used in memory (the switch plans by rules, D-025)
+        days = {f["invoice_number"]: json.loads(f["args_json"])["days"]
+                for f in followups(db, summary.run_id)}  # fmt: skip
+        assert days["INV-003"] == 10
 
 
 def test_an_l0_shadow_plans_with_the_fresh_playbook_in_memory(db: Engine) -> None:

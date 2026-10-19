@@ -32,7 +32,7 @@ from receivables.agent.cases import (
     transition,
 )
 from receivables.agent.drafting import DraftWriter, generate_draft
-from receivables.agent.facts import AgentFacts, PlaybookRecord
+from receivables.agent.facts import BUSINESS_TZ, AgentFacts, PlaybookRecord
 from receivables.agent.outcomes import BROKEN, InferredOutcome, infer_outcomes, promise_verdicts
 from receivables.agent.plans import PlanRejection, validate_plan
 from receivables.agent.playbook import playbooks_from, same_playbook
@@ -374,14 +374,12 @@ def _refresh_playbooks(tick: _Tick) -> None:
     """§18.7: recompute every customer's playbook from the last 365 days and use it at once (the
     rule planner's follow-up days, the read tools). Rows are saved, with a ``playbook.updated``
     audit row, only when they change and only by a tick that persists and whose ``as_of`` is not
-    after the real date (D-052); an L0 shadow uses them in memory."""
-    if not tick.current:
-        return
+    after the real date (D-052); an L0 shadow or a preview uses them in memory only."""
     fresh = playbooks_from(
         tick.facts,
         grace_days=tick.config.promise_grace_days,
         outbound=tick.store.outbound_contacts(),
-        tz=ZoneInfo(tick.config.l2.timezone),
+        tz=BUSINESS_TZ,  # messages are dated in Asia/Dubai, as the facts filter them (D-020)
     )
     stored = tick.facts.playbooks
     merged = dict(stored)
@@ -390,8 +388,16 @@ def _refresh_playbooks(tick: _Tick) -> None:
         if same_playbook(before, playbook):
             continue
         merged[customer] = playbook
-        if tick.learns:
-            tick.store.save_playbook(playbook, before, tick.run_id)
+        if not tick.learns:
+            continue
+        try:
+            with tick.store.savepoint():  # one failed save never stops the tick (§18.6 step 7)
+                tick.store.save_playbook(playbook, before, tick.run_id)
+        except Exception as error:
+            tick.store.audit(
+                "agent.playbook_failed", "customer", customer,
+                {"run_id": tick.run_id, "error": _code(error)},
+            )  # fmt: skip
     tick.facts = dataclasses.replace(tick.facts, playbooks=merged)
 
 

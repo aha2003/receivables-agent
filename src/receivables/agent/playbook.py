@@ -152,7 +152,7 @@ def allowlist_suggestion(playbook: PlaybookRecord, allowlisted: Iterable[str]) -
         rate is None
         or playbook.customer_id in set(allowlisted)
         or playbook.promises_counted < SUGGEST_MIN_PROMISES
-        or Fraction(str(rate)) < SUGGEST_MIN_RATE
+        or Fraction(str(rate)) < SUGGEST_MIN_RATE  # the stored rate, rounded to 4 places
     ):
         return None
     return (
