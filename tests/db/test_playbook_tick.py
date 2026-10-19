@@ -57,6 +57,11 @@ def books(engine: Engine) -> dict[str, dict[str, Any]]:
     return {r["customer_id"]: r for r in rows(engine, "SELECT * FROM customer_playbook")}
 
 
+def followups(engine: Engine, run_id: str) -> list[dict[str, Any]]:
+    steps = rows(engine, "SELECT run_id, invoice_number, args_json, status, tool FROM agent_steps")
+    return [s for s in steps if s["run_id"] == run_id and s["tool"] == "schedule_followup"]
+
+
 def replies(engine: Engine, customer: str, delays: list[int]) -> None:
     """Outbound messages on 10-01, 10-10 and 10-19, each answered ``delay`` days later."""
     lines = ["message_id,direction,sent_at,invoice_number,customer_id,language,subject,body"]
@@ -98,9 +103,8 @@ def test_measured_replies_change_the_gap_and_the_same_ticks_followups(db: Engine
                         " AND before_json IS NOT NULL")  # fmt: skip
     assert json.loads(audit["before_json"])["followup_gap_days"] == 7
     assert json.loads(audit["after_json"])["followup_gap_days"] == 10
-    followups = rows(db, "SELECT invoice_number, args_json FROM agent_steps"
-                         f" WHERE run_id = '{summary.run_id}' AND tool = 'schedule_followup'")  # fmt: skip
-    days = {f["invoice_number"]: json.loads(f["args_json"])["days"] for f in followups}
+    days = {f["invoice_number"]: json.loads(f["args_json"])["days"]
+            for f in followups(db, summary.run_id)}  # fmt: skip
     assert days["INV-003"] == 10  # CUST-A: the playbook's gap, not the table's 7
     assert days["INV-004"] != 10  # CUST-B keeps its table value
 
@@ -120,8 +124,7 @@ def test_nothing_is_saved_at_l0_with_the_kill_switch_or_from_a_future_as_of(
 def test_an_l0_shadow_plans_with_the_fresh_playbook_in_memory(db: Engine) -> None:
     replies(db, "CUST-A", [5, 5, 5])
     summary = tick(db, level=0)
-    steps = rows(db, "SELECT invoice_number, args_json, status FROM agent_steps"
-                     f" WHERE run_id = '{summary.run_id}' AND tool = 'schedule_followup'")  # fmt: skip
+    steps = followups(db, summary.run_id)
     days = {s["invoice_number"]: json.loads(s["args_json"])["days"] for s in steps}
     assert days["INV-003"] == 10 and {s["status"] for s in steps} == {"skipped"}
     assert books(db) == {}

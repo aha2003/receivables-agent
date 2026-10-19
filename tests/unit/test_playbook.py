@@ -168,5 +168,6 @@ def test_the_playbook_module_is_pure() -> None:
     tree = ast.parse((ROOT / "src/receivables/agent/playbook.py").read_text(encoding="utf-8"))
     modules = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     modules |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
-    assert modules <= {"collections.abc", "datetime", "fractions", "receivables.agent.facts",
-                       "receivables.agent.outcomes", "receivables.core.scoring"}, modules  # fmt: skip
+    allowed = {"collections.abc", "datetime", "fractions", "receivables.agent.facts",
+               "receivables.agent.outcomes", "receivables.core.scoring"}  # fmt: skip
+    assert modules <= allowed, modules

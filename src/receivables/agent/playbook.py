@@ -130,7 +130,7 @@ def playbooks_from(
             broken=broken,
             delays=reply_delays(
                 outbound.get(customer, ()), inbound.get(customer, ()), facts.as_of, tz
-            ),  # fmt: skip
+            ),
         )
         for customer, (kept, broken) in sorted(counts.items())
     }
