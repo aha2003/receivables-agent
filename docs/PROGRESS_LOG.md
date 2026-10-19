@@ -368,3 +368,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-051 (options 1a, 2a, 3a; review fixes: the guard uses the real date, not a requested `now`; a preview cannot use up a promise; a promise older than an applied dispute changes nothing; the escalation task audited)
 - Unverified: `POST /api/outcomes` and NO_RESPONSE outcomes (not in this step); outcomes in the simulator's arms are recorded but unused until S4.05
 - Next step: S4.05 Customer playbook
+
+## 2026-10-19 — [S4.05] Customer playbook
+- PR: see branch | Branch: s4-05-customer-playbook | Commit: see PR head
+- Tests: `uv run pytest -q` → 2560 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; gitleaks clean on the new cassette; `tests/unit/test_playbook.py`, `tests/db/test_playbook_tick.py` and three route tests in `tests/api/test_agent_api.py`
+- Spec / test IDs covered: §18.7 (customer playbook: promise kept rate, reply speed, follow-up gap; recomputed at every tick; in the observation; a proposed, never applied, policy suggestion), §18.11 (`GET /api/agent/playbook/{customer_id}`); T-LRN-01, T-LRN-02, T-LRN-03
+- Manual: the maintainer re-recorded `tests/cassettes/live_demo.json` with a live run, because the planner's observation of the CUST-C cases now carries the computed playbook
+- Deviations or decisions (link docs/DECISIONS.md): D-052 (options 1a, 2a, 3a; review fixes; known limits: a past-dated persisting tick saves that window's figures until the next current tick; the suggestion compares the rounded stored rate)
+- Unverified: the playbook's effect on scheduling in the simulator (follow-up dates are set but not yet gated, S4.06)
+- Next step: S4.06 Escalation and follow-up scheduling in the loop

@@ -12,7 +12,7 @@
         "text": "We cannot process invoice INV-004 because purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000. Please correct.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"PO_AMOUNT_MISMATCH\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-004\"],\"po_numbers\":[\"PO-B-004\"],\"amounts_mentioned\":[{\"value\":\"47,000\",\"currency\":\"AED\",\"role\":\"po_amount\"},{\"value\":\"50,000\",\"currency\":\"AED\",\"role\":\"invoice_amount\"}],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000\",\"summary_en\":\"Customer states invoice INV-004 for AED 50,000 does not match purchase order PO-B-004 for AED 47,000 and asks for correction.\"}"
+      "response": "{\"label\":\"PO_AMOUNT_MISMATCH\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-004\"],\"po_numbers\":[\"PO-B-004\"],\"amounts_mentioned\":[{\"value\":\"47,000\",\"currency\":\"AED\",\"role\":\"po_amount\"},{\"value\":\"50,000\",\"currency\":\"AED\",\"role\":\"invoice_amount\"}],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"purchase order PO-B-004 was issued for AED 47,000, but the invoice is for AED 50,000\",\"summary_en\":\"Customer states invoice INV-004 for AED 50,000 does not match purchase order PO-B-004 for AED 47,000 and requests correction.\"}"
     },
     {
       "kind": "classify",
@@ -23,7 +23,7 @@
         "text": "We have not received the delivery note for INV-009, so we cannot approve it for payment.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"MISSING_DELIVERY_NOTE\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-009\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We have not received the delivery note for INV-009, so we cannot approve it for payment.\",\"summary_en\":\"Customer has not received the delivery note for invoice INV-009 and cannot approve it for payment until it is provided.\"}"
+      "response": "{\"label\":\"MISSING_DELIVERY_NOTE\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-009\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We have not received the delivery note for INV-009, so we cannot approve it for payment.\",\"summary_en\":\"Customer has not received the delivery note for INV-009 and cannot approve it for payment until it is provided.\"}"
     },
     {
       "kind": "classify",
@@ -56,7 +56,7 @@
         "text": "Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"MISSING_PO\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.\",\"summary_en\":\"Customer states invoice INV-011 lacks their PO number and asks for it to be reissued with the PO reference.\"}"
+      "response": "{\"label\":\"MISSING_PO\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Invoice INV-011 does not show our PO number. Please reissue it with the PO reference.\",\"summary_en\":\"Customer says invoice INV-011 lacks their PO number and asks for it to be reissued with the PO reference.\"}"
     },
     {
       "kind": "classify",
@@ -78,7 +78,7 @@
         "text": "The delivery against INV-013 was short by 20 units, so we will only pay for what we received.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"GOODS_OR_SERVICE_ISSUE\",\"confidence\":0.9,\"invoice_numbers\":[\"INV-013\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"The delivery against INV-013 was short by 20 units, so we will only pay for what we received.\",\"summary_en\":\"Customer reports that the delivery for INV-013 was short by 20 units and will only pay for the quantity received.\"}"
+      "response": "{\"label\": \"GOODS_OR_SERVICE_ISSUE\", \"confidence\": 0.9, \"invoice_numbers\": [\"INV-013\"], \"po_numbers\": [], \"amounts_mentioned\": [], \"dates_mentioned\": [], \"promised_payment_date\": null, \"evidence_quote\": \"The delivery against INV-013 was short by 20 units, so we will only pay for what we received.\", \"summary_en\": \"Customer reports that the delivery for INV-013 was 20 units short and will pay only for the goods received.\"}"
     },
     {
       "kind": "classify",
@@ -111,7 +111,7 @@
         "text": "We are facing cash flow constraints and would like to pay INV-011 in two instalments.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"CASHFLOW_DELAY\",\"confidence\":0.93,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We are facing cash flow constraints and would like to pay INV-011 in two instalments.\",\"summary_en\":\"Customer reports cash flow constraints and requests to pay invoice INV-011 in two instalments.\"}"
+      "response": "{\"label\":\"CASHFLOW_DELAY\",\"confidence\":0.92,\"invoice_numbers\":[\"INV-011\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"We are facing cash flow constraints and would like to pay INV-011 in two instalments.\",\"summary_en\":\"Customer reports cash flow constraints and requests to pay invoice INV-011 in two instalments.\"}"
     },
     {
       "kind": "classify",
@@ -133,7 +133,7 @@
         "text": "تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر",
         "language_hint": "ar"
       },
-      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 أكتوبر\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر\",\"summary_en\":\"The customer states that invoice INV-005 was already paid on 20 October.\"}"
+      "response": "{\"label\":\"ALREADY_PAID\",\"confidence\":0.95,\"invoice_numbers\":[\"INV-005\"],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[{\"value\":\"20 أكتوبر\",\"role\":\"payment_made\"}],\"promised_payment_date\":null,\"evidence_quote\":\"تم سداد الفاتورة INV-005 بتاريخ 20 أكتوبر\",\"summary_en\":\"The customer states that invoice INV-005 has already been paid, on 20 October.\"}"
     },
     {
       "kind": "classify",
@@ -144,7 +144,7 @@
         "text": "Thanks, noted.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"NO_ACTION_NEEDED\",\"confidence\":0.9,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Thanks, noted.\",\"summary_en\":\"Customer sent a brief acknowledgement with no payment dispute, promise, or request.\"}"
+      "response": "{\"label\":\"NO_ACTION_NEEDED\",\"confidence\":0.9,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Thanks, noted.\",\"summary_en\":\"Customer sent a brief acknowledgement with no invoice dispute, payment claim, or request.\"}"
     },
     {
       "kind": "classify",
@@ -155,7 +155,7 @@
         "text": "Please advise.",
         "language_hint": "en"
       },
-      "response": "{\"label\":\"UNCLEAR\",\"confidence\":0.3,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please advise.\",\"summary_en\":\"The customer message only says 'Please advise' with no details about the invoice, amount, or dispute, so it cannot be classified.\"}"
+      "response": "{\"label\":\"UNCLEAR\",\"confidence\":0.3,\"invoice_numbers\":[],\"po_numbers\":[],\"amounts_mentioned\":[],\"dates_mentioned\":[],\"promised_payment_date\":null,\"evidence_quote\":\"Please advise.\",\"summary_en\":\"The customer message only asks for advice and does not state an invoice issue, so it cannot be classified.\"}"
     },
     {
       "kind": "classify",
@@ -243,7 +243,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-004\",\"steps\":[{\"tool\":\"request_internal_document\",\"args\":{\"invoice_number\":\"INV-004\",\"doc_type\":\"po_copy\",\"owner_role\":\"sales\"},\"reason\":\"Active dispute PO_AMOUNT_MISMATCH since 2026-09-10; need the PO copy to compare against the invoice amount before contacting the customer.\"},{\"tool\":\"create_task\",\"args\":{\"owner_role\":\"sales\",\"text\":\"Resolve PO_AMOUNT_MISMATCH dispute on INV-004 (50000.00, 122 days overdue): confirm the PO amount with the customer and report back to collections.\",\"due_date\":\"2026-11-03\"},\"reason\":\"The dispute has been open for 7 weeks with no messages; sales must drive resolution.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-004\",\"to_role\":\"management\"},\"reason\":\"High-value 90+ day invoice, rank 1 priority, dispute unresolved for weeks; management visibility is warranted.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-004\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days to check on the PO document and dispute progress; no customer reminder is sent while the dispute is open.\"}]}"
+      "response": "{\"invoice_number\":\"INV-004\",\"steps\":[{\"tool\":\"request_internal_document\",\"args\":{\"invoice_number\":\"INV-004\",\"doc_type\":\"po_copy\",\"owner_role\":\"sales\"},\"reason\":\"Open PO_AMOUNT_MISMATCH dispute since 2026-09-10 on a 50,000.00 invoice; sales needs to supply the PO copy to compare against the invoiced amount before chasing the customer.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-004\",\"to_role\":\"sales\"},\"reason\":\"Debt is 122 days overdue and the dispute is still unresolved, so sales should own resolution with the customer.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-004\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days to check whether the PO copy has been received and the dispute is resolved.\"}]}"
     },
     {
       "kind": "plan",
@@ -312,7 +312,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-011\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-011\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 62 days overdue (61-90 bucket) with no dispute, no promises and no prior contact; a formal reminder draft is the least intrusive step that moves the case forward.\"},{\"tool\":\"create_task\",\"args\":{\"owner_role\":\"finance\",\"text\":\"Call customer CUST-B about overdue INV-011 (25000.00, 62 days overdue) and review their other overdue invoices; formal reminder drafted for approval.\",\"due_date\":\"2026-11-03\"},\"reason\":\"Playbook next action calls for a call alongside the formal reminder; finance owns the follow-up.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-011\",\"days\":7},\"reason\":\"Follow-up gap in the playbook is 7 days; set the next check to review the reply or payment.\"}]}"
+      "response": "{\"invoice_number\":\"INV-011\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-011\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 62 days overdue (61-90 bucket) with no dispute, no promises and no prior events; a formal reminder is appropriate per the playbook next action.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the drafted formal reminder; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-011\",\"days\":7},\"reason\":\"Set the next follow-up using the customer's followup gap of 7 days.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-011\",\"to_role\":\"management\"},\"reason\":\"The customer has 4 overdue invoices totalling 102000.00 and this one is 62 days overdue, so management should be aware and place a call as the playbook suggests.\"}]}"
     },
     {
       "kind": "draft",
@@ -339,7 +339,7 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Formal Reminder: Overdue Invoice INV-011\",\"body\":\"Dear Accounts Team,\\n\\nWe write to formally remind you that invoice INV-011 for 25000.00 remains unpaid. The invoice was due on 2026-08-30 and, as of 2026-10-31, it is 62 days overdue. The open amount is 25000.00.\\n\\nPlease confirm in writing the date on which payment will be made. If payment has already been sent, kindly share the remittance details so we can match it to your account.\\n\\nWe appreciate your prompt attention and look forward to your reply.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Formal Payment Reminder: Invoice INV-011 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nWe are writing to formally remind [CUSTOMER] that invoice INV-011 for 25000.00 remains unpaid. The invoice was due on 2026-08-30, and as of 2026-10-31 the full open amount of 25000.00 is still outstanding.\\n\\nPlease arrange payment of this amount as soon as possible and confirm to us the date on which payment will be made. If payment has already been sent, please share the remittance details so that we can match it to the invoice.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
@@ -408,7 +408,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-005\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-005\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"47 days overdue (31-60 bucket), no dispute, no broken promise, no unallocated cash; priority next action is a firm reminder. Draft first for review.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the firm reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-005\",\"days\":7},\"reason\":\"Follow up after the playbook's 7-day gap if no reply or payment.\"}]}"
+      "response": "{\"invoice_number\":\"INV-005\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-005\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Invoice is 47 days overdue (31-60 bucket) with no dispute, no broken promise and no unallocated cash; the priority next action is a firm reminder, so draft one first.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-005\",\"days\":7},\"reason\":\"Set the next follow-up in line with the playbook follow-up gap of 7 days, so the case does not stall after the reminder.\"}]}"
     },
     {
       "kind": "draft",
@@ -435,11 +435,11 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Payment Reminder: Invoice INV-005 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-005, originally for 30000.00, was due on 2026-09-14 and remains partly unpaid. The open amount is 20000.00, and as of 2026-10-31 it is 47 days overdue.\\n\\nPlease arrange payment of the open amount as soon as possible. If payment has already been sent, kindly share the remittance details so we can match it to the invoice.\\n\\nIf you need a copy of the invoice or have any questions, please let us know and we will gladly help.\\n\\nThank you for your prompt attention.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Overdue Invoice INV-005 - Payment Required\",\"body\":\"Dear Accounts Team,\\n\\nWe are writing to remind you that invoice INV-005, originally for 30000.00, remains partly unpaid. The open amount of 20000.00 was due on 2026-09-14 and is now 47 days overdue as of 2026-10-31.\\n\\nPlease arrange payment of the outstanding 20000.00 as soon as possible. If payment has already been sent, kindly share the remittance details so we can match it to the invoice.\\n\\nIf you need a copy of the invoice or have any questions, please let us know and we will be glad to help.\\n\\nThank you for your prompt attention.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
-      "request_sha256": "4416008806e7a0f6518538700ec7b38d8b9dbeee8e96f40b6ec72638f6f90946",
+      "request_sha256": "9bfe70d0c66fa6dea857c20cbff79697e0d4827d16f5fdd6658f97d5e83f1e58",
       "prompt_version": "plan-v1",
       "model": "anthropic:planner",
       "request": {
@@ -481,7 +481,7 @@
             "messages": [],
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -504,7 +504,7 @@
             "unallocated_total": "0.00",
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -512,7 +512,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-008\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-008\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Promise to pay for 2026-10-20 was broken, invoice is 42 days overdue with no dispute, so a firm reminder is warranted.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the drafted firm reminder; policy check will turn it into an approval request if the autonomy level requires it.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-008\",\"days\":7},\"reason\":\"Set the next follow-up in line with the customer's 7-day follow-up gap.\"}]}"
+      "response": "{\"invoice_number\":\"INV-008\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-008\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Promise to pay of 2026-10-20 was broken, invoice is 42 days overdue with no dispute and no unallocated cash, so a firm reminder is the next least intrusive step.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-008\",\"days\":7},\"reason\":\"Playbook follow-up gap is 7 days; set next follow-up after the reminder.\"}]}"
     },
     {
       "kind": "draft",
@@ -539,7 +539,7 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Reminder: Overdue Invoice INV-008\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-008 for 12000.00, which was due on 2026-09-19, remains unpaid. As of 2026-10-31, the full amount of 12000.00 is open and the invoice is 42 days overdue.\\n\\nPlease arrange payment promptly. If payment has already been sent, kindly share the remittance details so we can match it to your account.\\n\\nIf you need a copy of the invoice or have any questions, please let us know and we will be glad to help.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Reminder: Invoice INV-008 is overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-008 for 12000.00, which was due on 2026-09-19, remains unpaid as of 2026-10-31. The full amount of 12000.00 is still open, and the invoice is now 42 days overdue.\\n\\nPlease arrange payment promptly. If payment has already been sent, kindly share the remittance details so we can match it to the invoice. If you need a copy of the invoice or have any questions, let us know and we will help right away.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
@@ -608,7 +608,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-003\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-003\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"Invoice is 30 days overdue with no disputes, broken promises or prior events, and the playbook suggests a friendly reminder. Drafting first, before any send.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the friendly reminder draft; the policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-003\",\"days\":7},\"reason\":\"Set the next follow-up using the customer's followup gap of 7 days.\"}]}"
+      "response": "{\"invoice_number\":\"INV-003\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-003\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"Invoice is 30 days overdue with no dispute, no broken promise, no prior events or messages, and no unallocated cash, so a friendly reminder is the least intrusive next step. Draft before sending.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-003\",\"days\":7},\"reason\":\"Playbook follow-up gap is 7 days; set the next follow-up to check for a reply or payment.\"}]}"
     },
     {
       "kind": "draft",
@@ -635,7 +635,7 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Friendly reminder: Invoice INV-003 payment\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are doing well. This is a friendly reminder that invoice INV-003 for 15000.00, which was due on 2026-10-01, remains open as of 2026-10-31. The outstanding amount is 15000.00.\\n\\nIf payment has already been sent, thank you, and please disregard this message. If not, we would be grateful if you could arrange payment at your earliest convenience. Please let us know if you need a copy of the invoice or any other information from us.\\n\\nThank you for your help and continued cooperation.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Friendly reminder: Invoice INV-003\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are well. This is a friendly reminder that invoice INV-003 for 15000.00, which was due on 2026-10-01, remains open. The outstanding amount is 15000.00.\\n\\nIf payment has already been sent, please accept our thanks and disregard this message. Otherwise, we would be grateful if you could arrange payment at your earliest convenience. Please let us know if you need a copy of the invoice or any other information from us.\\n\\nThank you for your help.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
@@ -704,7 +704,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-014\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-014\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 90 days overdue (61-90 bucket) with no dispute, no promises and no customer reply on record; a formal reminder is appropriate.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-014\",\"to_role\":\"management\"},\"reason\":\"Priority is High with next action to escalate; 4 overdue invoices totaling 102000.00 for this customer warrant management attention and a call.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-014\",\"days\":7},\"reason\":\"Set the next follow-up in line with the playbook follow-up gap of 7 days.\"}]}"
+      "response": "{\"invoice_number\":\"INV-014\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-014\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 90 days overdue (61-90 bucket) with no dispute, no promises and no replies on record; a formal reminder is the appropriate next step.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; the policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-014\",\"to_role\":\"management\"},\"reason\":\"Priority playbook says escalate: call and send formal reminder; 4 of 5 open invoices are overdue (102000.00) so a management call is warranted.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-014\",\"days\":7},\"reason\":\"Set the next follow-up to the playbook gap of 7 days to check for a reply.\"}]}"
     },
     {
       "kind": "draft",
@@ -731,11 +731,11 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Formal Payment Reminder: Invoice INV-014 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records as of 2026-10-31 show that invoice INV-014 for 7000.00, which was due on 2026-08-02, remains unpaid. The full amount of 7000.00 is outstanding, and the invoice is now 90 days overdue.\\n\\nWe kindly ask that you arrange payment promptly and confirm the date on which we can expect to receive it. If payment has already been made, please send us the remittance details so we can match it to your account.\\n\\nShould you need a copy of the invoice or any further information, please let us know and we will provide it right away.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Formal Payment Reminder: Invoice INV-014 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records as of 2026-10-31 show that invoice INV-014 for 7000.00, which was due on 2026-08-02, remains unpaid. The full amount of 7000.00 is still open, and the invoice is now 90 days overdue.\\n\\nWe kindly ask that you review this invoice and confirm in writing the date on which payment will be made. If payment has already been sent, please share the remittance details so we can match it to your account.\\n\\nShould you need a copy of the invoice or any further information, please let us know and we will provide it promptly.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
-      "request_sha256": "c108ef496394309d5ed7b0353d8fb75f41c3af7f874c0c1936a3b777911325ca",
+      "request_sha256": "31de1de63787eb401aeb3bc77c821224e008c7b8b8234b1e3d95acf1860e80b7",
       "prompt_version": "plan-v1",
       "model": "anthropic:planner",
       "request": {
@@ -769,7 +769,7 @@
             "messages": [],
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -792,7 +792,7 @@
             "unallocated_total": "0.00",
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -800,7 +800,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-009\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-009\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 93 days overdue (90+ bucket) with no dispute, no messages and no unallocated cash; a formal reminder is the least intrusive step that moves the case forward.\"},{\"tool\":\"send_email\",\"args\":{\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; the policy engine will decide whether it needs approval.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-009\",\"to_role\":\"management\"},\"reason\":\"Playbook next action is to escalate with a call; the customer has 3 overdue invoices totalling 26000.00 and no recorded replies, so management should follow up by phone.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-009\",\"days\":7},\"reason\":\"Set the next follow-up in line with the playbook's 7-day follow-up gap.\"}]}"
+      "response": "{\"invoice_number\":\"INV-009\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-009\"],\"tone\":3,\"dispute_label\":null},\"reason\":\"Invoice is 93 days overdue (90+ bucket) with no dispute, no replies and no broken promise, so a formal reminder is the appropriate next step.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the formal reminder draft; policy engine will gate it or convert it to an approval request.\"},{\"tool\":\"escalate\",\"args\":{\"invoice_number\":\"INV-009\",\"to_role\":\"management\"},\"reason\":\"Playbook next action is to escalate; the customer has all 3 open invoices (26000.00) overdue and no replies on record, so a call needs management attention.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-009\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days to check for a reply or payment.\"}]}"
     },
     {
       "kind": "draft",
@@ -827,11 +827,11 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Formal Reminder: Overdue Invoice INV-009\",\"body\":\"Dear Accounts Team,\\n\\nWe write to formally remind you that invoice INV-009, for an amount of 5000.00, was due on 2026-07-30. As of 2026-10-31, the full open amount of 5000.00 remains unpaid.\\n\\nWe kindly ask that you confirm in writing the date on which payment will be made. If payment has already been sent, please let us know the payment details so we can match it to your account.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Formal Reminder: Invoice INV-009 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nWe are writing to formally remind you that invoice INV-009 for 5000.00, due on 2026-07-30, remains unpaid as of 2026-10-31. The open amount is 5000.00.\\n\\nPlease reply with the date on which payment will be made. If payment has already been sent, kindly share the remittance details so we can match it to your account.\\n\\nThank you for your prompt attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
-      "request_sha256": "d0d48d0f2e41776a003c54d930a1a87325e840468f6bdbf165b4eef44b7c6b3c",
+      "request_sha256": "991f2e892d3973bd4ce6cc7235fa2295a8384c53083ed5e64c3bd42f0022edb6",
       "prompt_version": "plan-v1",
       "model": "anthropic:planner",
       "request": {
@@ -865,7 +865,7 @@
             "messages": [],
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -888,7 +888,7 @@
             "unallocated_total": "0.00",
             "playbook": {
               "promise_kept_rate": null,
-              "promises_counted": 0,
+              "promises_counted": 1,
               "avg_days_to_reply": null,
               "replies_counted": 0,
               "followup_gap_days": 7
@@ -896,7 +896,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-012\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-012\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"16 days overdue, no dispute, no broken promise, no unallocated cash, good payment history: a friendly reminder is the least intrusive step.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the friendly reminder draft; the policy engine will check it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-012\",\"days\":7},\"reason\":\"Follow up after the customer's standard 7-day follow-up gap if no payment or reply arrives.\"}]}"
+      "response": "{\"invoice_number\":\"INV-012\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-012\"],\"tone\":1,\"dispute_label\":null},\"reason\":\"16 days overdue, no dispute, no broken promise, no messages and no unallocated cash. A friendly reminder is the least intrusive step.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the friendly reminder draft from step 1. The policy engine decides whether this needs approval.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-012\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days if there is no payment or reply.\"}]}"
     },
     {
       "kind": "draft",
@@ -923,7 +923,7 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Friendly reminder: Invoice INV-012 due 2026-10-15\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are well. This is a friendly reminder that invoice INV-012 for 9000.00, which was due on 2026-10-15, remains open as of 2026-10-31. The full amount of 9000.00 is outstanding.\\n\\nIf payment has already been sent, thank you, and please disregard this message. If not, we would be grateful if you could arrange payment at your earliest convenience. Please let us know if you need a copy of the invoice or any other information from us.\\n\\nThank you for your help.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Friendly reminder: Invoice INV-012 payment\",\"body\":\"Dear Accounts Team,\\n\\nI hope you are well. This is a friendly reminder that invoice INV-012 for 9000.00, which was due on 2026-10-15, remains open as of 2026-10-31 with an outstanding amount of 9000.00.\\n\\nIf payment has already been sent, please accept our thanks and disregard this message. If not, we would be grateful if you could arrange payment at your earliest convenience.\\n\\nPlease let us know if you need a copy of the invoice or any other information from us.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     },
     {
       "kind": "plan",
@@ -992,7 +992,7 @@
           }
         }
       },
-      "response": "{\"invoice_number\":\"INV-013\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-013\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Invoice is 31 days overdue with no dispute, no broken promise and no prior contact; the customer was late on all 2 recent payments, so a firm reminder matches the priority next action.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the reminder draft; policy engine will gate it or turn it into an approval request.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-013\",\"days\":7},\"reason\":\"Follow up after the playbook gap of 7 days if there is no reply or payment.\"}]}"
+      "response": "{\"invoice_number\":\"INV-013\",\"steps\":[{\"tool\":\"draft_message\",\"args\":{\"invoice_numbers\":[\"INV-013\"],\"tone\":2,\"dispute_label\":null},\"reason\":\"Invoice is 31 days overdue with no dispute, no broken promise and no prior contact. The customer has paid late both times in the last 365 days, and the playbook suggests a firm reminder.\"},{\"tool\":\"send_email\",\"args\":{\"draft_id\":null,\"draft_ref\":\"step:1\"},\"reason\":\"Send the reminder drafted in step 1. The policy engine will decide if it needs approval.\"},{\"tool\":\"schedule_followup\",\"args\":{\"invoice_number\":\"INV-013\",\"days\":7},\"reason\":\"Follow up in 7 days, in line with the playbook followup_gap_days.\"}]}"
     },
     {
       "kind": "draft",
@@ -1019,7 +1019,7 @@
           "amount_difference": null
         }
       },
-      "response": "{\"subject\":\"Payment Reminder: Invoice INV-013 Overdue\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-013 for 4000.00, which was due on 2026-09-30, remains unpaid as of 2026-10-31. The open amount is 4000.00, and the invoice is now 31 days overdue.\\n\\nPlease arrange payment promptly. If payment has already been sent, kindly share the remittance details so we can match it to your account. If you need a copy of the invoice or have any questions, let us know and we will gladly help.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
+      "response": "{\"subject\":\"Overdue Invoice INV-013 - Payment Required\",\"body\":\"Dear Accounts Team,\\n\\nOur records show that invoice INV-013 for 4000.00, which was due on 2026-09-30, remains unpaid as of 2026-10-31. The open amount is 4000.00 and the invoice is now 31 days overdue.\\n\\nPlease arrange payment promptly. If you have already sent payment, kindly share the remittance details so we can match it to your account.\\n\\nIf there is any problem preventing payment, please let us know as soon as possible so we can help resolve it.\\n\\nThank you for your attention to this matter.\\n\\nKind regards,\\nAccounts Receivable Team\"}"
     }
   ]
 }

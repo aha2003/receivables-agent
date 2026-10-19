@@ -6,9 +6,14 @@ Shared by the JSON API and the server-rendered pages, so both show the same trac
 import json
 from typing import Any
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, select, text
 
-__all__ = ["case_runs", "pending_approvals", "run_trace", "send_decisions"]
+from receivables.adapters.db.models import Customer
+from receivables.adapters.db.repo import load_playbooks
+from receivables.agent.facts import PlaybookRecord
+from receivables.agent.playbook import allowlist_suggestion, build_playbook
+
+__all__ = ["case_runs", "customer_playbook", "pending_approvals", "run_trace", "send_decisions"]
 
 
 def _loads(value: str | None) -> Any:
@@ -200,3 +205,30 @@ def send_decisions(engine: Engine, draft_ids: list[str]) -> dict[str, dict[str, 
     for r in rows:
         found.setdefault(r["d"], {**_step(r), "autonomy_level": r["autonomy_level"]})
     return found
+
+
+def customer_playbook(
+    engine: Engine, customer_id: str, allowlisted: tuple[str, ...]
+) -> dict[str, Any] | None:
+    """§18.11 ``GET /api/agent/playbook/{customer_id}``: the stored row, or the §18.7 defaults
+    before any tick has computed one; ``None`` for an unknown customer. The suggestion is
+    proposed for a person to apply in config, never applied (§18.7, D-052)."""
+    with engine.connect() as conn:
+        known = conn.execute(
+            select(Customer.customer_id).where(Customer.customer_id == customer_id)
+        ).first()
+        if known is None:
+            return None
+        stored = {p.customer_id: p for p in load_playbooks(conn)}.get(customer_id)
+    playbook: PlaybookRecord = stored or build_playbook(customer_id, kept=0, broken=0, delays=())
+    return {
+        "customer_id": customer_id,
+        "promise_kept_rate": playbook.promise_kept_rate,
+        "promises_counted": playbook.promises_counted,
+        "avg_days_to_reply": playbook.avg_days_to_reply,
+        "replies_counted": playbook.replies_counted,
+        "followup_gap_days": playbook.followup_gap_days,
+        "updated_at": playbook.updated_at or None,
+        "computed": stored is not None,
+        "suggestion": allowlist_suggestion(playbook, allowlisted),
+    }

@@ -512,3 +512,39 @@ def test_an_l2_dry_run_that_would_send_leaves_nothing_behind(
     real = post(l2_client, "/api/agent/run", {}).json()
     assert real["run_id"] is not None
     assert rows(engine, "SELECT COUNT(*) AS n FROM mail_outbox") == [{"n": 1}]  # INV-003, CUST-A
+
+
+def test_playbook_route_shows_defaults_then_the_computed_row(
+    user: TestClient, seeded: Engine
+) -> None:
+    before = user.get("/api/agent/playbook/CUST-C")
+    assert before.status_code == 200
+    assert before.json() == {
+        "customer_id": "CUST-C", "promise_kept_rate": None, "promises_counted": 0,
+        "avg_days_to_reply": None, "replies_counted": 0, "followup_gap_days": 7,
+        "updated_at": None, "computed": False, "suggestion": None,
+    }  # fmt: skip
+    assert post(user, "/api/agent/run", {"as_of": "2026-10-31"}).status_code == 200
+    after = user.get("/api/agent/playbook/CUST-C").json()
+    assert after["computed"] is True and after["promises_counted"] == 1  # E-002, broken
+    assert after["updated_at"] is not None
+
+
+def test_playbook_route_proposes_but_never_applies_an_allowlist_change(
+    user: TestClient, seeded: Engine
+) -> None:
+    with seeded.begin() as c:
+        c.execute(text(
+            "INSERT INTO customer_playbook (customer_id, promise_kept_rate, promises_counted,"
+            " avg_days_to_reply, replies_counted, followup_gap_days, updated_at)"
+            " VALUES ('CUST-A', 0.8, 5, NULL, 0, 7, '2026-10-31T06:00:00Z')"
+        ))  # fmt: skip
+    body = user.get("/api/agent/playbook/CUST-A").json()
+    assert "CUST-A" in body["suggestion"] and "never changes" in body["suggestion"]
+    assert "CUST-A" not in user.app.state.config.agent.l2.allowlisted_customers  # type: ignore[attr-defined]
+
+
+def test_playbook_route_404_and_401(user: TestClient, client: TestClient) -> None:
+    assert user.get("/api/agent/playbook/CUST-Z").status_code == 404
+    user.post("/logout", headers={"x-csrf-token": csrf(user)})
+    assert client.get("/api/agent/playbook/CUST-A").status_code == 401

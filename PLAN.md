@@ -281,7 +281,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §18.7
   - Tests: T-OUT-01
   - Done when: Outcomes match the spec cases.
-- [ ] **S4.05** Customer playbook
+- [x] **S4.05** Customer playbook
   - Goal: Promise-kept rate, reply speed and follow-up gap; planner uses them.
   - Spec: §18.7
   - Tests: T-LRN-01, T-LRN-02, T-LRN-03

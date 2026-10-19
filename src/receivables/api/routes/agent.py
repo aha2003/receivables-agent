@@ -2,7 +2,7 @@
 
 Run a tick, read its trace, list pending approvals, read or set the kill switch, and re-enter
 a password for admin actions. Every route needs a session; state-changing ones need CSRF.
-Approve and reject decide approval items (S3.09, D-038); the playbook route comes with S4.05.
+Approve and reject decide approval items (S3.09, D-038); the playbook is read-only (S4.05, D-052).
 """
 
 import re
@@ -25,7 +25,7 @@ from receivables.adapters.db.controls import (
 )
 from receivables.adapters.db.repo import get_user, write_audit
 from receivables.agent.orchestrator import RunSummary
-from receivables.api.agent_views import pending_approvals, run_trace
+from receivables.api.agent_views import customer_playbook, pending_approvals, run_trace
 from receivables.api.auth import error_response
 from receivables.api.llm_ports import llm_ports
 from receivables.api.security import SessionUser, verify_password
@@ -144,6 +144,16 @@ async def agent_trace(request: Request, run_id: str) -> dict[str, Any]:
 @router.get("/api/agent/approvals")
 async def agent_approvals(request: Request) -> dict[str, Any]:
     return {"items": await run_in_threadpool(pending_approvals, request.app.state.engine)}
+
+
+@router.get("/api/agent/playbook/{customer_id}")
+async def agent_playbook(request: Request, customer_id: str) -> dict[str, Any]:
+    state = request.app.state
+    allowlisted = tuple(state.config.agent.l2.allowlisted_customers)
+    playbook = await run_in_threadpool(customer_playbook, state.engine, customer_id, allowlisted)
+    if playbook is None:
+        raise HTTPException(404, "No customer with that id.")
+    return playbook
 
 
 class _Decision(BaseModel):

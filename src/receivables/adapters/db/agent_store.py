@@ -13,7 +13,8 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Connection, Engine, insert, select, update
+from sqlalchemy import Connection, Engine, func, insert, select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from receivables.adapters.clock import DUBAI, Clock, utc_timestamp
 from receivables.adapters.config import Config
@@ -25,6 +26,7 @@ from receivables.adapters.db.models import (
     AuditLog,
     Case,
     Correspondence,
+    CustomerPlaybook,
     Draft,
     Invoice,
     MailOutbox,
@@ -35,7 +37,7 @@ from receivables.adapters.db.repo import load_agent_facts, write_audit
 from receivables.adapters.mail.sandbox import SandboxMailGateway
 from receivables.agent.cases import CaseState, CaseTrigger, MessageSent, transition
 from receivables.agent.drafting import DraftWriter
-from receivables.agent.facts import AgentFacts
+from receivables.agent.facts import AgentFacts, PlaybookRecord
 from receivables.agent.orchestrator import (
     DraftRecord,
     PlanSource,
@@ -59,6 +61,17 @@ def _json(value: Any) -> str:
 
 def _utc(moment: datetime) -> str:
     return moment.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _moment(timestamp: str | None) -> datetime | None:
+    """A stored timestamp as an aware datetime (``Z`` or an offset); None if unreadable."""
+    if not timestamp:
+        return None
+    try:
+        moment = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 def _local_date(timestamp: str, timezone: str) -> date | None:
@@ -112,6 +125,62 @@ class DbAgentStore:
             outcome.invoice_number,
             {"outcome_id": outcome.outcome_id, "outcome_type": outcome.outcome_type,
              "run_id": run_id},
+        )  # fmt: skip
+
+    # --- the customer playbook (§18.7) ----------------------------------------------------
+
+    def outbound_contacts(self) -> Mapping[str, tuple[datetime, ...]]:
+        """Every outbound contact's time, per customer: sandbox sends, outbound messages and
+        drafts a person marked sent (the contacts ``outbound_dates`` counts, S3.09)."""
+        sent = self.conn.execute(
+            select(Draft.customer_id, MailOutbox.created_at)
+            .join(Draft, Draft.draft_id == MailOutbox.draft_id)
+            .where(MailOutbox.status.in_(_DELIVERED))
+        ).all()
+        written = self.conn.execute(
+            select(
+                func.coalesce(Correspondence.customer_id, Invoice.customer_id),
+                Correspondence.sent_at,
+            )
+            .outerjoin(Invoice, Invoice.invoice_number == Correspondence.invoice_number)
+            .where(Correspondence.direction == "outbound")
+        ).all()
+        by_hand = self.conn.execute(
+            select(Draft.customer_id, Draft.sent_at).where(
+                Draft.status == "sent_manually", Draft.sent_at.is_not(None)
+            )
+        ).all()
+        contacts: dict[str, list[datetime]] = {}
+        for customer, stamp in [*sent, *written, *by_hand]:
+            moment = _moment(stamp)
+            if customer is not None and moment is not None:
+                contacts.setdefault(customer, []).append(moment)
+        return {c: tuple(sorted(times)) for c, times in sorted(contacts.items())}
+
+    def save_playbook(
+        self, playbook: PlaybookRecord, before: PlaybookRecord | None, run_id: str
+    ) -> None:
+        values = {
+            "promise_kept_rate": playbook.promise_kept_rate,
+            "promises_counted": playbook.promises_counted,
+            "avg_days_to_reply": playbook.avg_days_to_reply,
+            "replies_counted": playbook.replies_counted,
+            "followup_gap_days": playbook.followup_gap_days,
+            "updated_at": utc_timestamp(self.clock),
+        }
+        statement = sqlite_insert(CustomerPlaybook).values(
+            customer_id=playbook.customer_id, **values
+        )
+        self.conn.execute(
+            statement.on_conflict_do_update(index_elements=["customer_id"], set_=values)
+        )
+        fields = ("promise_kept_rate", "promises_counted", "avg_days_to_reply", "replies_counted",
+                  "followup_gap_days")  # fmt: skip
+        write_audit(
+            self.conn, self.clock, actor=ACTOR, action="playbook.updated",
+            entity_type="customer", entity_id=playbook.customer_id,
+            before=None if before is None else {f: getattr(before, f) for f in fields},
+            after={f: getattr(playbook, f) for f in fields} | {"run_id": run_id},
         )  # fmt: skip
 
     # --- facts and cases -----------------------------------------------------------------
