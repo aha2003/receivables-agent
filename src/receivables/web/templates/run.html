@@ -18,6 +18,7 @@
   <dt>Cases</dt><dd>{{ r.cases_considered }}</dd>
   <dt>Steps executed</dt><dd>{{ r.steps_executed }}</dd>
   <dt>Steps denied by policy</dt><dd>{{ r.steps_denied }}</dd>
+  {% if trace.waiting %}<dt>Waiting for their follow-up date</dt><dd>{{ trace.waiting | join(', ') }}</dd>{% endif %}
 </dl>
 {% for case in trace.cases %}
 <section>

@@ -229,3 +229,49 @@ def test_every_entry_into_escalated_creates_one_task(db: Engine) -> None:
     run(db, date(2026, 10, 31))  # planned again: escalate on an escalated case adds no task
     for n in ("INV-009", "INV-011", "INV-014"):
         assert len(escalation_tasks(db, n)) == 1
+
+
+def test_61_days_overdue_is_enough(db: Engine) -> None:
+    _awaiting(db, "INV-011", TWO_SENT, [])
+    run(db, date(2026, 10, 30))  # INV-011 is due 2026-08-30: 61 days
+    assert no_reply_escalations(db, "INV-011") == [("ESCALATED", "NoReply")]
+
+
+def test_messages_before_a_dispute_or_promise_do_not_count(db: Engine) -> None:
+    _awaiting(db, "INV-011", TWO_SENT, [])
+    add(db, SEEDED, "events", EVENTS + "E-N1,INV-011,DISPUTE_RESOLVED,2026-10-10,,\n")
+    run(db, date(2026, 10, 31))  # only the 2026-10-15 message came after the event
+    assert no_reply_escalations(db, "INV-011") == []
+
+
+def test_a_future_dated_run_saves_no_follow_up_dates(db: Engine) -> None:
+    preview = run(db, date(2026, 11, 20))  # the real date is 2026-11-02
+    assert preview.cases_considered > 0
+    assert rows(db, "SELECT * FROM cases WHERE next_followup IS NOT NULL") == []
+    results = [json.loads(r["result_json"]) for r in rows(
+        db, "SELECT result_json FROM agent_steps WHERE tool = 'schedule_followup'")]  # fmt: skip
+    assert results and all(r["saved"] is False for r in results)
+    current = run(db, date(2026, 11, 2))  # nothing holds the cases back
+    assert current.waiting == () and current.cases_considered > 0
+
+
+def test_a_new_promise_lifts_the_wait(db: Engine) -> None:
+    run(db, date(2026, 10, 31))
+    add(db, SEEDED, "events", EVENTS + "E-W2,INV-003,PROMISE_TO_PAY,2026-10-31,,2026-11-05\n")
+    again = run(db, date(2026, 10, 31))
+    assert "INV-003" not in again.waiting and state(db, "INV-003") == "PROMISE_PENDING"
+
+
+def test_waiting_cases_take_no_place_in_the_run(db: Engine) -> None:
+    three = dataclasses.replace(config(), agent=dataclasses.replace(
+        config().agent, max_cases_per_tick=3))  # fmt: skip
+    first = run(db, date(2026, 10, 31), cfg=three)
+    second = run(db, date(2026, 10, 31), cfg=three)  # the top 3 now wait: the next 3 are planned
+    assert len(first.waiting) == 0 and set(second.waiting) >= set(_planned(db, first.run_id))
+    assert len(_planned(db, second.run_id)) == 3
+    assert _planned(db, second.run_id).isdisjoint(_planned(db, first.run_id))
+
+
+def _planned(db: Engine, run_id: str) -> set[str]:
+    return {r["invoice_number"] for r in rows(
+        db, "SELECT invoice_number FROM agent_steps WHERE run_id = :r", r=run_id)}  # fmt: skip

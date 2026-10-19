@@ -419,10 +419,16 @@ def _no_reply(tick: _Tick) -> int:
         if state is not CaseState.AWAITING_REPLY or row is None or row.days_overdue is None:
             continue
         since = last_inbound.get(row.customer_id)
+        # A dispute or promise event also breaks the run: count only messages after it.
+        event = _latest(
+            tick.facts, invoice, {"DISPUTE_OPENED", "DISPUTE_RESOLVED", "PROMISE_TO_PAY"}
+        )
         unanswered = sum(
             1
             for sent in contacts.get(invoice, ())
-            if sent.astimezone(tz).date() <= as_of and (since is None or sent > since)
+            if sent.astimezone(tz).date() <= as_of
+            and (since is None or sent > since)
+            and (event is None or sent.astimezone(tz).date() > event.event_date)
         )
         trigger = NoReply(unanswered_outbound=unanswered, days_overdue=row.days_overdue)
         if transition(state, trigger).to_state is not CaseState.ESCALATED:
@@ -775,6 +781,8 @@ def _schedule_followup(
     tick: _Tick, invoice: str, args: dict[str, Any], step_id: str
 ) -> dict[str, Any]:
     on = tick.facts.as_of + timedelta(days=args["days"])
+    if not tick.current:  # a preview of the future may not hold cases back (D-053)
+        return {"next_followup": on.isoformat(), "saved": False}
     tick.store.set_followup(invoice, on)
     return {"next_followup": on.isoformat()}
 

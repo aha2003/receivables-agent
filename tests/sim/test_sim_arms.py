@@ -218,7 +218,7 @@ def test_dispute_resolutions_are_the_humans(sim: SimRun, engines: dict[str, Engi
         imports = _all(engines[arm], select(AuditLog).where(AuditLog.action == "import.accepted"))
         events = [a for a in imports if json.loads(a.after_json)["file_kind"] == "events"]
         resolved = sim.results["arms"][arm]["disputes_resolved"]
-        assert resolved > 0 and len(events) == resolved  # one import per resolution
+        assert resolved == 15 and len(events) == resolved  # seed 42 (D-053): one per resolution
         assert {a.actor for a in events} == {"sim-human"}
 
 

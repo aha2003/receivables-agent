@@ -251,6 +251,9 @@ class RecordingPlanner:
 def test_existing_cases_are_untouched_under_the_switch(db: Engine) -> None:
     tick(db, config(allowlisted_customers=("CUST-A",)))  # builds cases, drafts, a sandbox send
     before = {t: rows(db, f"SELECT * FROM {t}") for t in ("cases", "drafts", "tasks", "approvals")}  # noqa: S608
+    with db.begin() as c:  # every follow-up is due (S4.06): the switch must hold all 9 cases
+        c.execute(text("UPDATE cases SET next_followup = NULL"))
+    before = {t: rows(db, f"SELECT * FROM {t}") for t in ("cases", "drafts", "tasks", "approvals")}  # noqa: S608
     audits_before = count(db, "audit_log")
     with db.begin() as c:  # INV-005 is paid and a dispute is resolved: events to apply
         c.execute(
