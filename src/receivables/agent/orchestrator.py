@@ -32,9 +32,10 @@ from receivables.agent.cases import (
     transition,
 )
 from receivables.agent.drafting import DraftWriter, generate_draft
-from receivables.agent.facts import AgentFacts
+from receivables.agent.facts import AgentFacts, PlaybookRecord
 from receivables.agent.outcomes import BROKEN, InferredOutcome, infer_outcomes, promise_verdicts
 from receivables.agent.plans import PlanRejection, validate_plan
+from receivables.agent.playbook import playbooks_from, same_playbook
 from receivables.agent.policy import L2Limits, SendDraft, evaluate_send, send_facts_from
 from receivables.agent.rules_planner import Plan, PlanStep, plan_case
 from receivables.agent.tools import TOOL_REGISTRY
@@ -169,6 +170,10 @@ class AgentStore(Protocol):
     def audit(self, action: str, entity_type: str, entity_id: str, after: Any) -> None: ...
     def outcome_ids(self) -> set[str]: ...
     def add_outcome(self, outcome: InferredOutcome, run_id: str) -> None: ...
+    def outbound_contacts(self) -> Mapping[str, tuple[datetime, ...]]: ...
+    def save_playbook(
+        self, playbook: PlaybookRecord, before: PlaybookRecord | None, run_id: str
+    ) -> None: ...
 
 
 @dataclass
@@ -284,6 +289,7 @@ def run_tick(
                 )
 
     case_errors += _learn(tick)
+    _refresh_playbooks(tick)
 
     ordered = sorted(facts.scored.values(), key=lambda s: (-s.priority_value, s.invoice_number))
     budget = min(config.max_cases_per_tick, MAX_CASES_PER_TICK)
@@ -362,6 +368,31 @@ def _learn(tick: _Tick) -> int:
                 {"run_id": tick.run_id, "outcome_id": outcome.outcome_id, "error": _code(error)},
             )  # fmt: skip
     return errors
+
+
+def _refresh_playbooks(tick: _Tick) -> None:
+    """§18.7: recompute every customer's playbook from the last 365 days and use it at once (the
+    rule planner's follow-up days, the read tools). Rows are saved, with a ``playbook.updated``
+    audit row, only when they change and only by a tick that persists and whose ``as_of`` is not
+    after the real date (D-052); an L0 shadow uses them in memory."""
+    if not tick.current:
+        return
+    fresh = playbooks_from(
+        tick.facts,
+        grace_days=tick.config.promise_grace_days,
+        outbound=tick.store.outbound_contacts(),
+        tz=ZoneInfo(tick.config.l2.timezone),
+    )
+    stored = tick.facts.playbooks
+    merged = dict(stored)
+    for customer, playbook in fresh.items():
+        before = stored.get(customer)
+        if same_playbook(before, playbook):
+            continue
+        merged[customer] = playbook
+        if tick.learns:
+            tick.store.save_playbook(playbook, before, tick.run_id)
+    tick.facts = dataclasses.replace(tick.facts, playbooks=merged)
 
 
 def _latest(facts: AgentFacts, invoice: str, types: set[str]) -> Any:
