@@ -87,6 +87,17 @@ from receivables.sim.behaviour import (
 )
 from receivables.sim.company import SimCompany
 from receivables.sim.scenario import Scenario
+from receivables.sim.shadow import (
+    LIST_SIZE,
+    SIMULATED,
+    OverdueInvoice,
+    capture_rate,
+    captured,
+    largest_first,
+    oldest_first,
+    pooled_rate,
+    rate_text,
+)
 from receivables.sim.simulator import (
     LABEL,
     STAGING_SUFFIX,
@@ -106,6 +117,7 @@ HUMAN_TIME = time(9, 30)
 ARM_TIME = time(10, 0)
 REMINDER_EVERY_DAYS = 7  # A1
 RESOLVE_AFTER_WORKING_DAYS = 3  # option 3a [A]
+SHADOW_LISTS = ("agent", "oldest_first", "largest_first")
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _DELIVERED = ("delivered_sandbox", "sent")
 
@@ -153,6 +165,7 @@ class _Arm:
     resolved: set[str] = field(default_factory=set)
     last_sent: dict[str, date] = field(default_factory=dict)  # invoice -> last message day
     closed_on: dict[str, date] = field(default_factory=dict)  # invoice -> allocation day
+    shadow_runs: dict[date, str] = field(default_factory=dict)  # A0: week start -> L0 run id
 
     @property
     def agent(self) -> bool:
@@ -359,6 +372,16 @@ class _Arm:
         elif self.agent:
             self._agent_tick(day)
 
+    def shadow_tick(self, day: date) -> None:
+        """A0: the week's L0 shadow run, on the week's first day whether or not it is a working
+        day (an L0 run sends nothing, so business hours do not matter)."""
+        self.at(day, ARM_TIME)
+        summary = run_agent_tick(
+            self.engine, self.clock, self.config, as_of=day, autonomy_level=0,
+            planner=None, drafter=None,
+        )  # fmt: skip
+        self.shadow_runs[day] = summary.run_id
+
     def _rules_reminders(self, day: date) -> None:
         with self.engine.connect() as conn:
             rows = build_ledger(load_invoices(conn), load_payments(conn), day)
@@ -406,6 +429,61 @@ class _Arm:
                     self._behaviour(invoice).escalated(invoice, day)
 
     # Metrics ----------------------------------------------------------------------------------
+
+    def shadow(self, end: date) -> dict[str, Any]:
+        """§19.3 capture-rate mechanics on the A0 arm, SIMULATED (D-054): for each week, the
+        invoices overdue at its start, the payments on them in the 7 days after (to ``end``),
+        and the share of those payments caught by the agent's L0 top 20 and by the
+        oldest-first and largest-first baselines."""
+        with self.engine.connect() as conn:
+            invoices, payments = load_invoices(conn), load_payments(conn)
+            listed = {
+                week: {
+                    n
+                    for (n,) in conn.execute(
+                        select(AgentStep.invoice_number).where(AgentStep.run_id == run_id)
+                    ).all()
+                }
+                for week, run_id in self.shadow_runs.items()
+            }
+        weeks: list[dict[str, Any]] = []
+        totals: dict[str, list[tuple[int, int]]] = {k: [] for k in SHADOW_LISTS}
+        for start, agent in sorted(listed.items()):
+            stop = min(start + timedelta(days=7), end)
+            overdue = [
+                OverdueInvoice(r.invoice_number, r.due_date, r.open_amount)
+                for r in build_ledger(invoices, payments, start)
+                if r.open_amount > 0 and (r.days_overdue or 0) > 0
+            ]
+            numbers = {o.invoice_number for o in overdue}
+            paid: dict[str, int] = dict.fromkeys(sorted(numbers), 0)
+            for p in payments:
+                if (
+                    p.payment_type == "payment"  # cash, not credit notes or write-offs (D-051)
+                    and p.invoice_number in numbers
+                    and start < p.payment_date <= stop
+                ):
+                    paid[p.invoice_number] += p.amount
+            lists = {"agent": agent, "oldest_first": oldest_first(overdue),
+                     "largest_first": largest_first(overdue)}  # fmt: skip
+            row: dict[str, Any] = {
+                "week_start": start.isoformat(),
+                "overdue_invoices": len(overdue),
+                "paid_in_week": str(from_fils(sum(paid.values()))),
+            }
+            for name, chosen in lists.items():
+                row[name] = rate_text(capture_rate(chosen, paid))
+                totals[name].append((captured(chosen, paid), sum(paid.values())))
+            weeks.append(row)
+        return {
+            "label": SIMULATED,
+            "arm": "A0",
+            "list_size": LIST_SIZE,
+            "mechanics_only": "SPEC 19.3: share of each week's simulated payments on the listed "
+            "invoices; not evidence about real collections.",
+            "weeks": weeks,
+            "pooled": {name: rate_text(pooled_rate(totals[name])) for name in SHADOW_LISTS},
+        }
 
     def metrics(self, as_of: date) -> dict[str, Any]:
         with self.engine.connect() as conn:
@@ -505,11 +583,16 @@ def _run_arm(
         for offset in range(scenario.days + 1):
             day = scenario.start_date + timedelta(days=offset)
             state.customers(day)
+            if arm == "A0" and offset % 7 == 0 and offset < scenario.days:  # no empty last week
+                state.shadow_tick(day)
             if state.working(day):
                 state.human(day)
                 state.act(day)
             last = day
-        return created.path, state.metrics(last), company
+        metrics = state.metrics(last)
+        if arm == "A0":
+            metrics = metrics | {"shadow": state.shadow(last)}
+        return created.path, metrics, company
     finally:
         engine.dispose()
 
@@ -550,7 +633,8 @@ def run_arms(scenario: Scenario, data_dir: Path, real_database_url: str, config:
             "a1_reminder_sent": "by the human, the next working day",
             "a3_allowlist": "every simulated customer",
         },
-        "arms": arms,
+        "arms": {arm: {k: v for k, v in m.items() if k != "shadow"} for arm, m in arms.items()},
+        "shadow": arms["A0"]["shadow"],
     }
     text = json.dumps(results, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     try:

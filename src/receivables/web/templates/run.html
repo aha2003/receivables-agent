@@ -6,6 +6,7 @@
 <h1>Dry run</h1>
 <p>Nothing was saved. As of {{ summary.as_of.isoformat() }}, level L{{ summary.autonomy_level }}, planner {{ summary.planner }}:
 {{ summary.cases_considered }} cases, {{ summary.steps_executed }} steps would execute, {{ summary.steps_denied }} denied by policy, {{ summary.case_errors }} case errors.</p>
+{% if summary.waiting %}<p>{{ summary.waiting | length }} cases wait for their follow-up date: {{ summary.waiting | join(', ') }}.</p>{% endif %}
 {% else %}
 {% set r = trace.run %}
 <h1>Agent run {{ r.run_id }}</h1>
@@ -17,6 +18,7 @@
   <dt>Cases</dt><dd>{{ r.cases_considered }}</dd>
   <dt>Steps executed</dt><dd>{{ r.steps_executed }}</dd>
   <dt>Steps denied by policy</dt><dd>{{ r.steps_denied }}</dd>
+  {% if trace.waiting %}<dt>Waiting for their follow-up date</dt><dd>{{ trace.waiting | join(', ') }}</dd>{% endif %}
 </dl>
 {% for case in trace.cases %}
 <section>
