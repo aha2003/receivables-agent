@@ -66,7 +66,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | pytest | 9.1.1 | MIT | Test runner |
 | pytest-cov | 7.1.0 | MIT | Coverage |
 | types-pyyaml | 6.0.12.20260906 | Apache-2.0 | Type stubs for pyyaml (pyright) |
-| ruff | 0.17.0 | MIT | Lint, format, security rules |
+| ruff | 0.17.1 | MIT | Lint, format, security rules |
 
 ## Development dependencies (transitive)
 
