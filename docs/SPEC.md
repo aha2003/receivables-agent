@@ -1241,7 +1241,7 @@ Runs against its own database file (`sim_<seed>.db`), never the real one. Uses `
 
 The competition build does not require or accept a real company ledger. L0 runs against a seeded synthetic snapshot, records proposed actions as `skipped`/`shadow`, and performs no external side effect. The report compares the agent's top-20 list against oldest-first and largest-first baselines on the same synthetic scenario.
 
-The existing capture-rate formula and toy example may be used as a **mechanics test only**. Label all such values `SIMULATED`. The simulator must not describe capture rate as causal uplift or forecasted real collections. No company-specific dataset, email archive or personally identifying data is permitted in this mode.
+The existing capture-rate formula and toy example may be used as a **mechanics test only**. For a week, capture rate = simulated payments during the week on the invoices in a list ÷ simulated payments during the week on all invoices overdue at the week's start (D-054). Label all such values `SIMULATED`. The simulator must not describe capture rate as causal uplift or forecasted real collections. No company-specific dataset, email archive or personally identifying data is permitted in this mode.
 
 | ID | Test | Expected |
 |---|---|---|
