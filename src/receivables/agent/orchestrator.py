@@ -26,6 +26,7 @@ from receivables.agent.cases import (
     DisputeResolved,
     EscalateExecuted,
     MessageSent,
+    NoReply,
     PaidInFull,
     PromiseBroken,
     PromiseMade,
@@ -137,6 +138,8 @@ class RunSummary:
     steps_executed: int
     steps_denied: int
     case_errors: int
+    # Cases left out because they wait for their follow-up date (S4.06, D-053).
+    waiting: tuple[str, ...] = ()
 
 
 class AgentStore(Protocol):
@@ -171,6 +174,8 @@ class AgentStore(Protocol):
     def outcome_ids(self) -> set[str]: ...
     def add_outcome(self, outcome: InferredOutcome, run_id: str) -> None: ...
     def outbound_contacts(self) -> Mapping[str, tuple[datetime, ...]]: ...
+    def invoice_contacts(self) -> Mapping[str, tuple[datetime, ...]]: ...
+    def case_followups(self) -> Mapping[str, date]: ...
     def save_playbook(
         self, playbook: PlaybookRecord, before: PlaybookRecord | None, run_id: str
     ) -> None: ...
@@ -293,7 +298,11 @@ def run_tick(
 
     ordered = sorted(facts.scored.values(), key=lambda s: (-s.priority_value, s.invoice_number))
     budget = min(config.max_cases_per_tick, MAX_CASES_PER_TICK)
-    selected = [s.invoice_number for s in ordered[:budget]]
+    # A case waits for its follow-up date and takes no place in the run, unless something new
+    # happened to it (D-053 option 1a); the run's audit row lists the waiting cases.
+    followups = store.case_followups()
+    waiting = tuple(s.invoice_number for s in ordered if _waits(tick, s.invoice_number, followups))
+    selected = [s.invoice_number for s in ordered if s.invoice_number not in waiting][:budget]
     fallback = False
     for invoice in selected:
         saved = (dict(tick.states), set(tick.applied_events), tick.seq, tick.executed, tick.denied)
@@ -308,7 +317,7 @@ def run_tick(
             )
     summary = RunSummary(
         run_id, as_of, autonomy_level, summary.planner, fallback, summary.model,
-        len(selected), tick.executed, tick.denied, case_errors,
+        len(selected), tick.executed, tick.denied, case_errors, waiting,
     )  # fmt: skip
     store.finish_run(summary)
     log.info(
@@ -334,27 +343,12 @@ def _learn(tick: _Tick) -> int:
         latest = _latest(tick.facts, invoice, {"PROMISE_TO_PAY"})
         if latest is None or verdicts.get(latest.event_id, ("", ""))[1] != BROKEN:
             continue
-        try:
-            with tick.store.savepoint():
-                result = tick.apply(invoice, PromiseBroken())
-                if result.escalation_task:  # §18.2: entering ESCALATED always creates a task
-                    text = f"Escalated: the promise to pay {invoice} by {latest.promise_date} "
-                    text += "was broken."
-                    due = max(tick.facts.as_of, tick.today or tick.facts.as_of)
-                    task_id = _task(tick, f"{tick.run_id}-{invoice}-PB", invoice, "finance",
-                                    text, due)  # fmt: skip
-                    tick.store.audit(
-                        "task.created", "task", task_id,
-                        {"invoice_number": invoice, "run_id": tick.run_id, "owner_role": "finance",
-                         "reason": "PROMISE_BROKEN", "event_id": latest.event_id},
-                    )  # fmt: skip
-        except Exception as error:
-            tick.states[invoice] = state
-            errors += 1
-            tick.store.audit(
-                "agent.case_failed", "invoice", invoice,
-                {"run_id": tick.run_id, "error": _code(error)},
-            )  # fmt: skip
+        text = f"Escalated: the promise to pay {invoice} by {latest.promise_date} was broken."
+        errors += _escalate_inferred(
+            tick, invoice, state, PromiseBroken(), "PB", text,
+            {"reason": "PROMISE_BROKEN", "event_id": latest.event_id},
+        )  # fmt: skip
+    errors += _no_reply(tick)
     known = tick.store.outcome_ids()
     for outcome in infer_outcomes(tick.facts, grace):
         if outcome.outcome_id in known:
@@ -368,6 +362,97 @@ def _learn(tick: _Tick) -> int:
                 {"run_id": tick.run_id, "outcome_id": outcome.outcome_id, "error": _code(error)},
             )  # fmt: skip
     return errors
+
+
+def _escalate_inferred(
+    tick: _Tick,
+    invoice: str,
+    state: CaseState,
+    trigger: CaseTrigger,
+    code: str,
+    text: str,
+    context: Mapping[str, Any],
+) -> int:
+    """Apply an inferred escalation (§18.2) in its own savepoint; entering ``ESCALATED`` creates
+    the human task, audited as ``task.created`` since no agent step made it. Returns 1 on error."""
+    try:
+        with tick.store.savepoint():
+            result = tick.apply(invoice, trigger)
+            if result.escalation_task:
+                due = max(tick.facts.as_of, tick.today or tick.facts.as_of)
+                task_id = _task(tick, f"{tick.run_id}-{invoice}-{code}", invoice, "finance",
+                                text, due)  # fmt: skip
+                tick.store.audit(
+                    "task.created", "task", task_id,
+                    {"invoice_number": invoice, "run_id": tick.run_id, "owner_role": "finance",
+                     **context},
+                )  # fmt: skip
+        return 0
+    except Exception as error:
+        tick.states[invoice] = state
+        tick.store.audit(
+            "agent.case_failed", "invoice", invoice,
+            {"run_id": tick.run_id, "error": _code(error)},
+        )  # fmt: skip
+        return 1
+
+
+def _no_reply(tick: _Tick) -> int:
+    """§18.2: an ``AWAITING_REPLY`` case with at least two consecutive outbound messages about
+    its invoice and no inbound message from the customer since, more than 60 days overdue,
+    moves to ``ESCALATED`` (D-053 options 2a, 3a: every such case, selected or not)."""
+    tz = BUSINESS_TZ
+    as_of = tick.facts.as_of
+    last_inbound: dict[str, datetime] = {}
+    for m in tick.facts.messages:
+        row = tick.facts.rows.get(m.invoice_number) if m.invoice_number else None
+        customer = m.customer_id or (row.customer_id if row else None)
+        if m.direction != "inbound" or customer is None:
+            continue
+        moment = datetime.fromisoformat(m.sent_at)
+        if customer not in last_inbound or moment > last_inbound[customer]:
+            last_inbound[customer] = moment
+    contacts = tick.store.invoice_contacts()
+    errors = 0
+    for invoice, state in sorted(tick.states.items()):
+        row = tick.facts.rows.get(invoice)
+        if state is not CaseState.AWAITING_REPLY or row is None or row.days_overdue is None:
+            continue
+        since = last_inbound.get(row.customer_id)
+        # A dispute or promise event also breaks the run: count only messages after it.
+        event = _latest(
+            tick.facts, invoice, {"DISPUTE_OPENED", "DISPUTE_RESOLVED", "PROMISE_TO_PAY"}
+        )
+        unanswered = sum(
+            1
+            for sent in contacts.get(invoice, ())
+            if sent.astimezone(tz).date() <= as_of
+            and (since is None or sent > since)
+            and (event is None or sent.astimezone(tz).date() > event.event_date)
+        )
+        trigger = NoReply(unanswered_outbound=unanswered, days_overdue=row.days_overdue)
+        if transition(state, trigger).to_state is not CaseState.ESCALATED:
+            continue
+        text = (f"Escalated: no reply to {unanswered} messages about {invoice}, "
+                f"{row.days_overdue} days overdue.")  # fmt: skip
+        errors += _escalate_inferred(
+            tick, invoice, state, trigger, "NR", text,
+            {"reason": "NO_REPLY", "unanswered_outbound": unanswered,
+             "days_overdue": row.days_overdue},
+        )  # fmt: skip
+    return errors
+
+
+def _waits(tick: _Tick, invoice: str, followups: Mapping[str, date]) -> bool:
+    """Waiting for its follow-up date, with no new dispute or promise event to look at."""
+    on = followups.get(invoice)
+    if on is None or on <= tick.facts.as_of:
+        return False
+    news = (
+        _latest(tick.facts, invoice, {"DISPUTE_OPENED", "DISPUTE_RESOLVED"}),
+        _latest(tick.facts, invoice, {"PROMISE_TO_PAY"}),
+    )
+    return all(e is None or (invoice, e.event_id) in tick.applied_events for e in news)
 
 
 def _refresh_playbooks(tick: _Tick) -> None:
@@ -696,6 +781,8 @@ def _schedule_followup(
     tick: _Tick, invoice: str, args: dict[str, Any], step_id: str
 ) -> dict[str, Any]:
     on = tick.facts.as_of + timedelta(days=args["days"])
+    if not tick.current:  # a preview of the future may not hold cases back (D-053)
+        return {"next_followup": on.isoformat(), "saved": False}
     tick.store.set_followup(invoice, on)
     return {"next_followup": on.isoformat()}
 

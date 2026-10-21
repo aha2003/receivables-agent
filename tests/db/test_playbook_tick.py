@@ -95,6 +95,8 @@ def test_every_customer_gets_a_playbook_and_each_change_is_audited(db: Engine) -
 def test_measured_replies_change_the_gap_and_the_same_ticks_followups(db: Engine) -> None:
     tick(db)
     replies(db, "CUST-A", [5, 5, 5])
+    with db.begin() as c:  # the follow-ups are due, so the next tick plans the cases again
+        c.execute(text("UPDATE cases SET next_followup = NULL"))
     summary = tick(db)
     a = books(db)["CUST-A"]
     assert (a["avg_days_to_reply"], a["replies_counted"], a["followup_gap_days"]) == (5.0, 3, 10)
