@@ -33,7 +33,7 @@ jobs:
         run: uv run python scripts/test_report.py --check --write-to "$RUNNER_TEMP/TEST_REPORT.md"
       - name: Keep the test report and JUnit output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report
           path: |
