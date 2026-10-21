@@ -13,7 +13,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
 | anthropic | 1.14.0 | MIT | Official Claude SDK, imported only by `adapters/llm/anthropic_client.py` (§3.1, D-032) | S3.04 |
 | argon2-cffi | 25.1.0 | MIT | Argon2id password hashing | S1.11 |
-| fastapi | 0.143.0 | MIT | HTTP API and pages | S1.11 |
+| fastapi | 0.143.5 | MIT | HTTP API and pages | S1.11 |
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
 | jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
 | pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
