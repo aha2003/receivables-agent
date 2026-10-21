@@ -377,3 +377,21 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-052 (options 1a, 2a, 3a; review fixes; known limits: a past-dated persisting tick saves that window's figures until the next current tick; the suggestion compares the rounded stored rate)
 - Unverified: the playbook's effect on scheduling in the simulator (follow-up dates are set but not yet gated, S4.06)
 - Next step: S4.06 Escalation and follow-up scheduling in the loop
+
+## 2026-10-20 — [S4.06] Escalation and follow-up scheduling in the loop
+- PR: see branch | Branch: s4-06-escalation-followups | Commit: see PR head
+- Tests: `uv run pytest -q` → 2578 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/db/test_followup_escalation.py` (T-CASE-01 walked through real ticks on a simulated clock, the no-reply escalation, the follow-up gate, one task per entry into ESCALATED); mutation checks on the gate and the no-reply count all caught but one equivalent mutant
+- Spec / test IDs covered: §18.2 (no-reply escalation; every entry into ESCALATED creates a task), §18.6 (scheduled follow-ups hold a case back; follow-ups use the playbook gap); T-CASE-01 in simulation
+- Simulator (seed 42, SIMULATION — MECHANICS, NOT EVIDENCE): overdue at day 60 A0 AED 717,400.00, A1 784,300.00, A2 246,800.00, A3 246,800.00; mean days past due at payment 33.11, 23.56, 20.17, 19.92; A2 approvals 183 (was 555); T-SIM-01 to 03 pass
+- Deviations or decisions (link docs/DECISIONS.md): D-053 (options 1a, 2a, 3a; a future-dated run saves no follow-up dates, the maintainer's choice; the no-reply count restarts after an event; DEMO.md step 6 and the pre-2026-10-31 behaviour; existing multi-tick tests mark follow-ups due where they mean a later re-plan)
+- Unverified: the Slice 2 walkthrough in real time before 2026-10-31 shows no waiting-on-time state (documented)
+- Next step: S4.07 Synthetic evaluation mode (L0) and capture rate
+
+## 2026-10-21 — [S4.07] Synthetic evaluation mode (L0) and capture rate
+- PR: see branch | Branch: s4-07-l0-capture-rate | Commit: see PR head
+- Tests: `uv run pytest -q` → 2588 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/sim/test_sim_shadow.py`, `tests/db/test_l0_shadow.py` and the shadow tests in `tests/sim/test_sim_arms.py`
+- Spec / test IDs covered: §19.3 (L0 on a seeded synthetic snapshot with no side effect; the agent's top 20 compared with oldest-first and largest-first; capture rate labelled SIMULATED, mechanics only; the formula sentence added); T-SHD-01 (formula, toy example and the label in the results and CLI), T-SHD-02 (an L0 run from a dirty state changes only run and step trace rows)
+- Simulator (seed 42, SIMULATED): pooled capture rate agent 0.6121, oldest-first 0.8647, largest-first 0.6132; A0's metrics unchanged by its weekly L0 runs
+- Deviations or decisions (link docs/DECISIONS.md): D-054 (options 1a, 2a, 3a; the capture-rate formula derived from T-SHD-01 and added to §19.3; review fixes)
+- Unverified: T-SHD-01's "UI labels both SIMULATED" (the simulation UI is S4.08)
+- Next step: S4.08 Simulation UI

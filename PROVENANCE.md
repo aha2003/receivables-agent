@@ -74,7 +74,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 |---|---|---|
 | boolean-py | 5.0 | BSD-2-Clause |
 | cachecontrol | 0.14.4 | Apache-2.0 |
-| certifi | 2026.7.22 | MPL-2.0 |
+| certifi | 2026.10.19 | MPL-2.0 |
 | cfgv | 3.5.0 | MIT |
 | charset-normalizer | 3.5.2 | MIT |
 | colorama | 0.4.6 | BSD-3-Clause (Windows only) |

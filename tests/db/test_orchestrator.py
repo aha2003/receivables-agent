@@ -97,6 +97,12 @@ def rows(engine: Engine, sql: str) -> list[dict[str, Any]]:
         return [dict(r._mapping) for r in c.execute(text(sql))]
 
 
+def followups_due(engine: Engine) -> None:
+    """Every case's follow-up date has come (S4.06, D-053): the next tick plans them again."""
+    with engine.begin() as c:
+        c.execute(text("UPDATE cases SET next_followup = NULL"))
+
+
 def steps(engine: Engine) -> list[dict[str, Any]]:
     return rows(engine, "SELECT * FROM agent_steps ORDER BY seq")
 
@@ -264,10 +270,16 @@ def test_allowed_l2_send_goes_to_the_sandbox_outbox_only(db: Engine) -> None:
 def test_a_second_tick_the_same_day_sees_the_sandbox_send(db: Engine) -> None:
     cfg = config(allowlisted_customers=("CUST-A",))
     tick(db, level=2, cfg=cfg)
-    tick(db, level=2, cfg=cfg)
-    second = [
-        s for s in steps(db) if s["invoice_number"] == "INV-003" and s["tool"] == "send_email"
-    ][-1]
+    # Since S4.06 a case waits for its follow-up date (D-053), so a second run the same day
+    # does not plan INV-003 again ...
+    assert "INV-003" in tick(db, level=2, cfg=cfg).waiting
+    # ... and when its follow-up is due, the policy sees the earlier sandbox send.
+    followups_due(db)
+    run_id = tick(db, level=2, cfg=cfg).run_id
+    (second,) = [
+        s for s in steps(db)
+        if s["run_id"] == run_id and s["invoice_number"] == "INV-003" and s["tool"] == "send_email"
+    ]  # fmt: skip
     assert second["status"] == "converted_to_approval"
     assert json.loads(second["policy_reasons_json"]) == ["POLICY_RECENT_CONTACT"]
     assert len(rows(db, "SELECT * FROM mail_outbox")) == 1
@@ -443,6 +455,7 @@ def test_a_resolved_dispute_returns_the_case_to_assessed_before_planning(db: Eng
 
 def test_escalating_twice_creates_one_task(db: Engine) -> None:
     tick(db)
+    followups_due(db)
     tick(db)
     escalations = [
         s for s in steps(db) if s["tool"] == "escalate" and s["invoice_number"] == "INV-011"
@@ -633,6 +646,7 @@ def test_the_daily_cap_counts_sends_made_earlier_in_the_tick(db: Engine) -> None
 
 def test_send_email_only_uses_a_draft_for_this_case(db: Engine) -> None:
     tick(db)
+    followups_due(db)
     drafts = {
         json.loads(d["invoice_numbers_json"])[0]: d["draft_id"]
         for d in rows(db, "SELECT draft_id, invoice_numbers_json FROM drafts")
@@ -714,6 +728,7 @@ def _last_send(engine: Engine, invoice: str) -> dict[str, Any]:
 
 def test_a_rejected_draft_is_never_sent(db: Engine) -> None:
     tick(db)
+    followups_due(db)
     draft_id = _draft_ids(db)[("INV-003",)]
     with db.begin() as c:
         c.execute(
@@ -837,6 +852,7 @@ def test_an_escalation_without_its_task_is_rolled_back(db: Engine) -> None:
     assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-011'") == [
         {"state": "ASSESSED"}
     ]
+    followups_due(db)
     tick(db)  # the next tick escalates and creates the task
     assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-011'") == [
         {"state": "ESCALATED"}
@@ -858,10 +874,13 @@ def test_a_dispute_event_is_applied_once(db: Engine) -> None:
             }
         ],
     }
+    followups_due(db)  # each later tick plans INV-004 again; its event is not re-applied
     tick(
         db, planner=ScriptedPlanner({"INV-004": escalate}, default=lambda n: plan_case_json(db, n))
     )
+    followups_due(db)
     tick(db)
+    followups_due(db)
     tick(db)
     assert rows(db, "SELECT state FROM cases WHERE invoice_number = 'INV-004'") == [
         {"state": "ESCALATED"}

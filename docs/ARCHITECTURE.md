@@ -179,6 +179,7 @@ Every failure has a safe fallback: an invalid or failed classification becomes "
 | `src/receivables/sim/behaviour.py` | `CustomerBehaviour`, `behaviours_for` |
 | `src/receivables/sim/simulator.py` | `create_sim_db`, `sim_db_path` |
 | `src/receivables/sim/runner.py` | `run_arms`, `ARMS` |
+| `src/receivables/sim/shadow.py` | `capture_rate`, `oldest_first`, `largest_first` |
 | `src/receivables/api/main.py` | `create_app` |
 
 Behaviour and acceptance tests: `docs/SPEC.md`; decisions: `docs/DECISIONS.md`; the test report by spec test ID: `docs/TEST_REPORT.md`.

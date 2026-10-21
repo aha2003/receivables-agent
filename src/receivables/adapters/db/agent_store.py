@@ -157,6 +157,38 @@ class DbAgentStore:
                 contacts.setdefault(customer, []).append(moment)
         return {c: tuple(sorted(times)) for c, times in sorted(contacts.items())}
 
+    def invoice_contacts(self) -> Mapping[str, tuple[datetime, ...]]:
+        """Every outbound contact's time, per invoice it names: sandbox sends, drafts a person
+        marked sent, and outbound messages with an invoice number (§18.2 no-reply rule)."""
+        sent = self.conn.execute(
+            select(Draft.invoice_numbers_json, MailOutbox.created_at)
+            .join(Draft, Draft.draft_id == MailOutbox.draft_id)
+            .where(MailOutbox.status.in_(_DELIVERED))
+        ).all()
+        by_hand = self.conn.execute(
+            select(Draft.invoice_numbers_json, Draft.sent_at).where(
+                Draft.status == "sent_manually", Draft.sent_at.is_not(None)
+            )
+        ).all()
+        written = self.conn.execute(
+            select(Correspondence.invoice_number, Correspondence.sent_at).where(
+                Correspondence.direction == "outbound", Correspondence.invoice_number.is_not(None)
+            )
+        ).all()
+        contacts: dict[str, list[datetime]] = {}
+        pairs = [(n, s) for numbers, s in [*sent, *by_hand] for n in json.loads(numbers)]
+        for invoice, stamp in [*pairs, *written]:
+            moment = _moment(stamp)
+            if moment is not None:
+                contacts.setdefault(invoice, []).append(moment)
+        return {n: tuple(sorted(times)) for n, times in sorted(contacts.items())}
+
+    def case_followups(self) -> Mapping[str, date]:
+        rows = self.conn.execute(
+            select(Case.invoice_number, Case.next_followup).where(Case.next_followup.is_not(None))
+        ).all()
+        return {r.invoice_number: date.fromisoformat(r.next_followup) for r in rows}
+
     def save_playbook(
         self, playbook: PlaybookRecord, before: PlaybookRecord | None, run_id: str
     ) -> None:
@@ -340,6 +372,7 @@ class DbAgentStore:
                 "steps_executed": summary.steps_executed,
                 "steps_denied": summary.steps_denied,
                 "case_errors": summary.case_errors,
+                "waiting": list(summary.waiting),
             },
         )
 

@@ -185,7 +185,9 @@ def test_demo_steps_2_3_and_6_show_what_docs_demo_says(demo: Demo) -> None:
     assert dry.status_code == 200
     text_ = html.unescape(dry.text)
     assert "Nothing was saved." in text_
-    assert "9 cases, 22 steps would execute, 2 denied by policy" in text_
+    # Since S4.06 every case waits for the follow-up the first run scheduled (D-053).
+    assert "0 cases, 0 steps would execute, 0 denied by policy" in text_
+    assert "9 cases wait for their follow-up date" in text_
     assert len(demo.rows("SELECT run_id FROM agent_runs")) == 1
 
 

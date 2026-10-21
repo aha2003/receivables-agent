@@ -28,11 +28,14 @@ from receivables.adapters.db.models import (
     AgentStep,
     Approval,
     AuditLog,
+    Case,
     Classification,
     Correspondence,
+    CustomerPlaybook,
     Draft,
     Event,
     MailOutbox,
+    Outcome,
     Payment,
     Task,
 )
@@ -213,11 +216,13 @@ def test_a_dispute_is_answered_only_by_a_message_written_after_it_was_resolved(
                     assert _local(draft.created_at).date() >= resolved[n], (arm, n)
 
 
-def test_dispute_resolutions_are_the_humans(engines: dict[str, Engine]) -> None:
+def test_dispute_resolutions_are_the_humans(sim: SimRun, engines: dict[str, Engine]) -> None:
     for arm in ("A2", "A3"):
         imports = _all(engines[arm], select(AuditLog).where(AuditLog.action == "import.accepted"))
         events = [a for a in imports if json.loads(a.after_json)["file_kind"] == "events"]
-        assert len(events) == 14 and {a.actor for a in events} == {"sim-human"}
+        resolved = sim.results["arms"][arm]["disputes_resolved"]
+        assert resolved == 15 and len(events) == resolved  # seed 42 (D-053): one per resolution
+        assert {a.actor for a in events} == {"sim-human"}
 
 
 # T-SIM-03: every outbound message passes the draft validator and the policy engine -----------
@@ -383,8 +388,13 @@ def test_claimed_invoices_are_closed_by_the_customers_own_cash(
 
 def test_a0_does_nothing(engines: dict[str, Engine], sim: SimRun) -> None:
     engine = engines["A0"]
-    for table in (Draft, Approval, AgentRun, Task, MailOutbox):
+    for table in (Draft, Approval, Task, MailOutbox, Case, Outcome, CustomerPlaybook,
+                  Classification, Event):  # fmt: skip
         assert _all(engine, select(table)) == [], table.__tablename__
+    # Its only agent runs are the weekly L0 shadow runs (S4.07): every step skipped.
+    runs = _all(engine, select(AgentRun))
+    assert len(runs) == 9 and {r.autonomy_level for r in runs} == {0}
+    assert {s.status for s in _all(engine, select(AgentStep))} == {"skipped"}
     # Every customer follows its no-contact rule: overdue at day 60 is what those rules leave.
     behaviours = behaviours_for(COMPANY)
     paid = {}
@@ -476,5 +486,78 @@ def test_cli_sim_run(
     out = capsys.readouterr().out
     assert "SYNTHETIC DEMO DATA" in out and LABEL in out
     assert all(f"{arm}: overdue AED" in out for arm in ARMS)
+    assert "capture rate (SIMULATED, mechanics only, A0 L0 top 20)" in out
     assert str(tmp_path / "sim" / "sim_7_results.json") in out
     assert _sha(real) == before
+
+
+@pytest.mark.spec("T-SHD-01")
+def test_the_shadow_capture_rates_are_labelled_simulated(sim: SimRun) -> None:
+    shadow = sim.results["shadow"]
+    assert (shadow["label"], shadow["arm"], shadow["list_size"]) == ("SIMULATED", "A0", 20)
+    assert len(shadow["weeks"]) == 9  # every Monday from 2026-11-02 to 2026-12-28
+    for week in shadow["weeks"]:
+        for name in ("agent", "oldest_first", "largest_first"):
+            rate = week[name]
+            assert rate is None or Decimal("0") <= Decimal(rate) <= Decimal("1")
+            if Decimal(week["paid_in_week"]) == 0:
+                assert rate is None
+    assert all(shadow["pooled"][n] is not None for n in ("agent", "oldest_first", "largest_first"))
+    words = json.dumps(shadow).lower()
+    assert not any(claim in words for claim in ("uplift", "forecast", "causal", "roi"))
+
+
+def test_the_agent_list_is_the_l0_runs_top_20(sim: SimRun, engines: dict[str, Engine]) -> None:
+    engine = engines["A0"]
+    for run in _all(engine, select(AgentRun)):
+        invoices = {s.invoice_number for s in _all(engine, select(AgentStep).where(
+            AgentStep.run_id == run.run_id))}  # fmt: skip
+        assert len(invoices) == min(20, run.cases_considered) and run.cases_considered <= 20
+
+
+def test_the_shadow_rates_recomputed_from_the_a0_database(
+    sim: SimRun, engines: dict[str, Engine]
+) -> None:
+    from fractions import Fraction
+
+    from receivables.adapters.db.repo import load_invoices, load_payments
+    from receivables.core.ledger import build_ledger
+    from receivables.core.scoring import round_half_up
+
+    engine = engines["A0"]
+    with engine.connect() as conn:
+        invoices, payments = load_invoices(conn), load_payments(conn)
+    runs = {date.fromisoformat(r.as_of): r.run_id for r in _all(engine, select(AgentRun))}
+    totals = {"agent": [0, 0], "oldest_first": [0, 0], "largest_first": [0, 0]}
+    for week in sim.results["shadow"]["weeks"]:
+        start = date.fromisoformat(week["week_start"])
+        stop = min(start + timedelta(days=7), END)
+        overdue = [r for r in build_ledger(invoices, payments, start)
+                   if r.open_amount > 0 and (r.days_overdue or 0) > 0]  # fmt: skip
+        assert week["overdue_invoices"] == len(overdue)
+        paid = {r.invoice_number: 0 for r in overdue}
+        for p in payments:  # paid in (start, start + 7], the start day itself excluded
+            cash = p.payment_type == "payment"
+            if cash and p.invoice_number in paid and start < p.payment_date <= stop:
+                paid[p.invoice_number] += p.amount
+        agent = {s.invoice_number for s in _all(engine, select(AgentStep).where(
+            AgentStep.run_id == runs[start]))}  # fmt: skip
+        lists = {
+            "agent": agent,
+            "oldest_first": {r.invoice_number for r in sorted(
+                overdue, key=lambda r: (r.due_date, r.invoice_number))[:20]},
+            "largest_first": {r.invoice_number for r in sorted(
+                overdue, key=lambda r: (-r.open_amount, r.invoice_number))[:20]},
+        }  # fmt: skip
+        total = sum(paid.values())
+        for name, chosen in lists.items():
+            got = sum(a for n, a in paid.items() if n in chosen)
+            totals[name][0] += got
+            totals[name][1] += total
+            expected = None if total == 0 else Fraction(got, total)
+            assert week[name] == (None if expected is None else str(round_half_up(expected, 4)))
+    for name, (got, total) in totals.items():
+        assert sim.results["shadow"]["pooled"][name] == str(round_half_up(Fraction(got, total), 4))
+    assert sim.results["shadow"]["pooled"] == {  # seed 42, SIMULATED (D-054)
+        "agent": "0.6121", "oldest_first": "0.8647", "largest_first": "0.6132",
+    }  # fmt: skip

@@ -286,12 +286,12 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §18.7
   - Tests: T-LRN-01, T-LRN-02, T-LRN-03
   - Done when: Playbook updates are deterministic and auditable.
-- [ ] **S4.06** Escalation and follow-up scheduling in the loop
+- [x] **S4.06** Escalation and follow-up scheduling in the loop
   - Goal: Transitions to ESCALATED, scheduled follow-ups, tasks.
   - Spec: §18.2, §18.6
   - Tests: T-CASE-01 in simulation
   - Done when: Escalations create tasks; follow-ups use the playbook gap.
-- [ ] **S4.07** Synthetic evaluation mode (L0) and capture rate
+- [x] **S4.07** Synthetic evaluation mode (L0) and capture rate
   - Goal: L0 runs record skipped steps only; capture-rate mechanics labelled SIMULATED.
   - Spec: §19.3
   - Tests: T-SHD-01, T-SHD-02

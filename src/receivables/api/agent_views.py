@@ -70,6 +70,14 @@ def run_trace(engine: Engine, run_id: str) -> dict[str, Any] | None:
             "finished_at": run["finished_at"],
         },
         "cases": [{"invoice_number": n, "steps": steps} for n, steps in cases.items()],
+        "waiting": next(
+            (
+                (_loads(e["after_json"]) or {}).get("waiting", [])
+                for e in events
+                if e["action"] == "agent.run_finished"
+            ),
+            [],
+        ),
         "events": [
             {
                 "audit_id": e["audit_id"],

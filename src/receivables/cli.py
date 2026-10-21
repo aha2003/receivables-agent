@@ -126,6 +126,12 @@ def _sim_run(settings: Settings, args: argparse.Namespace) -> int:
             f"{m['mean_days_past_due_at_payment']}, messages {m['messages_sent']}, approvals "
             f"{m['approvals_needed']}, policy denials {m['policy_denials']}"
         )
+    shadow = run.results["shadow"]
+    pooled = ", ".join(f"{name} {rate}" for name, rate in shadow["pooled"].items())
+    print(
+        f"capture rate ({shadow['label']}, mechanics only, {shadow['arm']} L0 top "
+        f"{shadow['list_size']}): {pooled}"
+    )
     print(f"results {run.results_path}")
     return 0
 
