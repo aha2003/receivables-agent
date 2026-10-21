@@ -371,12 +371,16 @@ class _Arm:
             self._rules_reminders(day)
         elif self.agent:
             self._agent_tick(day)
-        elif (day - self.scenario.start_date).days % 7 == 0:  # A0: the week's L0 shadow run
-            summary = run_agent_tick(
-                self.engine, self.clock, self.config, as_of=day, autonomy_level=0,
-                planner=None, drafter=None,
-            )  # fmt: skip
-            self.shadow_runs[day] = summary.run_id
+
+    def shadow_tick(self, day: date) -> None:
+        """A0: the week's L0 shadow run, on the week's first day whether or not it is a working
+        day (an L0 run sends nothing, so business hours do not matter)."""
+        self.at(day, ARM_TIME)
+        summary = run_agent_tick(
+            self.engine, self.clock, self.config, as_of=day, autonomy_level=0,
+            planner=None, drafter=None,
+        )  # fmt: skip
+        self.shadow_runs[day] = summary.run_id
 
     def _rules_reminders(self, day: date) -> None:
         with self.engine.connect() as conn:
@@ -454,7 +458,11 @@ class _Arm:
             numbers = {o.invoice_number for o in overdue}
             paid: dict[str, int] = dict.fromkeys(sorted(numbers), 0)
             for p in payments:
-                if p.invoice_number in numbers and start < p.payment_date <= stop:
+                if (
+                    p.payment_type == "payment"  # cash, not credit notes or write-offs (D-051)
+                    and p.invoice_number in numbers
+                    and start < p.payment_date <= stop
+                ):
                     paid[p.invoice_number] += p.amount
             lists = {"agent": agent, "oldest_first": oldest_first(overdue),
                      "largest_first": largest_first(overdue)}  # fmt: skip
@@ -575,6 +583,8 @@ def _run_arm(
         for offset in range(scenario.days + 1):
             day = scenario.start_date + timedelta(days=offset)
             state.customers(day)
+            if arm == "A0" and offset % 7 == 0 and offset < scenario.days:  # no empty last week
+                state.shadow_tick(day)
             if state.working(day):
                 state.human(day)
                 state.act(day)

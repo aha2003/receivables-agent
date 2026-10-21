@@ -291,7 +291,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §18.2, §18.6
   - Tests: T-CASE-01 in simulation
   - Done when: Escalations create tasks; follow-ups use the playbook gap.
-- [ ] **S4.07** Synthetic evaluation mode (L0) and capture rate
+- [x] **S4.07** Synthetic evaluation mode (L0) and capture rate
   - Goal: L0 runs record skipped steps only; capture-rate mechanics labelled SIMULATED.
   - Spec: §19.3
   - Tests: T-SHD-01, T-SHD-02

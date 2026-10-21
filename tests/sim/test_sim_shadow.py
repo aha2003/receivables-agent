@@ -57,3 +57,17 @@ def test_the_shadow_module_is_pure() -> None:
     allowed = {"collections.abc", "dataclasses", "datetime", "fractions",
                "receivables.core.scoring"}  # fmt: skip
     assert modules <= allowed, modules
+
+
+def test_a_scenario_starting_on_a_weekend_still_gets_its_weekly_l0_runs(
+    tmp_path: Path,
+) -> None:
+    from receivables.adapters.config import load_config
+    from receivables.sim.runner import run_arms
+    from receivables.sim.scenario import load_scenario
+
+    sunday = load_scenario().model_copy(update={"start_date": date(2026, 11, 1), "days": 14})
+    run = run_arms(sunday, tmp_path, f"sqlite:///{tmp_path / 'real.db'}",
+                   load_config(ROOT / "config.yaml"))  # fmt: skip
+    starts = [w["week_start"] for w in run.results["shadow"]["weeks"]]
+    assert starts == ["2026-11-01", "2026-11-08"]  # Sundays; no empty week on the last day

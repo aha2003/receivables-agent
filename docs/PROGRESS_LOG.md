@@ -386,3 +386,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-053 (options 1a, 2a, 3a; a future-dated run saves no follow-up dates, the maintainer's choice; the no-reply count restarts after an event; DEMO.md step 6 and the pre-2026-10-31 behaviour; existing multi-tick tests mark follow-ups due where they mean a later re-plan)
 - Unverified: the Slice 2 walkthrough in real time before 2026-10-31 shows no waiting-on-time state (documented)
 - Next step: S4.07 Synthetic evaluation mode (L0) and capture rate
+
+## 2026-10-21 — [S4.07] Synthetic evaluation mode (L0) and capture rate
+- PR: see branch | Branch: s4-07-l0-capture-rate | Commit: see PR head
+- Tests: `uv run pytest -q` → 2588 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/sim/test_sim_shadow.py`, `tests/db/test_l0_shadow.py` and the shadow tests in `tests/sim/test_sim_arms.py`
+- Spec / test IDs covered: §19.3 (L0 on a seeded synthetic snapshot with no side effect; the agent's top 20 compared with oldest-first and largest-first; capture rate labelled SIMULATED, mechanics only; the formula sentence added); T-SHD-01 (formula, toy example and the label in the results and CLI), T-SHD-02 (an L0 run from a dirty state changes only run and step trace rows)
+- Simulator (seed 42, SIMULATED): pooled capture rate agent 0.6121, oldest-first 0.8647, largest-first 0.6132; A0's metrics unchanged by its weekly L0 runs
+- Deviations or decisions (link docs/DECISIONS.md): D-054 (options 1a, 2a, 3a; the capture-rate formula derived from T-SHD-01 and added to §19.3; review fixes)
+- Unverified: T-SHD-01's "UI labels both SIMULATED" (the simulation UI is S4.08)
+- Next step: S4.08 Simulation UI
