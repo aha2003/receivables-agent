@@ -126,5 +126,6 @@ Downloaded from the official GitHub release with the maintainer's approval (S1.1
 | uv / uv_build | 0.12 or 0.13 (`pyproject.toml` allows `uv_build>=0.12,<0.14`; CI installs the latest uv) | MIT OR Apache-2.0 | Environment, lockfile, build backend |
 | actions/checkout | v7 | MIT | CI checkout (bumped from v5 by Dependabot #67) |
 | astral-sh/setup-uv | v7 | MIT | CI uv install |
+| actions/upload-artifact | v7 | MIT | CI test-report upload (C1.01; bumped from v4 by Dependabot #119) |
 | gitleaks (CLI binary, sha256-pinned) | 8.30.1 | MIT | CI secret scan over the full git history |
 | Dependabot | GitHub service | n/a | Weekly update PRs for uv and GitHub Actions |
