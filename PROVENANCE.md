@@ -61,7 +61,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | httpx | 0.28.1 | BSD-3-Clause | FastAPI test client (added in S1.11) |
 | hypothesis | 6.169.0 | MPL-2.0 | Property tests |
 | pip-audit | 2.10.1 | Apache-2.0 | Dependency vulnerability scan |
-| pre-commit | 4.6.2 | MIT | Local git hooks |
+| pre-commit | 4.7.0 | MIT | Local git hooks |
 | pyright | 1.1.414 | MIT | Type checking (downloads Node.js and pyright from npm on first run) |
 | pytest | 9.1.1 | MIT | Test runner |
 | pytest-cov | 7.1.0 | MIT | Coverage |
