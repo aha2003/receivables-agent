@@ -385,8 +385,12 @@ def test_claimed_invoices_are_closed_by_the_customers_own_cash(
 
 def test_a0_does_nothing(engines: dict[str, Engine], sim: SimRun) -> None:
     engine = engines["A0"]
-    for table in (Draft, Approval, AgentRun, Task, MailOutbox):
+    for table in (Draft, Approval, Task, MailOutbox):
         assert _all(engine, select(table)) == [], table.__tablename__
+    # Its only agent runs are the weekly L0 shadow runs (S4.07): every step skipped.
+    runs = _all(engine, select(AgentRun))
+    assert len(runs) == 9 and {r.autonomy_level for r in runs} == {0}
+    assert {s.status for s in _all(engine, select(AgentStep))} == {"skipped"}
     # Every customer follows its no-contact rule: overdue at day 60 is what those rules leave.
     behaviours = behaviours_for(COMPANY)
     paid = {}
@@ -478,5 +482,30 @@ def test_cli_sim_run(
     out = capsys.readouterr().out
     assert "SYNTHETIC DEMO DATA" in out and LABEL in out
     assert all(f"{arm}: overdue AED" in out for arm in ARMS)
+    assert "capture rate (SIMULATED, mechanics only, A0 L0 top 20)" in out
     assert str(tmp_path / "sim" / "sim_7_results.json") in out
     assert _sha(real) == before
+
+
+@pytest.mark.spec("T-SHD-01")
+def test_the_shadow_capture_rates_are_labelled_simulated(sim: SimRun) -> None:
+    shadow = sim.results["shadow"]
+    assert (shadow["label"], shadow["arm"], shadow["list_size"]) == ("SIMULATED", "A0", 20)
+    assert len(shadow["weeks"]) == 9  # every Monday from 2026-11-02 to 2026-12-28
+    for week in shadow["weeks"]:
+        for name in ("agent", "oldest_first", "largest_first"):
+            rate = week[name]
+            assert rate is None or Decimal("0") <= Decimal(rate) <= Decimal("1")
+            if Decimal(week["paid_in_week"]) == 0:
+                assert rate is None
+    assert all(shadow["pooled"][n] is not None for n in ("agent", "oldest_first", "largest_first"))
+    words = json.dumps(shadow).lower()
+    assert not any(claim in words for claim in ("uplift", "forecast", "causal", "roi"))
+
+
+def test_the_agent_list_is_the_l0_runs_top_20(sim: SimRun, engines: dict[str, Engine]) -> None:
+    engine = engines["A0"]
+    for run in _all(engine, select(AgentRun)):
+        invoices = {s.invoice_number for s in _all(engine, select(AgentStep).where(
+            AgentStep.run_id == run.run_id))}  # fmt: skip
+        assert len(invoices) == min(20, run.cases_considered) and run.cases_considered <= 20
