@@ -522,6 +522,7 @@ def test_the_shadow_rates_recomputed_from_the_a0_database(
 
     from receivables.adapters.db.repo import load_invoices, load_payments
     from receivables.core.ledger import build_ledger
+    from receivables.core.scoring import round_half_up
 
     engine = engines["A0"]
     with engine.connect() as conn:
@@ -536,7 +537,8 @@ def test_the_shadow_rates_recomputed_from_the_a0_database(
         assert week["overdue_invoices"] == len(overdue)
         paid = {r.invoice_number: 0 for r in overdue}
         for p in payments:  # paid in (start, start + 7], the start day itself excluded
-            if p.invoice_number in paid and start < p.payment_date <= stop:
+            cash = p.payment_type == "payment"
+            if cash and p.invoice_number in paid and start < p.payment_date <= stop:
                 paid[p.invoice_number] += p.amount
         agent = {s.invoice_number for s in _all(engine, select(AgentStep).where(
             AgentStep.run_id == runs[start]))}  # fmt: skip
@@ -553,9 +555,9 @@ def test_the_shadow_rates_recomputed_from_the_a0_database(
             totals[name][0] += got
             totals[name][1] += total
             expected = None if total == 0 else Fraction(got, total)
-            assert week[name] == (None if expected is None else f"{float(expected):.4f}")
+            assert week[name] == (None if expected is None else str(round_half_up(expected, 4)))
     for name, (got, total) in totals.items():
-        assert sim.results["shadow"]["pooled"][name] == f"{float(Fraction(got, total)):.4f}"
+        assert sim.results["shadow"]["pooled"][name] == str(round_half_up(Fraction(got, total), 4))
     assert sim.results["shadow"]["pooled"] == {  # seed 42, SIMULATED (D-054)
         "agent": "0.6121", "oldest_first": "0.8647", "largest_first": "0.6132",
     }  # fmt: skip
