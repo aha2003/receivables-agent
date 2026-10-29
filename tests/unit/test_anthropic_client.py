@@ -199,7 +199,9 @@ def test_the_request_follows_spec_3_2_and_7_3(monkeypatch: pytest.MonkeyPatch) -
     (request,) = server.requests
     (body,) = server.bodies()
     assert str(request.url) == f"{API_BASE_URL}/v1/messages"
-    assert request.headers["x-api-key"] == FAKE_KEY
+    # anthropic 2.x sends the key as a Bearer token (1.x used x-api-key): sent once, ours.
+    assert request.headers["authorization"] == f"Bearer {FAKE_KEY}"
+    assert "x-api-key" not in request.headers
     assert body["model"] == MODELS["classifier"]
     assert body["system"] == [
         {"type": "text", "text": CLASSIFIER_SYSTEM, "cache_control": {"type": "ephemeral"}}
