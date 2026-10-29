@@ -71,7 +71,7 @@ flowchart TB
 | `sim` | `adapters.clock`, `adapters.config`, `adapters.db`, `adapters.llm`, `agent`, `core` | T-SIM-04: writes only its own `sim_<seed>*.db` and results file, never the real database; its only LLM client is the fake one (T-SIM-01) |
 | `web` | `core` | |
 | `cli` | `adapters.clock`, `adapters.config`, `adapters.db`, `api`, `core`, `seed`, `settings`, `sim` | |
-| `api` | `adapters.clock`, `adapters.config`, `adapters.db`, `adapters.llm`, `adapters.log`, `agent`, `core`, `settings`, `web` | |
+| `api` | `adapters.clock`, `adapters.config`, `adapters.db`, `adapters.llm`, `adapters.log`, `agent`, `core`, `settings`, `sim`, `web` | the simulation pages run the simulator into its own files (S4.08) |
 
 ## 2. The agent loop (one tick)
 

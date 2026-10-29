@@ -38,8 +38,9 @@ from receivables.api.routes import drafts as draft_routes
 from receivables.api.routes import inbox as inbox_routes
 from receivables.api.routes import pages as page_routes
 from receivables.api.routes import payments as payment_routes
+from receivables.api.routes import simulation as simulation_routes
 from receivables.api.security import LoginRateLimiter, ReauthRegistry
-from receivables.core.money import from_fils
+from receivables.core.money import from_fils, to_fils
 from receivables.core.queue import unallocated_cash_message
 from receivables.settings import Settings
 from receivables.web.labels import flag_text, policy_text, status_text
@@ -68,6 +69,11 @@ def aed(fils: int) -> str:
     return f"AED {from_fils(fils):,}"
 
 
+def aed_text(amount: str) -> str:
+    """A decimal amount written as text (the simulator's results) in the §10 format."""
+    return aed(to_fils(amount))
+
+
 def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None) -> FastAPI:
     secret = settings.session_secret.get_secret_value() if settings.session_secret else ""
     if len(secret) < MIN_SECRET_LENGTH:
@@ -94,11 +100,13 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.state.reauth = ReauthRegistry()
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["aed"] = aed
+    templates.env.filters["aed_text"] = aed_text
     templates.env.filters["unallocated_message"] = unallocated_cash_message
     templates.env.filters["policy_text"] = policy_text
     templates.env.filters["status_text"] = status_text
     templates.env.filters["flag_text"] = flag_text
     app.state.templates = templates
+    app.state.sim_data_dir = Path(config.app.data_dir)  # the simulator's own files (S4.08)
 
     app.include_router(auth_routes.router)
     app.include_router(data_routes.router)
@@ -109,6 +117,7 @@ def create_app(settings: Settings, *, clock: Clock, engine: Engine | None = None
     app.include_router(decision_routes.router)
     app.include_router(payment_routes.router)
     app.include_router(page_routes.router)
+    app.include_router(simulation_routes.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
     # Middleware: the last added runs first, so the session is decoded before the auth gate.
     app.add_middleware(BodySizeLimitMiddleware)  # inside the gate: anonymous requests get 401 first
