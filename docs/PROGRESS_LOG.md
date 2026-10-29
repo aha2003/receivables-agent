@@ -395,3 +395,12 @@ Append one entry per completed step (newest last). Format:
 - Deviations or decisions (link docs/DECISIONS.md): D-054 (options 1a, 2a, 3a; the capture-rate formula derived from T-SHD-01 and added to §19.3; review fixes)
 - Unverified: T-SHD-01's "UI labels both SIMULATED" (the simulation UI is S4.08)
 - Next step: S4.08 Simulation UI
+
+## 2026-10-29 — [S4.08] Simulation UI
+- PR: see branch | Branch: s4-08-simulation-ui | Commit: see PR head
+- Tests: `uv run pytest -q` → 2619 passed, 2 skipped (the network-guard probe, and the superseded "awaits plans and drafts" test); ruff check and format clean; pyright 0 errors; `scripts/test_report.py --check` passes; `tests/api/test_simulation_pages.py` (21 tests: the label on every simulation view and in view while scrolling, the comparison, T-SHD-01's UI part, a run from the page, a refused run, the 14-day fast-forward checked against the full A2 run's database, input and session checks, the real database byte-identical, no file left by a replay)
+- Spec / test IDs covered: §19 (scenario controls, the A0 to A3 comparison, the assumptions, the 14-day fast-forward of §19.4 step 6, the persistent label), §10 (money format, as-of on every figure); T-SHD-01's UI part (the capture rates labelled SIMULATED)
+- Manual check of labels (the step's test): in the browser on a throwaway database and data folder, the label sits under the synthetic-data banner and in the title on the empty page, the comparison, the capture rates and the fast-forward; the first check found the banner scrolled out of view, so it is now sticky
+- Deviations or decisions (link docs/DECISIONS.md): D-056 (options 1a, 2a, 3a; review fixes)
+- Unverified: browsers other than the Chromium-based pane; the pages on a phone-width screen
+- Next step: S4.09 Run-of-show and Slice 4 close-out

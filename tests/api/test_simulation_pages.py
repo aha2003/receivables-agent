@@ -7,6 +7,7 @@ import html
 import json
 import re
 import sqlite3
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -132,8 +133,12 @@ def test_one_simulation_at_a_time(user: TestClient) -> None:
 
 
 def test_the_fast_forward_shows_the_windows_changes(
-    user: TestClient, engine: Engine, tmp_path: Path, results_dir: Path
-) -> None:
+    user: TestClient, engine: Engine, tmp_path: Path, results_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    scratch = tmp_path / "system-temp"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))  # where the replay's folder goes
     real = Path(engine.url.database or "")
     before = hashlib.sha256(real.read_bytes()).hexdigest()
     page = user.get("/simulation/fast-forward?seed=42&arm=A2&day=14").text
@@ -156,7 +161,8 @@ def test_the_fast_forward_shows_the_windows_changes(
         assert re.search(r"\((\d+)\)", section(page, name))
     assert "day=28" in page and "day=0" in page  # next and previous windows
     leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith(("sim_", "sim-ff-"))]
-    assert leftovers == []  # the replay left no file in the data folder
+    assert leftovers == []  # nothing in the data folder ...
+    assert list(scratch.iterdir()) == []  # ... and its temporary folder was deleted
     assert hashlib.sha256(real.read_bytes()).hexdigest() == before
 
 

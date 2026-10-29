@@ -296,7 +296,7 @@ Planning window Jan–Mar 2027 [A]. Priority P1. Exit: same seed, same results; 
   - Spec: §19.3
   - Tests: T-SHD-01, T-SHD-02
   - Done when: No side effects in L0.
-- [ ] **S4.08** Simulation UI
+- [x] **S4.08** Simulation UI
   - Goal: Scenario controls, 14-day fast-forward, A0 to A3 comparison, assumptions panel, persistent `SIMULATION — MECHANICS, NOT EVIDENCE` label.
   - Spec: §19, §10
   - Tests: manual check of labels
