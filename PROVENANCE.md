@@ -82,7 +82,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | cyclonedx-python-lib | 11.12.0 | Apache-2.0 |
 | defusedxml | 0.7.1 | PSF-2.0 |
 | distlib | 0.4.3 | PSF-2.0 |
-| filelock | 4.1.1 | MIT |
+| filelock | 4.2.4 | MIT |
 | httpcore | 1.0.9 | BSD-3-Clause |
 | identify | 2.6.20 | MIT |
 | iniconfig | 2.3.1 | MIT |
@@ -108,7 +108,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | tomli | 2.5.0 | MIT |
 | tomli-w | 1.2.0 | MIT |
 | urllib3 | 2.8.0 | MIT |
-| virtualenv | 21.14.7 | MIT |
+| virtualenv | 21.15.1 | MIT |
 
 ## Vendored assets (served from `src/receivables/web/static/vendor/`, never from a CDN)
 
