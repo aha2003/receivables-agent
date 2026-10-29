@@ -73,7 +73,8 @@ def test_provenance_lists_every_locked_package_at_its_locked_version() -> None:
         uses = [d for p in lock["package"] for d in p.get("dependencies", []) if d["name"] == name]
         assert uses and all("sys_platform" in d.get("marker", "") for d in uses), name
     assert sorted(set(listed) - set(locked)) == []  # no row for a package that is not locked
-    assert {n: (listed[n], locked[n]) for n in listed if listed[n] != locked[n]} == {}
+    stale = {n: (listed[n], locked[n]) for n in listed if listed[n] != locked[n]}
+    assert stale == {}, "run `uv run python scripts/sync_provenance.py` (D-055)"
 
 
 SPDX_USED = {"MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "MPL-2.0", "PSF-2.0"}
