@@ -34,7 +34,7 @@ import dataclasses
 import io
 import json
 import os
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from fractions import Fraction
@@ -60,11 +60,15 @@ from receivables.adapters.db.models import (
     AgentStep,
     Approval,
     AuditLog,
+    Case,
     Classification,
     Correspondence,
+    CustomerPlaybook,
     Draft,
     Event,
     MailOutbox,
+    Outcome,
+    Payment,
 )
 from receivables.adapters.db.repo import (
     load_agent_facts,
@@ -107,7 +111,7 @@ from receivables.sim.simulator import (
     sim_db_path,
 )
 
-__all__ = ["ARMS", "HUMAN", "SimRun", "results_path", "run_arms"]
+__all__ = ["ARMS", "HUMAN", "WINDOW_DAYS", "SimRun", "fast_forward", "results_path", "run_arms"]
 
 ARMS = ("A0", "A1", "A2", "A3")
 HUMAN = "sim-human"
@@ -557,9 +561,19 @@ def _arm_config(config: Config, arm: str, company: SimCompany) -> Config:
 
 
 def _run_arm(
-    arm: str, scenario: Scenario, data_dir: Path, real_database_url: str, config: Config
+    arm: str,
+    scenario: Scenario,
+    data_dir: Path,
+    real_database_url: str,
+    config: Config,
+    *,
+    until: int | None = None,
+    on_day_end: Callable[[int, Engine], None] | None = None,
+    db_name: str | None = None,
 ) -> tuple[Path, dict[str, Any], SimCompany]:
-    created = create_sim_db(scenario, data_dir, real_database_url, arm=arm)
+    """Run one arm; ``until`` stops after that day offset and ``on_day_end`` sees the database
+    after every day (the fast-forward view). The results run uses neither."""
+    created = create_sim_db(scenario, data_dir, real_database_url, arm=db_name or arm)
     company = created.company
     engine = make_engine(f"sqlite:///{created.path}")
     names = [c.customer_name for c in company.customers]
@@ -580,7 +594,8 @@ def _run_arm(
     )
     try:
         last = scenario.start_date
-        for offset in range(scenario.days + 1):
+        stop = scenario.days if until is None else min(until, scenario.days)
+        for offset in range(stop + 1):
             day = scenario.start_date + timedelta(days=offset)
             state.customers(day)
             if arm == "A0" and offset % 7 == 0 and offset < scenario.days:  # no empty last week
@@ -588,6 +603,8 @@ def _run_arm(
             if state.working(day):
                 state.human(day)
                 state.act(day)
+            if on_day_end is not None:
+                on_day_end(offset, engine)
             last = day
         metrics = state.metrics(last)
         if arm == "A0":
@@ -595,6 +612,116 @@ def _run_arm(
         return created.path, metrics, company
     finally:
         engine.dispose()
+
+
+WINDOW_DAYS = 14  # §19.4 step 6: "fast-forward 14 simulated days"
+
+
+def _picture(engine: Engine) -> dict[str, Any]:
+    """What the fast-forward compares between two days: payments, outcomes, playbooks, cases."""
+    with engine.connect() as conn:
+        return {
+            "payments": {
+                r.payment_id: (r.invoice_number, r.payment_date, r.amount_fils)
+                for r in conn.execute(
+                    select(
+                        Payment.payment_id, Payment.invoice_number, Payment.payment_date,
+                        Payment.amount_fils,
+                    )
+                ).all()
+            },
+            "outcomes": {
+                r.outcome_id: (r.invoice_number, r.outcome_type)
+                for r in conn.execute(
+                    select(Outcome.outcome_id, Outcome.invoice_number, Outcome.outcome_type)
+                ).all()
+            },
+            "playbooks": {
+                r.customer_id: {
+                    "promise_kept_rate": r.promise_kept_rate,
+                    "avg_days_to_reply": r.avg_days_to_reply,
+                    "replies_counted": r.replies_counted,
+                    "followup_gap_days": r.followup_gap_days,
+                }
+                for r in conn.execute(select(CustomerPlaybook)).all()
+            },
+            "cases": {
+                r.invoice_number: (r.state, r.next_followup)
+                for r in conn.execute(
+                    select(Case.invoice_number, Case.state, Case.next_followup)
+                ).all()
+            },
+        }  # fmt: skip
+
+
+def fast_forward(
+    scenario: Scenario,
+    data_dir: Path,
+    real_database_url: str,
+    config: Config,
+    *,
+    arm: str,
+    start_day: int,
+) -> dict[str, Any]:
+    """§19.4 step 6: replay ``arm`` from day 0 and report what changed in the 14 simulated days
+    after ``start_day`` (D-056). Stateless: the same inputs always give the same window. It
+    writes its own ``sim_<seed>_<arm>_ff.db`` and never the results run's files."""
+    if arm not in ARMS:
+        raise ValueError(f"unknown arm {arm!r}")
+    if start_day < 0 or start_day >= scenario.days or start_day % WINDOW_DAYS:
+        raise ValueError("start_day must be 0, 14, 28 ... and before the last day")
+    end_day = min(start_day + WINDOW_DAYS, scenario.days)
+    pictures: dict[int, dict[str, Any]] = {}
+
+    def keep(offset: int, engine: Engine) -> None:
+        if offset in (start_day, end_day):
+            pictures[offset] = _picture(engine)
+
+    _run_arm(arm, scenario, data_dir, real_database_url, config, until=end_day,
+             on_day_end=keep, db_name=f"{arm}_ff")  # fmt: skip
+    before, after = pictures[start_day], pictures[end_day]
+    payments = [
+        {"payment_id": pid, "invoice_number": inv, "date": day, "amount": str(from_fils(fils))}
+        for pid, (inv, day, fils) in sorted(after["payments"].items())
+        if pid not in before["payments"]
+    ]
+    outcomes = [
+        {"outcome_id": oid, "invoice_number": inv, "outcome_type": kind}
+        for oid, (inv, kind) in sorted(after["outcomes"].items())
+        if oid not in before["outcomes"]
+    ]
+    playbooks = [
+        {"customer_id": c, "before": before["playbooks"].get(c), "after": row}
+        for c, row in sorted(after["playbooks"].items())
+        if before["playbooks"].get(c) != row
+    ]
+    followups = [
+        {"invoice_number": n, "before": before["cases"].get(n, (None, None))[1], "after": nf}
+        for n, (_, nf) in sorted(after["cases"].items())
+        if before["cases"].get(n, (None, None))[1] != nf
+    ]
+    states = [
+        {"invoice_number": n, "before": before["cases"].get(n, (None, None))[0], "after": st}
+        for n, (st, _) in sorted(after["cases"].items())
+        if before["cases"].get(n, (None, None))[0] != st
+    ]
+    paid_fils = sum(after["payments"][p["payment_id"]][2] for p in payments)
+    start = scenario.start_date
+    return {
+        "label": LABEL,
+        "seed": scenario.seed,
+        "arm": arm,
+        "start_day": start_day,
+        "end_day": end_day,
+        "from_date": (start + timedelta(days=start_day)).isoformat(),
+        "to_date": (start + timedelta(days=end_day)).isoformat(),
+        "payments": payments,
+        "paid_total": str(from_fils(paid_fils)),
+        "outcomes": outcomes,
+        "playbooks": playbooks,
+        "followups": followups,
+        "states": states,
+    }
 
 
 def run_arms(scenario: Scenario, data_dir: Path, real_database_url: str, config: Config) -> SimRun:

@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"includeIndicatorStyles":false,"historyCacheSize":0}'>
-  <title>{% block title %}Receivables agent{% endblock %} · SYNTHETIC DEMO DATA</title>
+  <title>{% block title %}Receivables agent{% endblock %}{% if sim_label %} · {{ sim_label }}{% endif %} · SYNTHETIC DEMO DATA</title>
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="/static/vendor/htmx-2.0.10/htmx.min.js" defer></script>
 </head>
 <body{% if csrf_token %} hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
   <div role="status" class="banner">SYNTHETIC DEMO DATA: fictional company, customers and amounts.</div>
+  {% if sim_label %}<div role="status" class="banner sim">{{ sim_label }}</div>{% endif %}
   {% if kill_switch %}<div role="alert" class="banner kill">KILL SWITCH ON: the agent executes nothing.</div>{% endif %}
   {% if user %}
   <nav class="nav">
@@ -19,6 +20,7 @@
     <a href="/upload">Upload</a>
     <a href="/approvals">Approvals</a>
     <a href="/unallocated">Unallocated cash</a>
+    <a href="/simulation">Simulation</a>
     <span class="who">Signed in as {{ user.username }}</span>
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

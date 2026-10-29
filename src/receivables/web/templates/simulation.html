@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Simulation{% endblock %}
+{% block content %}
+<h1>Simulation</h1>
+<p class="notice">{{ sim_label }}. A seeded, fictional customer simulator: it shows how the agent works over simulated weeks. Its figures are not evidence of real-world collections and must not be presented as such (SPEC §19.1).</p>
+
+<section id="controls">
+  <h2>Scenario</h2>
+  <form method="get" action="/simulation" class="inline">
+    <label>Seed <input type="number" name="seed" min="0" step="1" value="{{ seed }}" required></label>
+    <button type="submit">Show</button>
+  </form>
+  <form method="post" action="/simulation/run" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="seed" value="{{ seed }}">
+    <button type="submit"{% if busy %} disabled{% endif %}>Run simulation (seed {{ seed }})</button>
+  </form>
+  {% if busy %}<p class="note">A simulation is running; try again shortly.</p>{% endif %}
+  <p class="note">Runs the four arms on the seed's company (about ten seconds). Fixed scenario: start {{ scenario.start_date.isoformat() }}, {{ scenario.days }} days, {{ scenario.customers }} customers with {{ scenario.invoices_per_customer }} invoices each, {{ scenario.payment_terms_days }}-day terms, amounts AED {{ "{:,}".format(scenario.amount_step_aed * scenario.amount_units_min) }} to AED {{ "{:,}".format(scenario.amount_step_aed * scenario.amount_units_max) }}; the agent ticks at {{ scenario.tick_time.strftime("%H:%M") }} {{ scenario.timezone }} on {{ scenario.working_days | join(", ") }}.</p>
+</section>
+
+<section id="fast-forward">
+  <h2>Fast-forward 14 simulated days</h2>
+  <form method="get" action="/simulation/fast-forward" class="inline">
+    <input type="hidden" name="seed" value="{{ seed }}">
+    <label>Arm <select name="arm">{% for a in arms %}<option value="{{ a }}"{% if a == default_arm %} selected{% endif %}>{{ a }}</option>{% endfor %}</select></label>
+    <label>From day <select name="day">{% for d in windows %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
+    <button type="submit">Fast-forward</button>
+  </form>
+  <p class="note">Replays the arm from day 0 and shows what changed in the next 14 days: payments, inferred outcomes, playbook updates, follow-up dates and case states.</p>
+</section>
+
+{% if results %}
+<section id="comparison">
+  <h2>A0 to A3 comparison</h2>
+  <p class="as-of-note">As of {{ results.metrics_as_of }} (day {{ scenario.days }}), seed {{ results.seed }}. {{ results.label }}.</p>
+  <table>
+    <thead><tr><th>Arm</th><th class="num">Overdue amount</th><th class="num">Mean days past due at payment</th><th class="num">Invoices settled</th><th class="num">Mean dispute cycle days</th><th class="num">Messages sent</th><th class="num">Approvals needed</th><th class="num">Policy denials</th><th class="num">Sent by a person despite a denial</th></tr></thead>
+    <tbody>
+    {% for a in arms %}{% set m = results.arms[a] %}
+    <tr id="arm-{{ a }}">
+      <th scope="row">{{ a }}</th>
+      <td class="num">{{ m.overdue_amount|aed_text }}</td>
+      <td class="num">{{ m.mean_days_past_due_at_payment if m.mean_days_past_due_at_payment is not none else "none" }}</td>
+      <td class="num">{{ m.invoices_settled }}</td>
+      <td class="num">{{ m.mean_dispute_cycle_days if m.mean_dispute_cycle_days is not none else "none" }}</td>
+      <td class="num">{{ m.messages_sent }}</td>
+      <td class="num">{{ m.approvals_needed }}</td>
+      <td class="num">{{ m.policy_denials }}</td>
+      <td class="num">{{ m.sent_by_a_person_despite_a_denial }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <dl class="facts">{% for a in arms %}<dt>{{ a }}</dt><dd>{{ arm_text[a] }}</dd>{% endfor %}</dl>
+</section>
+
+<section id="capture">
+  <h2>Capture rate: SIMULATED</h2>
+  {% set sh = results.shadow %}
+  <p class="note">{{ sh.label }}. Mechanics only (SPEC §19.3): the share of each week's simulated payments, on the {{ sh.arm }} arm, that landed on invoices in a list of {{ sh.list_size }}: the agent's L0 list, oldest-first and largest-first.</p>
+  <table>
+    <thead><tr><th>Week from</th><th class="num">Overdue invoices</th><th class="num">Paid in the week</th><th class="num">Agent (SIMULATED)</th><th class="num">Oldest-first (SIMULATED)</th><th class="num">Largest-first (SIMULATED)</th></tr></thead>
+    <tbody>
+    {% for w in sh.weeks %}
+    <tr><td>{{ w.week_start }}</td><td class="num">{{ w.overdue_invoices }}</td><td class="num">{{ w.paid_in_week|aed_text }}</td><td class="num">{{ w.agent or "none" }}</td><td class="num">{{ w.oldest_first or "none" }}</td><td class="num">{{ w.largest_first or "none" }}</td></tr>
+    {% endfor %}
+    <tr id="pooled"><th scope="row">All weeks</th><td></td><td></td><td class="num">{{ sh.pooled.agent }} SIMULATED</td><td class="num">{{ sh.pooled.oldest_first }} SIMULATED</td><td class="num">{{ sh.pooled.largest_first }} SIMULATED</td></tr>
+    </tbody>
+  </table>
+</section>
+{% else %}
+<p id="no-results" class="note">No results for seed {{ seed }} yet. Run the simulation to see the A0 to A3 comparison and the capture rates.</p>
+{% endif %}
+
+<section id="assumptions">
+  <h2>Assumptions</h2>
+  <p class="note">Every behaviour below is an assumption [A] (SPEC §19.2), not a measurement.</p>
+  <dl class="facts">{% for name, text in archetypes %}<dt>{{ name }} [A]</dt><dd>{{ text }}</dd>{% endfor %}</dl>
+  {% if results %}
+  <dl class="facts">{% for key, value in results.assumptions|dictsort %}<dt>{{ key.replace("_", " ") }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  {% endif %}
+  <p class="note">No LLM is used in the simulation: the agent arms use the rule planner and templates, and the classifier's fake mode, so a seed always gives the same results.</p>
+</section>
+{% endblock %}
