@@ -8,6 +8,8 @@ one simulation runs at a time. Every simulation view carries the label.
 """
 
 import json
+import logging
+import tempfile
 import threading
 from pathlib import Path
 from typing import Annotated, Any
@@ -22,8 +24,14 @@ from receivables.sim.scenario import load_scenario
 from receivables.sim.simulator import LABEL, SimRefused
 
 router = APIRouter()
+log = logging.getLogger("receivables.sim")
 
 MAX_SEED = 2**31 - 1
+MAX_SEED_DIGITS = 10
+REFUSED = (
+    "The simulator refused to write its files: one would overlap the real database or an "
+    "unexpected file in the data folder. Nothing was changed."
+)
 DEFAULT_ARM = "A2"  # the agent at L1, the product's default level (option 3a)
 ARM_TEXT = {
     "A0": "No action: customers follow their no-contact behaviour.",
@@ -51,7 +59,7 @@ _running = threading.Lock()  # one simulation at a time: runs share the seed's f
 def _seed(raw: str | None) -> int:
     if raw is None or raw == "":
         return load_scenario().seed
-    if not (raw.isascii() and raw.isdigit()) or int(raw) > MAX_SEED:
+    if len(raw) > MAX_SEED_DIGITS or not (raw.isascii() and raw.isdigit()) or int(raw) > MAX_SEED:
         raise HTTPException(422, "seed must be a whole number from 0")
     return int(raw)
 
@@ -65,11 +73,19 @@ def _real_database_url(request: Request) -> str:
 
 
 def _results(data_dir: Path, seed: int) -> dict[str, Any] | None:
+    """The seed's results file, or None when it is missing, unreadable or not this seed's."""
     path = results_path(data_dir, seed)
     if not path.is_file():
         return None
-    results = json.loads(path.read_text(encoding="utf-8"))
-    return results if results.get("label") == LABEL and results.get("seed") == seed else None
+    try:
+        results = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(results, dict) or results.get("label") != LABEL:
+        return None
+    if results.get("seed") != seed or not {"arms", "shadow", "assumptions"} <= set(results):
+        return None  # another seed's file, or one from before the capture rates (S4.07)
+    return results
 
 
 async def _sim_render(request: Request, template: str, context: dict[str, Any],
@@ -101,6 +117,16 @@ async def _refused(request: Request, detail: str, seed: int) -> Response:
     return await _sim_render(request, "refused.html", context, status=409)
 
 
+def _replay(
+    scenario: Any, real_database_url: str, config: Any, arm: str, day: int
+) -> dict[str, Any]:
+    """A fast-forward in a temporary folder deleted afterwards: viewing a window leaves no
+    file behind, however many seeds are viewed (D-056)."""
+    with tempfile.TemporaryDirectory(prefix="sim-ff-") as folder:
+        return fast_forward(scenario, Path(folder), real_database_url, config,
+                            arm=arm, start_day=day)  # fmt: skip
+
+
 def _locked(work: Any, *args: Any, **kwargs: Any) -> Any:
     """Run ``work`` while holding the simulation lock; None when another one is running."""
     if not _running.acquire(blocking=False):
@@ -120,10 +146,14 @@ async def simulation_run(request: Request, seed: Annotated[str | None, Form()] =
             _locked, run_arms, load_scenario(seed=chosen), _data_dir(request),
             _real_database_url(request), state.config,
         )  # fmt: skip
-    except SimRefused as error:
-        return await _refused(request, str(error), chosen)
+    except SimRefused:  # its text names server paths: show a fixed message (D-056)
+        return await _refused(request, REFUSED, chosen)
     if done is None:
         return await _refused(request, BUSY, chosen)
+    log.info(
+        "simulation run",
+        extra={"user_id": request.state.user.user_id, "seed": chosen, "arms": list(ARMS)},
+    )
     return RedirectResponse(f"/simulation?seed={chosen}", status_code=303)
 
 
@@ -135,16 +165,17 @@ async def simulation_fast_forward(
     scenario = load_scenario(seed=chosen)
     if arm not in ARMS:
         raise HTTPException(422, "arm must be A0, A1, A2 or A3")
-    if not (day.isascii() and day.isdigit()) or int(day) % WINDOW_DAYS or int(day) >= scenario.days:
+    valid = len(day) <= 3 and day.isascii() and day.isdigit()
+    if not valid or int(day) % WINDOW_DAYS or int(day) >= scenario.days:
         raise HTTPException(422, f"day must be 0, {WINDOW_DAYS}, {2 * WINDOW_DAYS} ... before "
                                  f"day {scenario.days}")  # fmt: skip
     try:
         window = await run_in_threadpool(
-            _locked, fast_forward, scenario, _data_dir(request), _real_database_url(request),
-            request.app.state.config, arm=arm, start_day=int(day),
+            _locked, _replay, scenario, _real_database_url(request), request.app.state.config,
+            arm, int(day),
         )  # fmt: skip
-    except SimRefused as error:
-        return await _refused(request, str(error), chosen)
+    except SimRefused:
+        return await _refused(request, REFUSED, chosen)
     if window is None:
         return await _refused(request, BUSY, chosen)
     context = {

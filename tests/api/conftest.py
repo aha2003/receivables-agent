@@ -49,9 +49,11 @@ def engine(tmp_path: Path, clock: SimulatedClock) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def app(engine: Engine, clock: SimulatedClock) -> FastAPI:
+def app(engine: Engine, clock: SimulatedClock, tmp_path: Path) -> FastAPI:
     settings = Settings(session_secret=SecretStr(SECRET), database_url=str(engine.url))
-    return create_app(settings, clock=clock, engine=engine)
+    app = create_app(settings, clock=clock, engine=engine)
+    app.state.sim_data_dir = tmp_path / "sim"  # never the repository's data/ (S4.08)
+    return app
 
 
 @pytest.fixture

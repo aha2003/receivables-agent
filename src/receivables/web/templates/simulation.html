@@ -16,7 +16,7 @@
     <button type="submit"{% if busy %} disabled{% endif %}>Run simulation (seed {{ seed }})</button>
   </form>
   {% if busy %}<p class="note">A simulation is running; try again shortly.</p>{% endif %}
-  <p class="note">Runs the four arms on the seed's company (about ten seconds). Fixed scenario: start {{ scenario.start_date.isoformat() }}, {{ scenario.days }} days, {{ scenario.customers }} customers with {{ scenario.invoices_per_customer }} invoices each, {{ scenario.payment_terms_days }}-day terms, amounts AED {{ "{:,}".format(scenario.amount_step_aed * scenario.amount_units_min) }} to AED {{ "{:,}".format(scenario.amount_step_aed * scenario.amount_units_max) }}; the agent ticks at {{ scenario.tick_time.strftime("%H:%M") }} {{ scenario.timezone }} on {{ scenario.working_days | join(", ") }}.</p>
+  <p class="note">Runs the four arms on the seed's company (about ten seconds). Fixed scenario: start {{ scenario.start_date.isoformat() }}, {{ scenario.days }} days, {{ scenario.customers }} customers with {{ scenario.invoices_per_customer }} invoices each, {{ scenario.payment_terms_days }}-day terms, amounts {{ (scenario.amount_step_aed * scenario.amount_units_min * 100)|aed }} to {{ (scenario.amount_step_aed * scenario.amount_units_max * 100)|aed }}; the agent ticks at {{ scenario.tick_time.strftime("%H:%M") }} {{ scenario.timezone }} on {{ scenario.working_days | join(", ") }}.</p>
 </section>
 
 <section id="fast-forward">
@@ -59,13 +59,14 @@
   <h2>Capture rate: SIMULATED</h2>
   {% set sh = results.shadow %}
   <p class="note">{{ sh.label }}. Mechanics only (SPEC §19.3): the share of each week's simulated payments, on the {{ sh.arm }} arm, that landed on invoices in a list of {{ sh.list_size }}: the agent's L0 list, oldest-first and largest-first.</p>
+  <p class="as-of-note">Each week: invoices overdue as of its first day, and payments in the 7 days after it (the last week ends on {{ results.metrics_as_of }}); seed {{ results.seed }}.</p>
   <table>
     <thead><tr><th>Week from</th><th class="num">Overdue invoices</th><th class="num">Paid in the week</th><th class="num">Agent (SIMULATED)</th><th class="num">Oldest-first (SIMULATED)</th><th class="num">Largest-first (SIMULATED)</th></tr></thead>
     <tbody>
     {% for w in sh.weeks %}
     <tr><td>{{ w.week_start }}</td><td class="num">{{ w.overdue_invoices }}</td><td class="num">{{ w.paid_in_week|aed_text }}</td><td class="num">{{ w.agent or "none" }}</td><td class="num">{{ w.oldest_first or "none" }}</td><td class="num">{{ w.largest_first or "none" }}</td></tr>
     {% endfor %}
-    <tr id="pooled"><th scope="row">All weeks</th><td></td><td></td><td class="num">{{ sh.pooled.agent }} SIMULATED</td><td class="num">{{ sh.pooled.oldest_first }} SIMULATED</td><td class="num">{{ sh.pooled.largest_first }} SIMULATED</td></tr>
+    <tr id="pooled"><th scope="row">All weeks</th><td></td><td></td><td class="num">{{ sh.pooled.agent or "none" }} SIMULATED</td><td class="num">{{ sh.pooled.oldest_first or "none" }} SIMULATED</td><td class="num">{{ sh.pooled.largest_first or "none" }} SIMULATED</td></tr>
     </tbody>
   </table>
 </section>

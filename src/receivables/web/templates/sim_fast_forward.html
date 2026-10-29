@@ -3,7 +3,7 @@
 {% block content %}
 {% set w = window %}
 <h1>Fast-forward: {{ w.arm }}, days {{ w.start_day }} to {{ w.end_day }}</h1>
-<p class="notice">{{ w.label }}. Seed {{ w.seed }}, arm {{ w.arm }}: what changed from the end of {{ w.from_date }} (day {{ w.start_day }}) to the end of {{ w.to_date }} (day {{ w.end_day }}), replayed from day 0.</p>
+<p class="notice">{{ w.label }}. Seed {{ w.seed }}, arm {{ w.arm }}: what changed from {% if w.from_start %}the start of {{ w.from_date }} (before day 0, the company as generated){% else %}the end of {{ w.from_date }} (day {{ w.start_day }}){% endif %} to the end of {{ w.to_date }} (day {{ w.end_day }}), replayed from day 0.</p>
 <p>
   {% if previous_day is not none %}<a href="/simulation/fast-forward?seed={{ seed }}&amp;arm={{ w.arm }}&amp;day={{ previous_day }}">Previous 14 days</a>{% endif %}
   {% if next_day is not none %}<a href="/simulation/fast-forward?seed={{ seed }}&amp;arm={{ w.arm }}&amp;day={{ next_day }}">Next 14 days</a>{% endif %}

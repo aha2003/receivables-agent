@@ -6,6 +6,9 @@ import hashlib
 import html
 import json
 import re
+import sqlite3
+from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -77,7 +80,7 @@ def test_the_comparison_matches_the_results(user: TestClient, results_dir: Path)
         row = re.search(rf'<tr id="arm-{arm}">(.*?)</tr>', page, re.S)
         assert row, arm
         cells = text_of(row.group(1))
-        amount = f"AED {float(m['overdue_amount']):,.2f}"  # test-side check of the AED format
+        amount = f"AED {Decimal(m['overdue_amount']):,}"  # the §10 format, from the exact text
         assert amount in cells and m["mean_days_past_due_at_payment"] in cells
         assert str(m["messages_sent"]) in cells and str(m["approvals_needed"]) in cells
     assumptions = section(page, "assumptions")
@@ -128,29 +131,70 @@ def test_one_simulation_at_a_time(user: TestClient) -> None:
         simulation._running.release()
 
 
-def test_the_fast_forward_shows_the_windows_changes(user: TestClient, tmp_path: Path) -> None:
+def test_the_fast_forward_shows_the_windows_changes(
+    user: TestClient, engine: Engine, tmp_path: Path, results_dir: Path
+) -> None:
+    real = Path(engine.url.database or "")
+    before = hashlib.sha256(real.read_bytes()).hexdigest()
     page = user.get("/simulation/fast-forward?seed=42&arm=A2&day=14").text
     assert_labelled(page)
-    expected = fast_forward(load_scenario(), tmp_path / "direct", f"sqlite:///{tmp_path / 'x.db'}",
-                            CONFIG, arm="A2", start_day=14)  # fmt: skip
     assert "Fast-forward: A2, days 14 to 28" in text_of(page)
-    assert f"({len(expected['payments'])}, AED " in section(page, "payments")
-    assert f"Outcomes inferred ({len(expected['outcomes'])})" in section(page, "outcomes")
-    assert f"Playbook updates ({len(expected['playbooks'])})" in section(page, "playbooks")
-    assert f"changed ({len(expected['followups'])})" in section(page, "followups")
-    assert f"changed ({len(expected['states'])})" in section(page, "states")
-    assert expected["payments"] and expected["outcomes"] and expected["playbooks"]
+    # Independent check: the full A2 run's database holds the same payments, dated in
+    # (day 14, day 28], as the replay (a seed always replays the same way, T-SIM-01).
+    start = load_scenario().start_date
+    low, high = start + timedelta(days=14), start + timedelta(days=28)
+    full = sqlite3.connect(results_dir / "sim_42_a2.db")
+    try:
+        rows = full.execute("SELECT payment_id, payment_date FROM payments").fetchall()
+        expected = {pid for pid, day in rows if low < date.fromisoformat(day) <= high}
+    finally:
+        full.close()
+    shown = set(re.findall(r"<tr><td>(SIM-[A-Z0-9-]+)</td>", page.split('id="payments"')[1]
+                           .split("</section>")[0]))  # fmt: skip
+    assert expected and shown == expected
+    for name in ("outcomes", "playbooks", "followups", "states"):
+        assert re.search(r"\((\d+)\)", section(page, name))
     assert "day=28" in page and "day=0" in page  # next and previous windows
-    assert (tmp_path / "sim_42_a2_ff.db").is_file()  # its own file, not the results run's
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith(("sim_", "sim-ff-"))]
+    assert leftovers == []  # the replay left no file in the data folder
+    assert hashlib.sha256(real.read_bytes()).hexdigest() == before
+
+
+def test_the_first_window_starts_before_day_0(user: TestClient) -> None:
+    page = user.get("/simulation/fast-forward?seed=42&arm=A2&day=0").text
+    assert_labelled(page)
+    assert "the start of 2026-11-02 (before day 0" in text_of(page)
+
+
+def test_a_refused_run_shows_a_fixed_message_and_no_path(user: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "sim_7_a0.db").symlink_to(tmp_path / "elsewhere.db")
+    refused = user.post("/simulation/run", data={"seed": "7", "csrf_token": csrf(user)})
+    assert refused.status_code == 409
+    assert_labelled(refused.text)
+    assert "The simulator refused to write its files" in refused.text
+    assert str(tmp_path) not in refused.text and "sim_7_a0" not in refused.text
+    assert not (tmp_path / "sim_7_results.json").exists()
 
 
 def test_the_last_window_is_short_and_has_no_next(user: TestClient) -> None:
     page = user.get("/simulation/fast-forward?seed=42&arm=A3&day=56").text
+    assert_labelled(page)
     assert "days 56 to 60" in text_of(page) and "Next 14 days" not in page
 
 
 @pytest.mark.parametrize(
-    "query", ["arm=A9", "day=7", "day=60", "day=-14", "seed=x", "seed=4.2", "day=%D9%A1%D9%A4"]
+    "query",
+    [
+        "arm=A9",
+        "day=7",
+        "day=60",
+        "day=-14",
+        "seed=x",
+        "seed=4.2",
+        "day=%D9%A1%D9%A4",
+        "seed=" + "9" * 5000,
+        "day=" + "0" * 5000,
+    ],
 )
 def test_the_fast_forward_refuses_bad_input(user: TestClient, query: str) -> None:
     assert user.get(f"/simulation/fast-forward?{query}").status_code == 422

@@ -572,7 +572,8 @@ def _run_arm(
     db_name: str | None = None,
 ) -> tuple[Path, dict[str, Any], SimCompany]:
     """Run one arm; ``until`` stops after that day offset and ``on_day_end`` sees the database
-    after every day (the fast-forward view). The results run uses neither."""
+    before day 0 (offset -1) and after every day (the fast-forward view). The results run uses
+    neither."""
     created = create_sim_db(scenario, data_dir, real_database_url, arm=db_name or arm)
     company = created.company
     engine = make_engine(f"sqlite:///{created.path}")
@@ -595,6 +596,8 @@ def _run_arm(
     try:
         last = scenario.start_date
         stop = scenario.days if until is None else min(until, scenario.days)
+        if on_day_end is not None:
+            on_day_end(-1, engine)  # the company as generated, before anything happens
         for offset in range(stop + 1):
             day = scenario.start_date + timedelta(days=offset)
             state.customers(day)
@@ -664,22 +667,25 @@ def fast_forward(
     start_day: int,
 ) -> dict[str, Any]:
     """§19.4 step 6: replay ``arm`` from day 0 and report what changed in the 14 simulated days
-    after ``start_day`` (D-056). Stateless: the same inputs always give the same window. It
-    writes its own ``sim_<seed>_<arm>_ff.db`` and never the results run's files."""
+    after ``start_day`` (D-056); the first window starts before day 0, so day 0's own changes
+    are in it. Stateless: the same inputs always give the same window. The replay writes only
+    ``sim_<seed>_<arm>_ff.db`` in ``data_dir`` (callers pass a temporary folder), never the
+    results run's files."""
     if arm not in ARMS:
         raise ValueError(f"unknown arm {arm!r}")
     if start_day < 0 or start_day >= scenario.days or start_day % WINDOW_DAYS:
         raise ValueError("start_day must be 0, 14, 28 ... and before the last day")
     end_day = min(start_day + WINDOW_DAYS, scenario.days)
+    first = -1 if start_day == 0 else start_day  # the first window includes day 0 itself
     pictures: dict[int, dict[str, Any]] = {}
 
     def keep(offset: int, engine: Engine) -> None:
-        if offset in (start_day, end_day):
+        if offset in (first, end_day):
             pictures[offset] = _picture(engine)
 
     _run_arm(arm, scenario, data_dir, real_database_url, config, until=end_day,
              on_day_end=keep, db_name=f"{arm}_ff")  # fmt: skip
-    before, after = pictures[start_day], pictures[end_day]
+    before, after = pictures[first], pictures[end_day]
     payments = [
         {"payment_id": pid, "invoice_number": inv, "date": day, "amount": str(from_fils(fils))}
         for pid, (inv, day, fils) in sorted(after["payments"].items())
@@ -714,6 +720,7 @@ def fast_forward(
         "start_day": start_day,
         "end_day": end_day,
         "from_date": (start + timedelta(days=start_day)).isoformat(),
+        "from_start": start_day == 0,  # compared with the company before day 0
         "to_date": (start + timedelta(days=end_day)).isoformat(),
         "payments": payments,
         "paid_total": str(from_fils(paid_fils)),
