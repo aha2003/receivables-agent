@@ -11,9 +11,9 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | Package | Version | Licence | Purpose | Added in |
 |---|---|---|---|---|
 | alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
-| anthropic | 1.14.0 | MIT | Official Claude SDK, imported only by `adapters/llm/anthropic_client.py` (§3.1, D-032) | S3.04 |
+| anthropic | 1.15.0 | MIT | Official Claude SDK, imported only by `adapters/llm/anthropic_client.py` (§3.1, D-032) | S3.04 |
 | argon2-cffi | 25.1.0 | MIT | Argon2id password hashing | S1.11 |
-| fastapi | 0.143.0 | MIT | HTTP API and pages | S1.11 |
+| fastapi | 0.143.5 | MIT | HTTP API and pages | S1.11 |
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
 | jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
 | pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
@@ -82,7 +82,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | cyclonedx-python-lib | 11.12.0 | Apache-2.0 |
 | defusedxml | 0.7.1 | PSF-2.0 |
 | distlib | 0.4.3 | PSF-2.0 |
-| filelock | 4.1.1 | MIT |
+| filelock | 4.2.4 | MIT |
 | httpcore | 1.0.9 | BSD-3-Clause |
 | identify | 2.6.20 | MIT |
 | iniconfig | 2.3.1 | MIT |
@@ -108,7 +108,7 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | tomli | 2.5.0 | MIT |
 | tomli-w | 1.2.0 | MIT |
 | urllib3 | 2.8.0 | MIT |
-| virtualenv | 21.14.7 | MIT |
+| virtualenv | 21.15.1 | MIT |
 
 ## Vendored assets (served from `src/receivables/web/static/vendor/`, never from a CDN)
 
