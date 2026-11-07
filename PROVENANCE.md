@@ -2,7 +2,7 @@
 
 All code in this repository is original and written for this project; no code is copied from other repositories. All data is synthetic and fictional.
 
-Every dependency is pinned in `uv.lock`. Licences below are SPDX identifiers taken from each package's distribution metadata (`License-Expression`, or the trove classifier where no expression is published) and normalised by hand. Update this file in the same PR as any dependency change.
+Every dependency is pinned in `uv.lock`. Licences below are SPDX identifiers taken from each package's distribution metadata (`License-Expression`, or the trove classifier where no expression is published) and normalised by hand. Update this file in the same PR as any dependency change: `uv run python scripts/sync_provenance.py` brings the version cells in line with `uv.lock` and lists what a person must check (a bumped package's licence, a new or removed package; D-055).
 
 ## Runtime dependencies (direct)
 
