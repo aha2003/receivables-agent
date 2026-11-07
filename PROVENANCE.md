@@ -16,7 +16,7 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 | fastapi | 0.143.5 | MIT | HTTP API and pages | S1.11 |
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
 | jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
-| pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
+| pydantic-settings | 2.16.1 | MIT | Environment settings | S1.04 |
 | pyyaml | 6.0.3 | MIT | config.yaml loader (BaseLoader, strings only) | S1.13 |
 | python-multipart | 0.0.32 | Apache-2.0 | Login form parsing | S1.11 |
 | sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
