@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Fast-forward{% endblock %}
+{% block content %}
+{% set w = window %}
+<h1>Fast-forward: {{ w.arm }}, days {{ w.start_day }} to {{ w.end_day }}</h1>
+<p class="notice">{{ w.label }}. Seed {{ w.seed }}, arm {{ w.arm }}: what changed from {% if w.from_start %}the start of {{ w.from_date }} (before day 0, the company as generated){% else %}the end of {{ w.from_date }} (day {{ w.start_day }}){% endif %} to the end of {{ w.to_date }} (day {{ w.end_day }}), replayed from day 0.</p>
+<p>
+  {% if previous_day is not none %}<a href="/simulation/fast-forward?seed={{ seed }}&amp;arm={{ w.arm }}&amp;day={{ previous_day }}">Previous 14 days</a>{% endif %}
+  {% if next_day is not none %}<a href="/simulation/fast-forward?seed={{ seed }}&amp;arm={{ w.arm }}&amp;day={{ next_day }}">Next 14 days</a>{% endif %}
+  {% for a in arms %}{% if a != w.arm %}<a href="/simulation/fast-forward?seed={{ seed }}&amp;arm={{ a }}&amp;day={{ w.start_day }}">{{ a }}</a> {% endif %}{% endfor %}
+  <a href="/simulation?seed={{ seed }}">Back to the simulation</a>
+</p>
+
+<section id="payments">
+  <h2>Payments that arrived ({{ w.payments|length }}, {{ w.paid_total|aed_text }})</h2>
+  {% if w.payments %}<table><thead><tr><th>Payment</th><th>Invoice</th><th>Date</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for p in w.payments %}<tr><td>{{ p.payment_id }}</td><td>{{ p.invoice_number or "unallocated" }}</td><td>{{ p.date }}</td><td class="num">{{ p.amount|aed_text }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="note">None.</p>{% endif %}
+</section>
+
+<section id="outcomes">
+  <h2>Outcomes inferred ({{ w.outcomes|length }})</h2>
+  {% if w.outcomes %}<table><thead><tr><th>Invoice</th><th>Outcome</th></tr></thead><tbody>
+  {% for o in w.outcomes %}<tr><td>{{ o.invoice_number }}</td><td>{{ o.outcome_type }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="note">None.</p>{% endif %}
+</section>
+
+<section id="playbooks">
+  <h2>Playbook updates ({{ w.playbooks|length }})</h2>
+  {% if w.playbooks %}<table><thead><tr><th>Customer</th><th>Promise kept rate</th><th>Average days to reply</th><th>Replies counted</th><th>Follow-up gap (days)</th></tr></thead><tbody>
+  {% for p in w.playbooks %}{% set b = p.before or {} %}<tr><td>{{ p.customer_id }}</td>
+    {% for key in ("promise_kept_rate", "avg_days_to_reply", "replies_counted", "followup_gap_days") %}<td>{{ b.get(key, "none") if b.get(key) is not none else "none" }} → {{ p.after[key] if p.after[key] is not none else "none" }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody></table>{% else %}<p class="note">None.</p>{% endif %}
+</section>
+
+<section id="followups">
+  <h2>Follow-up dates that changed ({{ w.followups|length }})</h2>
+  {% if w.followups %}<table><thead><tr><th>Invoice</th><th>Before</th><th>After</th></tr></thead><tbody>
+  {% for f in w.followups %}<tr><td>{{ f.invoice_number }}</td><td>{{ f.before or "none" }}</td><td>{{ f.after or "none" }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="note">None.</p>{% endif %}
+</section>
+
+<section id="states">
+  <h2>Case states that changed ({{ w.states|length }})</h2>
+  {% if w.states %}<table><thead><tr><th>Invoice</th><th>Before</th><th>After</th></tr></thead><tbody>
+  {% for s in w.states %}<tr><td>{{ s.invoice_number }}</td><td>{{ s.before or "no case" }}</td><td>{{ s.after }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="note">None.</p>{% endif %}
+</section>
+{% endblock %}
