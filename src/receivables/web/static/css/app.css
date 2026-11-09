@@ -21,6 +21,7 @@ dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1
 dl.facts dt { font-weight: 600; }
 form.upload { margin: 0.75rem 0; }
 .banner.kill { background: #000; }
+.banner.sim { background: #1f3f7a; letter-spacing: 0.02em; position: sticky; top: 0; z-index: 10; }  /* stays in view: S4.08 */
 .ok { color: #1f6a2f; font-weight: 600; }
 .notice { background: #fff6d6; border-left: 4px solid #b38600; padding: 0.4rem 0.6rem; }
 ul.reasons, ul.flags { margin: 0.25rem 0; padding-left: 1.1rem; }
