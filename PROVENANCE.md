@@ -2,7 +2,7 @@
 
 All code in this repository is original and written for this project; no code is copied from other repositories. All data is synthetic and fictional.
 
-Every dependency is pinned in `uv.lock`. Licences below are SPDX identifiers taken from each package's distribution metadata (`License-Expression`, or the trove classifier where no expression is published) and normalised by hand. Update this file in the same PR as any dependency change.
+Every dependency is pinned in `uv.lock`. Licences below are SPDX identifiers taken from each package's distribution metadata (`License-Expression`, or the trove classifier where no expression is published) and normalised by hand. Update this file in the same PR as any dependency change: `uv run python scripts/sync_provenance.py` brings the version cells in line with `uv.lock` and lists what a person must check (a bumped package's licence, a new or removed package; D-055).
 
 ## Runtime dependencies (direct)
 
@@ -10,16 +10,16 @@ Each runtime package of SPEC §16.1 is added, with its line here, in the step th
 
 | Package | Version | Licence | Purpose | Added in |
 |---|---|---|---|---|
-| alembic | 1.20.0 | MIT | Schema migrations | S1.04 |
+| alembic | 1.20.1 | MIT | Schema migrations | S1.04 |
 | anthropic | 2.3.0 | Apache-2.0 (MIT until 1.x) | Official Claude SDK, imported only by `adapters/llm/anthropic_client.py` (§3.1, D-032) | S3.04 |
 | argon2-cffi | 25.1.0 | MIT | Argon2id password hashing | S1.11 |
-| fastapi | 0.143.5 | MIT | HTTP API and pages | S1.11 |
+| fastapi | 0.162.0 | MIT | HTTP API and pages | S1.11 |
 | itsdangerous | 2.2.0 | BSD-3-Clause | Signed session cookie | S1.11 |
 | jinja2 | 3.1.6 | BSD-3-Clause | Server-rendered templates | S1.11 |
-| pydantic-settings | 2.15.0 | MIT | Environment settings | S1.04 |
+| pydantic-settings | 2.16.2 | MIT | Environment settings | S1.04 |
 | pyyaml | 6.0.3 | MIT | config.yaml loader (BaseLoader, strings only) | S1.13 |
-| python-multipart | 0.0.32 | Apache-2.0 | Login form parsing | S1.11 |
-| sqlalchemy | 2.1.4 | MIT | Database access (SQLite) | S1.04 |
+| python-multipart | 0.0.33 | Apache-2.0 | Login form parsing | S1.11 |
+| sqlalchemy | 2.1.8 | MIT | Database access (SQLite) | S1.04 |
 | structlog | 26.1.0 | MIT OR Apache-2.0 | JSON logs with a PII-scrubbing processor (§3.1, NFR-07) | S3.03 |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI server | S1.11 |
 
@@ -59,14 +59,14 @@ Locked but not installed on any supported platform: `httpx2-jsfetch` (only for `
 | Package | Version | Licence | Purpose |
 |---|---|---|---|
 | httpx | 0.28.1 | BSD-3-Clause | FastAPI test client (added in S1.11) |
-| hypothesis | 6.169.0 | MPL-2.0 | Property tests |
+| hypothesis | 6.170.15 | MPL-2.0 | Property tests |
 | pip-audit | 2.10.1 | Apache-2.0 | Dependency vulnerability scan |
 | pre-commit | 4.7.0 | MIT | Local git hooks |
 | pyright | 1.1.414 | MIT | Type checking (downloads Node.js and pyright from npm on first run) |
-| pytest | 9.1.1 | MIT | Test runner |
+| pytest | 9.2.0 | MIT | Test runner |
 | pytest-cov | 7.1.0 | MIT | Coverage |
 | types-pyyaml | 6.0.12.20260906 | Apache-2.0 | Type stubs for pyyaml (pyright) |
-| ruff | 0.17.1 | MIT | Lint, format, security rules |
+| ruff | 0.17.4 | MIT | Lint, format, security rules |
 
 ## Development dependencies (transitive)
 
