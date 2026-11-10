@@ -284,25 +284,37 @@ def test_visiting_a_protected_page_keeps_the_open_login_form_valid(client: TestC
     assert login(client, token=token) == 303
 
 
-@pytest.mark.parametrize(
-    ("content_type", "expected"),
-    [
-        ("Application/X-WWW-Form-Urlencoded", 303),
-        ("application/x-www-form-urlencoded; charset=UTF-8", 303),
-        # python-multipart lowercases the media type only when there are no parameters, so
-        # Starlette sees no form at all here; the request fails closed (D-016).
-        ("APPLICATION/X-WWW-FORM-URLENCODED; charset=UTF-8", 403),
-    ],
-)
-def test_form_content_type_is_case_insensitive(
-    client: TestClient, content_type: str, expected: int
-) -> None:
+FORM_TYPES = [
+    "Application/X-WWW-Form-Urlencoded",
+    "application/x-www-form-urlencoded; charset=UTF-8",
+    # python-multipart 0.0.33 lowercases the media type with parameters too (D-057).
+    "APPLICATION/X-WWW-FORM-URLENCODED; charset=UTF-8",
+]
+
+
+@pytest.mark.parametrize("content_type", FORM_TYPES)
+def test_form_content_type_is_case_insensitive(client: TestClient, content_type: str) -> None:
     from urllib.parse import urlencode
 
     assert login(client) == 303
     body = urlencode({"csrf_token": csrf(client)})
     response = client.post("/logout", content=body, headers={"content-type": content_type})
-    assert response.status_code == expected
+    assert response.status_code == 303
+
+
+@pytest.mark.parametrize("content_type", FORM_TYPES)
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_a_form_without_the_right_token_fails_closed(
+    client: TestClient, content_type: str, token: str | None
+) -> None:
+    from urllib.parse import urlencode
+
+    assert login(client) == 303
+    csrf(client)
+    body = urlencode({} if token is None else {"csrf_token": token})
+    response = client.post("/logout", content=body, headers={"content-type": content_type})
+    assert response.status_code == 403
+    assert client.get("/", headers={"accept": "text/html"}).status_code == 200  # still signed in
 
 
 def test_unusual_methods_are_checked_too(app: FastAPI, client: TestClient) -> None:
