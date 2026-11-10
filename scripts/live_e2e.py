@@ -78,6 +78,14 @@ LEDGER = {
     "customers": "SELECT * FROM customers ORDER BY customer_id",
 }
 WAITING_ON_TIME = ("ASSESSED", "AWAITING_REPLY", "PROMISE_PENDING")
+WHY_NOT_WAITING = {  # codes only, one invoice (:invoice), never a reason, argument or result
+    "case": "SELECT state, next_followup FROM cases WHERE invoice_number = :invoice",
+    "tasks": "SELECT status, COUNT(*) FROM tasks WHERE invoice_number = :invoice "
+    "GROUP BY status ORDER BY status",
+    "approvals": "SELECT a.status, COUNT(*) FROM approvals a JOIN agent_steps s USING (step_id) "
+    "WHERE s.invoice_number = :invoice GROUP BY a.status ORDER BY a.status",
+    "steps": "SELECT tool, status FROM agent_steps WHERE invoice_number = :invoice ORDER BY rowid",
+}
 NOT_A_MODEL = "no-such-model-live-e2e-check"
 
 
@@ -149,9 +157,9 @@ def run_d3(
 # --- reading the outcome ------------------------------------------------------------------------
 
 
-def rows(engine: Engine, sql: str) -> list[dict[str, Any]]:
+def rows(engine: Engine, sql: str, invoice: str | None = None) -> list[dict[str, Any]]:
     with engine.connect() as conn:
-        return [dict(r._mapping) for r in conn.execute(text(sql))]
+        return [dict(r._mapping) for r in conn.execute(text(sql), {"invoice": invoice})]
 
 
 def generators(engine: Engine) -> list[str]:
@@ -163,9 +171,9 @@ def plan_outcomes(engine: Engine) -> list[str]:
     return [json.loads(r["after_json"])["plan"] for r in received]
 
 
-def rows_raw(engine: Engine, sql: str) -> list[tuple[Any, ...]]:
+def rows_raw(engine: Engine, sql: str, invoice: str | None = None) -> list[tuple[Any, ...]]:
     with engine.connect() as conn:
-        return [tuple(r) for r in conn.execute(text(sql))]
+        return [tuple(r) for r in conn.execute(text(sql), {"invoice": invoice})]
 
 
 def ledger(engine: Engine) -> dict[str, list[tuple[Any, ...]]]:
@@ -194,6 +202,26 @@ def waiting_by_case(engine: Engine) -> dict[str, bool]:
     return {c["invoice_number"]: case_waits(c, tasks, pending) for c in cases}
 
 
+def why_not_waiting(engine: Engine, invoice: str) -> str:
+    """Codes only, for a case that is not waiting: its state, whether it has a follow-up date,
+    its tasks and approvals by status, and its steps as tool and status in order (never a
+    reason, argument, result or any other text)."""
+    case = rows(engine, WHY_NOT_WAITING["case"], invoice)[0]
+    tasks = rows_raw(engine, WHY_NOT_WAITING["tasks"], invoice)
+    approvals = rows_raw(engine, WHY_NOT_WAITING["approvals"], invoice)
+    steps = rows_raw(engine, WHY_NOT_WAITING["steps"], invoice)
+
+    def counts(found: list[Any]) -> str:
+        return ", ".join(f"{status} {n}" for status, n in found) or "none"
+
+    # The tool column has no CHECK: a name outside the registry prints as "?", never as text.
+    trail = ", ".join(f"{tool if tool in TOOL_REGISTRY else '?'} {status}"
+                      for tool, status in steps) or "none"  # fmt: skip
+    return (f"{invoice} [state {case['state']}; follow-up "
+            f"{'set' if case['next_followup'] else 'none'}; tasks {counts(tasks)}; approvals "
+            f"{counts(approvals)}; steps {trail}]")  # fmt: skip
+
+
 def check_d1(engine: Engine, summary: RunSummary, *, expect_llm: bool = True) -> list[Check]:
     """A case that raised is rolled back with its steps, so the counts are checked as well as
     the rows that remain (none may be missing)."""
@@ -212,7 +240,8 @@ def check_d1(engine: Engine, summary: RunSummary, *, expect_llm: bool = True) ->
         Check("D1 a plan and trace for every case", bool(planned) and planned == set(waiting),
               f"{len(planned)} cases with steps"),
         Check("D1 every case waiting or terminal", bool(waiting) and not stuck,
-              "all waiting" if not stuck else f"not waiting: {', '.join(stuck)}"),
+              "all waiting" if not stuck
+              else "not waiting: " + "; ".join(why_not_waiting(engine, n) for n in stuck)),
     ]  # fmt: skip
     if expect_llm:
         made = generators(engine)
